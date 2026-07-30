@@ -1,3 +1,5 @@
+importScripts('metrics.js');
+
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
 const AUTH_HOST = 'https://auth.kimi.com';
 const DEVICE_AUTH_API = `${AUTH_HOST}/api/oauth/device_authorization`;
@@ -7,6 +9,10 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 const TOKEN_STORAGE_KEY = 'kimiOAuthToken';
 const DEVICE_ID_STORAGE_KEY = 'kimiDeviceId';
 const PENDING_AUTH_STORAGE_KEY = 'kimiPendingAuthorization';
+const USAGE_DAILY_STORAGE_KEY = 'usageDaily';
+const USAGE_SEQ_STORAGE_KEY = 'usageSeq';
+const USAGE_SEQ_MAX_SESSIONS = 50;
+const QUOTA_ALERT_STORAGE_KEY = 'quotaAlertState';
 const REFRESH_MARGIN_SECONDS = 300;
 const DEVICE_POLL_ALARM = 'kimi-device-auth-poll';
 const MIN_DEVICE_POLL_DELAY_MS = 30_000;
@@ -36,6 +42,72 @@ async function scheduleDevicePoll(delayMs) {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== DEVICE_POLL_ALARM) return;
   runDevicePoll();
+});
+
+/* ---------- 额度预警 ----------
+ * widget 每次拿到新鲜额度数据后顺带评估 5h / 本周两个窗口的占用百分比；
+ * 越过 80% / 95% 各通知一次，窗口重置（百分比回落）后重新武装。
+ * 不做后台定时拉取，保持低功耗：没有 Kimi 标签页活动时不触发。 */
+async function evaluateQuotaAlerts(data) {
+  try {
+    const percentages = extractQuotaPercentages(data);
+    const stored = await chrome.storage.local.get(QUOTA_ALERT_STORAGE_KEY);
+    const state =
+      stored[QUOTA_ALERT_STORAGE_KEY] && typeof stored[QUOTA_ALERT_STORAGE_KEY] === 'object'
+        ? { ...stored[QUOTA_ALERT_STORAGE_KEY] }
+        : {};
+    let changed = false;
+    for (const [key, pct] of Object.entries(percentages)) {
+      if (pct == null) continue;
+      const previousLevel = state[key]?.level || 0;
+      const level = pct >= 95 ? 95 : pct >= 80 ? 80 : 0;
+      if (level > previousLevel) notifyQuotaThreshold(key, level, pct);
+      if (level !== previousLevel) {
+        state[key] = { level };
+        changed = true;
+      }
+    }
+    if (changed) await chrome.storage.local.set({ [QUOTA_ALERT_STORAGE_KEY]: state });
+  } catch (error) {
+    console.warn('[Kimi Status] 额度预警评估失败', error);
+  }
+}
+
+function extractQuotaPercentages(data) {
+  // used 可能缺省，此时用 limit - remaining 推导（与 KimiCodeBar 口径一致）
+  const percentageOf = (detail) => {
+    const limit = Number(detail?.limit);
+    if (!Number.isFinite(limit) || limit <= 0) return null;
+    const used = Number(detail?.used);
+    if (Number.isFinite(used) && used >= 0) return Math.round((used / limit) * 100);
+    const remaining = Number(detail?.remaining);
+    if (Number.isFinite(remaining)) return Math.round(((limit - remaining) / limit) * 100);
+    return null;
+  };
+  const fiveHour = (data?.limits || []).find((entry) => entry?.window?.duration === 300);
+  return { '5h': percentageOf(fiveHour?.detail), week: percentageOf(data?.usage) };
+}
+
+function notifyQuotaThreshold(key, level, pct) {
+  const label = key === '5h' ? '5 小时额度' : '本周额度';
+  chrome.notifications
+    .create(`quota-${key}-${level}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: `Kimi ${label}已用 ${pct}%`,
+      message:
+        level >= 95
+          ? '即将耗尽，点击打开控制台加油或调整用量'
+          : '用量已超过 80%，点击打开控制台查看详情',
+      priority: 1
+    })
+    .catch(() => {});
+}
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (!notificationId.startsWith('quota-')) return;
+  chrome.notifications.clear(notificationId);
+  chrome.tabs.create({ url: 'https://www.kimi.com/code/console' });
 });
 
 function runDevicePoll() {
@@ -129,16 +201,77 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'oauth.start': startOAuth,
     'oauth.reset': resetAndStartOAuth,
     'auth.status': authStatus,
-    'auth.clear': clearAuth
+    'auth.clear': clearAuth,
+    'usage.record': enqueueRecordUsage
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
 
-  handler()
+  handler(message.payload)
     .then(sendResponse)
     .catch((error) => sendResponse(failure(error)));
   return true;
 });
+
+/* ---------- 按天消耗量累计 ----------
+ * content.js 在每个 turn.step.completed 事件上报一次该 step 的 usage。
+ * 同一会话可能在多个标签页打开，这里按 sessionId 记录已累计的最大 seq 去重；
+ * 桶结构见 metrics.js accumulateDailyUsage。 */
+let usageWriteQueue = Promise.resolve();
+
+// 读-改-写不是原子的，多个标签页同时上报会互相覆盖；串行化所有写入
+function enqueueRecordUsage(payload) {
+  usageWriteQueue = usageWriteQueue
+    .catch(() => {})
+    .then(() => recordUsage(payload));
+  return usageWriteQueue;
+}
+
+async function recordUsage(payload) {
+  const sessionId = String(payload?.sessionId || '');
+  const seq = Number(payload?.seq);
+  const usage = payload?.usage;
+  const dayKey = String(payload?.dayKey || '');
+  if (
+    !sessionId ||
+    !Number.isFinite(seq) ||
+    !usage ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)
+  ) {
+    return failure(new Error('用量记录参数无效'), 'INVALID_USAGE_RECORD');
+  }
+
+  const stored = await chrome.storage.local.get([
+    USAGE_DAILY_STORAGE_KEY,
+    USAGE_SEQ_STORAGE_KEY
+  ]);
+  const seqMap =
+    stored[USAGE_SEQ_STORAGE_KEY] && typeof stored[USAGE_SEQ_STORAGE_KEY] === 'object'
+      ? { ...stored[USAGE_SEQ_STORAGE_KEY] }
+      : {};
+  if ((seqMap[sessionId] ?? -1) >= seq) return { ok: true, deduped: true };
+
+  let daily = KimiMetrics.accumulateDailyUsage(
+    stored[USAGE_DAILY_STORAGE_KEY],
+    dayKey,
+    usage,
+    payload.subagent === true
+  );
+  daily = KimiMetrics.pruneDailyUsage(daily);
+  seqMap[sessionId] = seq;
+  // 会话键只增不减，超出上限时按插入顺序裁掉最旧的
+  const sessionKeys = Object.keys(seqMap);
+  if (sessionKeys.length > USAGE_SEQ_MAX_SESSIONS) {
+    for (const key of sessionKeys.slice(0, sessionKeys.length - USAGE_SEQ_MAX_SESSIONS)) {
+      delete seqMap[key];
+    }
+  }
+  await chrome.storage.local.set({
+    [USAGE_DAILY_STORAGE_KEY]: daily,
+    [USAGE_SEQ_STORAGE_KEY]: seqMap
+  });
+  return { ok: true };
+}
 
 function failure(error, code = 'REQUEST_FAILED') {
   return { ok: false, code, error: error?.message || String(error) };
@@ -177,6 +310,8 @@ async function fetchQuotaFresh() {
   if (requestRevision !== authRevision) {
     return failure(new Error('授权状态已改变'), 'AUTH_REQUIRED');
   }
+  // 额度预警评估不阻塞响应
+  evaluateQuotaAlerts(data);
   const result = { ok: true, data };
   quotaCache = { fetchedAt: Date.now(), response: result };
   return result;

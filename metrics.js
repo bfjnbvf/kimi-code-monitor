@@ -47,6 +47,87 @@
     return total > 0 ? Math.round((usage.cacheReadTokens / total) * 100) : null;
   }
 
+  /* ---------- 按天消耗量累计（popup 消耗量板块数据源） ---------- */
+
+  // 本地时区的 'YYYY-MM-DD'，字典序即时间序，可直接字符串比较
+  function usageDayKey(date = new Date()) {
+    const d = date instanceof Date ? date : new Date(date);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${month}-${day}`;
+  }
+
+  // 桶结构：{ input, output, cacheRead, sub? }，input 为总输入（含缓存读/写）；
+  // isSubagent 为 true 时同额累加进 sub 子桶，供主/子代理分维度展示
+  function accumulateDailyUsage(daily, dayKey, usage, isSubagent = false) {
+    const next = { ...(daily && typeof daily === 'object' ? daily : {}) };
+    const bucket = { input: 0, output: 0, cacheRead: 0, ...(next[dayKey] || {}) };
+    const input = totalInputTokens(usage);
+    const output = toNonNegativeInteger(usage.outputTokens);
+    const cacheRead = toNonNegativeInteger(usage.cacheReadTokens);
+    bucket.input += input;
+    bucket.output += output;
+    bucket.cacheRead += cacheRead;
+    if (isSubagent) {
+      const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+      sub.input += input;
+      sub.output += output;
+      sub.cacheRead += cacheRead;
+      bucket.sub = sub;
+    }
+    next[dayKey] = bucket;
+    return next;
+  }
+
+  // 只保留最近 keepDays 个自然日（含今天）的桶，防止存储无限膨胀
+  function pruneDailyUsage(daily, keepDays = 90, now = new Date()) {
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - (keepDays - 1));
+    const cutoffKey = usageDayKey(cutoff);
+    const next = {};
+    for (const [key, bucket] of Object.entries(daily || {})) {
+      if (key >= cutoffKey) next[key] = bucket;
+    }
+    return next;
+  }
+
+  // 任意日期范围求和（含端点）；startKey/endKey 传 null 表示不限
+  function sumUsageBetween(daily, startKey, endKey) {
+    const total = { input: 0, output: 0, cacheRead: 0 };
+    for (const [key, bucket] of Object.entries(daily || {})) {
+      if (startKey && key < startKey) continue;
+      if (endKey && key > endKey) continue;
+      total.input += toNonNegativeInteger(bucket?.input);
+      total.output += toNonNegativeInteger(bucket?.output);
+      total.cacheRead += toNonNegativeInteger(bucket?.cacheRead);
+    }
+    total.totalTokens = total.input + total.output;
+    total.cacheHitRate = total.input > 0 ? total.cacheRead / total.input : null;
+    return total;
+  }
+
+  // 枚举范围内的每个自然日 key（含端点），无记录的日期也会列出，供图表补零
+  function listDayKeysBetween(startKey, endKey) {
+    const parse = (key) => {
+      const [y, m, d] = String(key).split('-').map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    };
+    const keys = [];
+    const end = parse(endKey);
+    for (let d = parse(startKey); d <= end; d.setDate(d.getDate() + 1)) {
+      keys.push(usageDayKey(d));
+    }
+    return keys;
+  }
+
+  // 与 widget 的 fmtNum 同款缩写：k / M
+  function formatTokenCount(value) {
+    const number = toNonNegativeInteger(value);
+    if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (number >= 1_000) return `${(number / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
+    return String(number);
+  }
+
   function decodeSpeed(outputTokens, durationMs) {
     const output = toNonNegativeInteger(outputTokens);
     const duration = Number(durationMs);
@@ -77,13 +158,19 @@
   }
 
   return {
+    accumulateDailyUsage,
     appendSpeedSample,
     boosterBalanceYuan,
     cacheReadPercentage,
     decodeSpeed,
+    formatTokenCount,
+    listDayKeysBetween,
     medianSpeed,
     normalizeUsage,
+    pruneDailyUsage,
+    sumUsageBetween,
     toNonNegativeInteger,
-    totalInputTokens
+    totalInputTokens,
+    usageDayKey
   };
 });

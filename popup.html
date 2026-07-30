@@ -14,6 +14,7 @@
     --accent-hover: rgba(22, 127, 247, 1);
     --green: #16c456;
     --danger: #ff3849;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -37,18 +38,11 @@
   body {
     width: 260px;
     padding: 14px;
-    font-family: "PingFang SC", -apple-system, sans-serif;
+    font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
     font-size: 12px;
     line-height: 1.6;
     color: var(--text-secondary);
     user-select: none;
-  }
-
-  .title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 10px;
   }
 
   .status-row {
@@ -85,39 +79,173 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* --- 消耗量板块 --- */
+  #usage-section {
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--fill-1);
+    margin-bottom: 10px;
+  }
+
+  .usage-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 2px;
+  }
+
+  /* 悬停柱子时显示的日期，样式对齐 widget 的「速度 上轮」次级灰字 */
+  #usage-day {
+    margin-left: 5px;
+    letter-spacing: normal;
+    text-transform: none;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+  }
+
+  /* 头部：左栏标题+缓存命中，右侧大数字 */
+  .usage-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .usage-big-tokens {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .usage-big-hit {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  /* 按天柱状图：1px 缝隙保证任何天数下柱子都比缝隙粗 */
+  .usage-chart {
+    display: flex;
+    gap: 1px;
+    height: 44px;
+    margin-bottom: 8px;
+  }
+
+  /* 悬浮识别区：整列满高，柱子多矮都能 hover 到同一横坐标 */
+  .usage-col {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  /* 堆叠柱：主代理（蓝）在底，子代理（绿）叠在上 */
+  .usage-stack {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .usage-bar {
+    width: 100%;
+    border-radius: 1px 1px 0 0;
+    background: var(--accent);
+    opacity: 0.35;
+    transition: opacity 120ms ease;
+  }
+
+  .usage-bar.flat {
+    border-radius: 0;
+  }
+
+  .usage-bar.sub {
+    background: var(--green);
+  }
+
+  .usage-col:hover .usage-bar {
+    opacity: 1;
+  }
+
+  .usage-dates {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+  }
+
+  .usage-dates-sep {
+    flex-shrink: 0;
+  }
+
+  .usage-dates input[type="date"] {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 4px;
+    border: none;
+    border-radius: 6px;
+    background: var(--fill-2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .usage-dates input[type="date"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
   .hidden { display: none; }
 
-  button {
-    display: block;
-    width: 100%;
-    padding: 7px 0;
+  #status-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* 行内轻操作：文字按钮，替代原大按钮 */
+  .status-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  button.action {
+    display: inline;
+    width: auto;
+    padding: 0;
     border: none;
-    border-radius: 8px;
-    background: var(--accent);
-    color: #ffffff;
+    background: none;
+    color: var(--text-tertiary);
     font-family: inherit;
     font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 150ms ease, transform 120ms ease, opacity 150ms ease;
-  }
-
-  button:hover { background: var(--accent-hover); }
-  button:active { transform: scale(0.97); }
-  button:disabled { opacity: 0.5; cursor: default; transform: none; }
-
-  button.secondary {
-    margin-top: 6px;
-    background: var(--fill-2);
-    color: var(--text-secondary);
     font-weight: 400;
+    cursor: pointer;
+    transition: color 120ms ease;
   }
 
-  button.secondary:hover { background: var(--fill-2-hover); }
+  button.action:hover { color: var(--text-secondary); }
+  button.action:disabled { opacity: 0.5; cursor: default; }
+
+  /* 未授权时的主操作「去授权」 */
+  button.action.primary { color: var(--accent); }
+  button.action.primary:hover { color: var(--accent-hover); }
 
   .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
     margin-top: 10px;
-    text-align: center;
+    /* 视觉内缩，避开上方卡片的圆角弧线 */
+    padding: 0 2px;
     font-size: 10px;
     color: var(--text-tertiary);
   }
@@ -134,15 +262,35 @@
 </style>
 </head>
 <body>
-  <div class="title">Kimi Code Monitor</div>
+  <div id="usage-section">
+    <div class="usage-head">
+      <div>
+        <div class="usage-title">消耗量<span id="usage-day"></span></div>
+        <div class="usage-big-hit" id="usage-hit" title="缓存命中率"></div>
+      </div>
+      <span class="usage-big-tokens" id="usage-tokens">--</span>
+    </div>
+    <div class="usage-chart" id="usage-chart"></div>
+    <div class="usage-dates">
+      <input type="date" id="usage-start" aria-label="起始日期">
+      <span class="usage-dates-sep">–</span>
+      <input type="date" id="usage-end" aria-label="结束日期">
+    </div>
+  </div>
   <div class="status-row">
     <span class="dot" id="status-dot"></span>
     <span id="status-text">正在查询授权状态…</span>
+    <span class="status-actions">
+      <button type="button" class="action primary" id="reauth-btn">去授权</button>
+      <button type="button" class="action" id="clear-btn">清除</button>
+    </span>
   </div>
   <div id="auth-hint" class="hidden"></div>
-  <button type="button" id="reauth-btn">重新授权 / 切换账户</button>
-  <button type="button" id="clear-btn" class="secondary">清除授权</button>
-  <div class="footer">v<span id="version"></span> · by <a href="https://github.com/bfjnbvf/kimi-code-web-status" target="_blank" rel="noopener">十叶</a></div>
+  <div class="footer">
+    <span><a href="#" id="export-link">导出数据</a> · <a href="https://www.kimi.com/code/console" target="_blank" rel="noopener">控制台</a></span>
+    <span>v<span id="version"></span> · <a href="https://github.com/bfjnbvf/kimi-code-monitor/releases" target="_blank" rel="noopener">检查更新</a></span>
+  </div>
+  <script src="metrics.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

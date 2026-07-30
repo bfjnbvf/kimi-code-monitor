@@ -20,9 +20,11 @@
     boosterBalanceYuan,
     cacheReadPercentage,
     decodeSpeed,
+    formatTokenCount,
     medianSpeed,
     normalizeUsage,
-    totalInputTokens
+    totalInputTokens,
+    usageDayKey
   } = globalThis.KimiMetrics;
 
   const STATUS_TEXT = {
@@ -63,18 +65,11 @@
 
   /* ---------- 格式化 ---------- */
 
-  function fmtNum(value) {
-    const number = Number(value) || 0;
-    if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-    if (number >= 1_000) return `${(number / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
-    return String(number);
-  }
-
   function fmtDuration(ms) {
     if (!Number.isFinite(ms) || ms <= 0) return '--';
     if (ms < 1_000) return `${Math.round(ms)}ms`;
     if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
-    return `${(ms / 60_000).toFixed(1)}min`;
+    return `${(ms / 60_000).toFixed(1)}m`;
   }
 
   function toNumber(value) {
@@ -132,15 +127,15 @@
           <span class="ksb-stat-value" id="ksb-input-tokens">0</span>
         </div>
         <div class="ksb-stat">
-          <span class="ksb-stat-label">输出</span>
-          <span class="ksb-stat-value" id="ksb-output-tokens">0</span>
-        </div>
-        <div class="ksb-stat">
           <span class="ksb-stat-label">缓存命中</span>
           <span class="ksb-stat-value" id="ksb-cache-pct">--</span>
         </div>
         <div class="ksb-stat">
-          <span class="ksb-stat-label">速度<span class="ksb-stat-sub" id="ksb-duration-val"></span></span>
+          <span class="ksb-stat-label">输出</span>
+          <span class="ksb-stat-value" id="ksb-output-tokens">0</span>
+        </div>
+        <div class="ksb-stat">
+          <span class="ksb-stat-label">速度<span class="ksb-stat-sub" id="ksb-duration-sub" hidden><span class="ksb-duration-word">上轮</span><span id="ksb-duration-val"></span></span></span>
           <span class="ksb-stat-value" id="ksb-speed-val">--</span>
         </div>
       </div>
@@ -203,6 +198,7 @@
       outputTokens: byId('ksb-output-tokens'),
       cachePct: byId('ksb-cache-pct'),
       speedVal: byId('ksb-speed-val'),
+      durationSub: byId('ksb-duration-sub'),
       durationVal: byId('ksb-duration-val'),
       agentStatus: byId('ksb-agent-status'),
       quota: {
@@ -338,8 +334,8 @@
 
   function updateTokenDisplay() {
     if (!els) return;
-    if (els.inputTokens) els.inputTokens.textContent = fmtNum(totalInputTokens(metrics));
-    if (els.outputTokens) els.outputTokens.textContent = fmtNum(metrics.outputTokens);
+    if (els.inputTokens) els.inputTokens.textContent = formatTokenCount(totalInputTokens(metrics));
+    if (els.outputTokens) els.outputTokens.textContent = formatTokenCount(metrics.outputTokens);
   }
 
   function updateCacheDisplay() {
@@ -355,10 +351,13 @@
     if (els.speedVal) {
       els.speedVal.textContent = metrics.lastSpeed > 0 ? `${metrics.lastSpeed} tok/s` : '--';
     }
-    if (els.durationVal) {
-      els.durationVal.textContent = metrics.lastDuration > 0
-        ? ` · 上轮 ${fmtDuration(metrics.lastDuration)}`
-        : '';
+    if (els.durationSub && els.durationVal) {
+      if (metrics.lastDuration > 0) {
+        els.durationVal.textContent = fmtDuration(metrics.lastDuration);
+        els.durationSub.hidden = false;
+      } else {
+        els.durationSub.hidden = true;
+      }
     }
   }
 
@@ -572,11 +571,14 @@
         targetSessionId !== sessionId ||
         targetToken !== token
       ) return;
-      const usage = normalizeUsage(data.usage);
-      metrics.inputTokens = usage.inputTokens;
-      metrics.outputTokens = usage.outputTokens;
-      metrics.cacheReadTokens = usage.cacheReadTokens;
-      metrics.cacheCreationTokens = usage.cacheCreationTokens;
+      // 快照可能不返回 usage（如重同步场景）：此时保留现有累计值，不清零
+      if (data.usage) {
+        const usage = normalizeUsage(data.usage);
+        metrics.inputTokens = usage.inputTokens;
+        metrics.outputTokens = usage.outputTokens;
+        metrics.cacheReadTokens = usage.cacheReadTokens;
+        metrics.cacheCreationTokens = usage.cacheCreationTokens;
+      }
       metrics.agentStatus = data.busy || data.main_turn_active ? 'running' : 'idle';
       lastSeq = toNumber(data.last_seq);
       renderAll();
@@ -680,9 +682,12 @@
         setAgentStatus('thinking');
         break;
       case 'turn.step.completed':
-        handleStepCompleted(payload);
+        handleStepCompleted(payload, message.seq, message.agent_id ?? payload.agentId);
         // step 之间的间隙通常在执行工具，用绿色「运行中」和思考（蓝）区分
         setAgentStatus('running');
+        break;
+      case 'resync_required':
+        handleResyncRequired();
         break;
       case 'turn.ended':
       case 'turn.completed':
@@ -709,13 +714,40 @@
     else if (status === 'idle' || status === 'waiting') setAgentStatus('idle');
   }
 
-  function handleStepCompleted(payload) {
+  // 服务器事件缓冲溢出（buffer_overflow）时要求重同步：
+  // 溢出期间的事件已不可恢复，用快照修正显示并把游标推进到最新，避免持续漏算
+  async function handleResyncRequired() {
+    if (!sessionId || !token) return;
+    console.warn('[Kimi Status] 服务器要求重同步，已用快照重置状态');
+    await loadSessionSnapshot(sessionId, token, ++sessionRequestId);
+    if (!disposed) sendClientHello();
+  }
+
+  function handleStepCompleted(payload, seq, agentId) {
     const usage = normalizeUsage(payload.usage || payload.token_usage);
 
     metrics.inputTokens += usage.inputTokens;
     metrics.outputTokens += usage.outputTokens;
     metrics.cacheReadTokens += usage.cacheReadTokens;
     metrics.cacheCreationTokens += usage.cacheCreationTokens;
+
+    // 上报给 background 按天累计（popup 消耗量板块）；background 按 sessionId+seq 去重
+    // agentId 区分主代理/子代理（'main' 为主代理），供分维度统计
+    const sequence = Number(seq);
+    if (sessionId && Number.isFinite(sequence)) {
+      chrome.runtime
+        .sendMessage({
+          type: 'usage.record',
+          payload: {
+            sessionId,
+            seq: sequence,
+            usage,
+            dayKey: usageDayKey(new Date()),
+            subagent: Boolean(agentId) && agentId !== 'main'
+          }
+        })
+        .catch(() => {});
+    }
 
     const streamDuration = payload.llmStreamDurationMs ?? payload.llmServerDecodeMs;
     const speed = decodeSpeed(usage.outputTokens, streamDuration);
