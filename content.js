@@ -686,9 +686,6 @@
         // step 之间的间隙通常在执行工具，用绿色「运行中」和思考（蓝）区分
         setAgentStatus('running');
         break;
-      case 'resync_required':
-        handleResyncRequired();
-        break;
       case 'turn.ended':
       case 'turn.completed':
         metrics.lastDuration = toNumber(payload.durationMs ?? payload.duration_ms ?? payload.duration);
@@ -712,28 +709,6 @@
     if (status === 'thinking' || status === 'processing') setAgentStatus('thinking');
     else if (status === 'running' || status === 'working') setAgentStatus('running');
     else if (status === 'idle' || status === 'waiting') setAgentStatus('idle');
-  }
-
-  // 服务器事件缓冲溢出（buffer_overflow）时要求重同步：
-  // 溢出期间的事件已不可恢复，用快照修正显示并把游标推进到最新，避免持续漏算。
-  // 快照未能推进游标（拉取失败等）时退避后重试，防止与服务器形成重同步循环
-  let resyncRetryTimer = null;
-
-  async function handleResyncRequired() {
-    if (!sessionId || !token || resyncRetryTimer) return;
-    console.warn('[Kimi Status] 服务器要求重同步，已用快照重置状态');
-    const beforeSeq = lastSeq;
-    // 传当前 sessionRequestId（不自增）：若恰好赶上会话切换，快照守卫会正确丢弃这次加载
-    await loadSessionSnapshot(sessionId, token, sessionRequestId);
-    if (disposed) return;
-    if (lastSeq > beforeSeq) {
-      sendClientHello();
-      return;
-    }
-    resyncRetryTimer = setTimeout(() => {
-      resyncRetryTimer = null;
-      if (!disposed) sendClientHello();
-    }, 5_000);
   }
 
   function handleStepCompleted(payload, seq, agentId) {
@@ -877,7 +852,6 @@
     if (quotaTimer) clearInterval(quotaTimer);
     if (routeTimer) clearInterval(routeTimer);
     if (resetRefetchTimer) clearTimeout(resetRefetchTimer);
-    if (resyncRetryTimer) clearTimeout(resyncRetryTimer);
     // 扩展重载后 Chrome 不会自动重新注入 content script，
     // 残留脚本退出时一并移除 widget，避免留下一个永远灰色的「僵尸面板」
     if (els?.widget) els.widget.remove();
