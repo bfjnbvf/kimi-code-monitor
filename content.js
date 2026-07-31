@@ -700,7 +700,10 @@
         handleAgentStatus(payload);
         break;
       case 'error': {
-        // 节流：相同错误 60 秒内只记一条，避免刷屏被 Chrome 收集为扩展错误；
+        // 供应商限流（429 引擎过载等）是服务器端的瞬时状态，会自动重试，
+        // web 界面自有提示，不作为扩展错误记录
+        if (payload?.code === 'provider.rate_limit') break;
+        // 其余错误节流记录：60 秒内只记一条，避免刷屏被 Chrome 收集为扩展错误；
         // payload 内联序列化，方便从错误页直接读到内容
         const now = Date.now();
         if (now - lastServerErrorLogAt > 60_000) {
