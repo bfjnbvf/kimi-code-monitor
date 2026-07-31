@@ -48,6 +48,7 @@
   let lastSeq = 0;
   let sessionRequestId = 0;
   let reconnectAttempts = 0;
+  let lastServerErrorLogAt = 0;
 
   // 创建 widget 时缓存一次，后续渲染不再重复查询 DOM
   let els = null;
@@ -698,9 +699,19 @@
       case 'agent.status.updated':
         handleAgentStatus(payload);
         break;
-      case 'error':
-        console.warn('[Kimi Status] 服务器事件错误', payload);
+      case 'error': {
+        // 节流：相同错误 60 秒内只记一条，避免刷屏被 Chrome 收集为扩展错误；
+        // payload 内联序列化，方便从错误页直接读到内容
+        const now = Date.now();
+        if (now - lastServerErrorLogAt > 60_000) {
+          lastServerErrorLogAt = now;
+          console.warn(
+            '[Kimi Status] 服务器事件错误',
+            JSON.stringify(payload).slice(0, 500)
+          );
+        }
         break;
+      }
     }
   }
 
