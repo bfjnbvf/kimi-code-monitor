@@ -1,5 +1,7 @@
 # Kimi Code Monitor
 
+![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
+
 Kimi Code Web 的侧边栏监控扩展。一只会反映工作状态的吉祥物，一块可以自由拼装的模块化面板：额度、token、缓存、速度、消耗量，全部本地运行，数据不上传。
 
 ![面板完整模式与 Mini 模式对比](docs/screenshots/hero.png)
