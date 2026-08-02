@@ -152,19 +152,64 @@
   // 导出按天累计数据为 JSON 文件
   document.getElementById('export-link').addEventListener('click', async (event) => {
     event.preventDefault();
-    const stored = await chrome.storage.local.get('usageDaily');
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      note: 'Kimi Code Monitor 按天累计的 Kimi Code Web 会话 token 消耗（input 为总输入，含缓存读写；sub 为其中子代理的消耗）',
-      usageDaily: stored.usageDaily || {}
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `kimi-usage-${usageDayKey(new Date())}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const link = event.currentTarget;
+    try {
+      const dailyKey = globalThis.KimiMetrics.USAGE_DAILY_STORAGE_KEY;
+      const indexKey = globalThis.KimiMetrics.SESSION_INDEX_KEY;
+      const sessionKeyOf = globalThis.KimiMetrics.sessionStorageKey;
+      const stored = await chrome.storage.local.get([
+        dailyKey,
+        indexKey,
+        'quotaSnapshots',
+        'quotaMonthlyLast'
+      ]);
+      // 会话存档为分键存储，按索引枚举拼装回 { sessionId: record } 结构
+      const index = stored[indexKey] || {};
+      const sessionKeys = Object.keys(index).map((id) => sessionKeyOf(id));
+      const sessionStored = sessionKeys.length ? await chrome.storage.local.get(sessionKeys) : {};
+      const usageSessions = {};
+      for (const id of Object.keys(index)) {
+        const record = sessionStored[sessionKeyOf(id)];
+        if (record) usageSessions[id] = record;
+      }
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        note: 'Kimi Code Monitor 本地用量存档。usageDaily：按天累计（input 为总输入，含缓存读写；sub 为其中子代理的消耗）；usageSessions：按会话累计（含全量逐 step 样本与轮次耗时）；quotaSnapshots：5h/本周/本月额度的每日快照（百分比）；quotaMonthly：月额度最近一次成功拉取值',
+        usageDaily: stored[dailyKey] || {},
+        usageSessions,
+        quotaSnapshots: stored.quotaSnapshots || {},
+        quotaMonthly: stored.quotaMonthlyLast || null
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `kimi-usage-${usageDayKey(new Date())}.json`;
+      anchor.click();
+      // 个别内核同步回收过早，延迟释放 blob URL
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (error) {
+      link.textContent = '导出失败';
+      setTimeout(() => {
+        link.textContent = '导出数据';
+      }, 2_000);
+    }
+  });
+
+  // 重置面板布局：只删模块配置键（kimi-statusbar.config），面板自动回默认；
+  // 历史数据（usageDaily / usageSession:* / 快照）一概不动
+  document.getElementById('reset-layout-link').addEventListener('click', async (event) => {
+    event.preventDefault();
+    const link = event.currentTarget;
+    try {
+      await chrome.storage.local.remove('kimi-statusbar.config');
+      link.textContent = '已重置 ✓';
+    } catch (error) {
+      link.textContent = '重置失败';
+    }
+    setTimeout(() => {
+      link.textContent = '重置布局';
+    }, 2_000);
   });
 
   function send(type) {
@@ -250,6 +295,8 @@
         stopPolling();
         showHint('授权未完成（已超时或被取消），请重试。');
         reauthBtn.disabled = false;
+        // 顶部状态行同步回「未授权」，不停留在「授权流程进行中…」
+        setStatus(false);
       }
     } catch (error) {
       stopPolling();

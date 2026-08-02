@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Kimi 宠物 SVG 预览</title>
+<style>
+  body { margin: 0; font-family: -apple-system, sans-serif; background: #f5f5f5; }
+  .row { display: flex; align-items: flex-end; gap: 40px; padding: 32px; }
+  .dark { background: #292929; }
+  .cell { text-align: center; font-size: 12px; color: #888; }
+  .dark .cell { color: #aaa; }
+  .cell svg { display: block; margin: 0 auto 8px; }
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="160" height="160">
+      <defs>
+        <radialGradient id="g1" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g1)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+    </svg>
+    正常（放大）
+  </div>
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="28" height="28">
+      <defs>
+        <radialGradient id="g2" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g2)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+    </svg>
+    实际尺寸 28px
+  </div>
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="160" height="160">
+      <defs>
+        <radialGradient id="g3" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g3)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="0.6" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="0.6" fill="#ffffff"/>
+    </svg>
+    眨眼帧
+  </div>
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="160" height="160" style="transform: scale(1.08, 0.9); transform-origin: bottom center;">
+      <defs>
+        <radialGradient id="g4" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g4)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+    </svg>
+    行走压扁帧
+  </div>
+</div>
+<div class="row dark">
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="160" height="160">
+      <defs>
+        <radialGradient id="g5" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g5)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+    </svg>
+    暗色背景（放大）
+  </div>
+  <div class="cell">
+    <svg viewBox="0 0 48 48" width="28" height="28">
+      <defs>
+        <radialGradient id="g6" cx="35%" cy="30%" r="85%">
+          <stop offset="0%" stop-color="#7db8ff"/>
+          <stop offset="60%" stop-color="#3b8cff"/>
+          <stop offset="100%" stop-color="#1a6fe8"/>
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#g6)"/>
+      <ellipse cx="18" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+      <ellipse cx="30" cy="20" rx="3.2" ry="4.8" fill="#ffffff"/>
+    </svg>
+    实际尺寸 28px
+  </div>
+</div>
+</body>
+</html>

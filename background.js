@@ -1,6 +1,8 @@
 importScripts('metrics.js');
 
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
+// 订阅页月额度（方案 A：复用设备 OAuth token，401 时静默降级，见 requestMonthlyStats）
+const SUBSCRIPTION_STATS_API = 'https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats';
 const AUTH_HOST = 'https://auth.kimi.com';
 const DEVICE_AUTH_API = `${AUTH_HOST}/api/oauth/device_authorization`;
 const TOKEN_API = `${AUTH_HOST}/api/oauth/token`;
@@ -9,8 +11,17 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 const TOKEN_STORAGE_KEY = 'kimiOAuthToken';
 const DEVICE_ID_STORAGE_KEY = 'kimiDeviceId';
 const PENDING_AUTH_STORAGE_KEY = 'kimiPendingAuthorization';
-const USAGE_DAILY_STORAGE_KEY = 'usageDaily';
+const USAGE_DAILY_STORAGE_KEY = KimiMetrics.USAGE_DAILY_STORAGE_KEY;
 const USAGE_SEQ_STORAGE_KEY = 'usageSeq';
+// 会话级用量（导出与面板归零恢复）：分键存储 usageSession:<id> + 索引 usageSessionsIndex
+// 旧版单表键，仅用于一次性迁移
+const USAGE_SESSIONS_STORAGE_KEY = 'usageSessions';
+// 月额度最后一次成功值（web token 断供时回退显示，不再横杠）
+const QUOTA_MONTHLY_STORAGE_KEY = 'quotaMonthlyLast';
+// 三档额度每日快照（导出用），复用额度拉取，零额外请求
+const QUOTA_SNAPSHOT_STORAGE_KEY = 'quotaSnapshots';
+const QUOTA_SNAPSHOT_INTERVAL_MS = 6 * 3_600_000;
+const QUOTA_SNAPSHOT_KEEP_DAYS = 90;
 const USAGE_SEQ_MAX_SESSIONS = 50;
 const QUOTA_ALERT_STORAGE_KEY = 'quotaAlertState';
 const REFRESH_MARGIN_SECONDS = 300;
@@ -74,17 +85,13 @@ async function evaluateQuotaAlerts(data) {
 }
 
 function extractQuotaPercentages(data) {
-  // used 可能缺省，此时用 limit - remaining 推导（与 KimiCodeBar 口径一致）
+  // 与面板同一份推导逻辑（metrics.js quotaPercentage），此处取整用于阈值预警
   const percentageOf = (detail) => {
-    const limit = Number(detail?.limit);
-    if (!Number.isFinite(limit) || limit <= 0) return null;
-    const used = Number(detail?.used);
-    if (Number.isFinite(used) && used >= 0) return Math.round((used / limit) * 100);
-    const remaining = Number(detail?.remaining);
-    if (Number.isFinite(remaining)) return Math.round(((limit - remaining) / limit) * 100);
-    return null;
+    const pct = KimiMetrics.quotaPercentage(detail);
+    return pct != null ? Math.round(pct) : null;
   };
-  const fiveHour = (data?.limits || []).find((entry) => entry?.window?.duration === 300);
+  // duration 宽容解析为数字，API 返回字符串时不至于静默失效（与面板侧 toNumber 一致）
+  const fiveHour = (data?.limits || []).find((entry) => Number(entry?.window?.duration) === 300);
   return { '5h': percentageOf(fiveHour?.detail), week: percentageOf(data?.usage) };
 }
 
@@ -202,7 +209,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'oauth.reset': resetAndStartOAuth,
     'auth.status': authStatus,
     'auth.clear': clearAuth,
-    'usage.record': enqueueRecordUsage
+    'usage.record': enqueueRecordUsage,
+    'usage.turn': enqueueRecordTurn,
+    'session.usage.get': getSessionUsage,
+    'webtoken.report': reportWebToken
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -212,6 +222,42 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .catch((error) => sendResponse(failure(error)));
   return true;
 });
+
+/* ---------- kimi.com 网页端 token 中转（月额度接口方案 B） ----------
+ * web-token.js 在 www.kimi.com 页面读取网页端 access_token 上报至此缓存；
+ * GetSubscriptionStats 只认这个 web token（设备 OAuth token 401）。 */
+const WEB_TOKEN_STORAGE_KEY = 'kimiWebAccessToken';
+const WEB_TOKEN_REFRESH_MARGIN_SECONDS = 120;
+
+async function reportWebToken(payload) {
+  const token = typeof payload?.token === 'string' ? payload.token : '';
+  const expiresAt = Number(payload?.expiresAt);
+  if (!token || !Number.isFinite(expiresAt) || expiresAt <= 0) {
+    return { ok: false, error: 'token 无效' };
+  }
+  // 同一 token 不重复落盘，避免多标签页反复触发 storage 事件
+  const stored = await chrome.storage.local.get(WEB_TOKEN_STORAGE_KEY);
+  if (stored[WEB_TOKEN_STORAGE_KEY]?.token === token) return { ok: true, reused: true };
+  await chrome.storage.local.set({
+    [WEB_TOKEN_STORAGE_KEY]: { token, expiresAt, reportedAt: Date.now() }
+  });
+  return { ok: true };
+}
+
+// 未过期才返回；过期即清除，等下次 kimi.com 页面访问补报
+async function getStoredWebToken() {
+  try {
+    const stored = await chrome.storage.local.get(WEB_TOKEN_STORAGE_KEY);
+    const entry = stored[WEB_TOKEN_STORAGE_KEY];
+    if (!entry?.token || !Number.isFinite(entry?.expiresAt)) return null;
+    const nowSeconds = Date.now() / 1_000;
+    if (entry.expiresAt > nowSeconds + WEB_TOKEN_REFRESH_MARGIN_SECONDS) return entry.token;
+    await chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY);
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
 
 /* ---------- 按天消耗量累计 ----------
  * content.js 在每个 turn.step.completed 事件上报一次该 step 的 usage。
@@ -224,6 +270,13 @@ function enqueueRecordUsage(payload) {
   usageWriteQueue = usageWriteQueue
     .catch(() => {})
     .then(() => recordUsage(payload));
+  return usageWriteQueue;
+}
+
+function enqueueRecordTurn(payload) {
+  usageWriteQueue = usageWriteQueue
+    .catch(() => {})
+    .then(() => recordTurnDuration(payload));
   return usageWriteQueue;
 }
 
@@ -241,9 +294,12 @@ async function recordUsage(payload) {
     return failure(new Error('用量记录参数无效'), 'INVALID_USAGE_RECORD');
   }
 
+  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
   const stored = await chrome.storage.local.get([
     USAGE_DAILY_STORAGE_KEY,
-    USAGE_SEQ_STORAGE_KEY
+    USAGE_SEQ_STORAGE_KEY,
+    KimiMetrics.SESSION_INDEX_KEY,
+    sessionKey
   ]);
   const seqMap =
     stored[USAGE_SEQ_STORAGE_KEY] && typeof stored[USAGE_SEQ_STORAGE_KEY] === 'object'
@@ -266,19 +322,105 @@ async function recordUsage(payload) {
       delete seqMap[key];
     }
   }
+  // 会话级持久化（分键）：只读写当前会话的键，成本与存档总量解耦
+  const record = KimiMetrics.accumulateSessionUsage(stored[sessionKey], usage, Number(payload.speed), seq);
+  const index =
+    stored[KimiMetrics.SESSION_INDEX_KEY] && typeof stored[KimiMetrics.SESSION_INDEX_KEY] === 'object'
+      ? { ...stored[KimiMetrics.SESSION_INDEX_KEY] }
+      : {};
+  index[sessionId] = KimiMetrics.sessionIndexMeta(record, sessionKey);
   await chrome.storage.local.set({
     [USAGE_DAILY_STORAGE_KEY]: daily,
-    [USAGE_SEQ_STORAGE_KEY]: seqMap
+    [USAGE_SEQ_STORAGE_KEY]: seqMap,
+    [KimiMetrics.SESSION_INDEX_KEY]: index,
+    [sessionKey]: record
   });
+  // 剪枝必须 await 在写入队列内完成，不能与后续读写并发（否则已逐出条目被旧索引写回）
+  await pruneSessionStorage(index);
   return { ok: true };
 }
+
+// 每轮结束记录耗时（面板「上轮耗时」与折线图）；按 maxTurnSeq 去重
+async function recordTurnDuration(payload) {
+  const sessionId = String(payload?.sessionId || '');
+  const durationMs = Number(payload?.durationMs);
+  const seq = Number(payload?.seq);
+  if (!sessionId || !Number.isFinite(durationMs) || durationMs <= 0) {
+    return failure(new Error('轮次耗时记录参数无效'), 'INVALID_TURN_RECORD');
+  }
+  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
+  const stored = await chrome.storage.local.get([sessionKey, KimiMetrics.SESSION_INDEX_KEY]);
+  const existing = stored[sessionKey];
+  if (Number.isFinite(seq) && (existing?.maxTurnSeq ?? -1) >= seq) {
+    return { ok: true, deduped: true };
+  }
+  const record = KimiMetrics.appendTurnDuration(existing, durationMs, seq);
+  const index =
+    stored[KimiMetrics.SESSION_INDEX_KEY] && typeof stored[KimiMetrics.SESSION_INDEX_KEY] === 'object'
+      ? { ...stored[KimiMetrics.SESSION_INDEX_KEY] }
+      : {};
+  index[sessionId] = KimiMetrics.sessionIndexMeta(record, sessionKey);
+  await chrome.storage.local.set({
+    [sessionKey]: record,
+    [KimiMetrics.SESSION_INDEX_KEY]: index
+  });
+  // 剪枝必须 await 在写入队列内完成
+  await pruneSessionStorage(index);
+  return { ok: true };
+}
+
+// 容量剪枝：索引总量超预算时按最旧会话逐出（只动索引与过期键，开销与活跃量无关）
+async function pruneSessionStorage(index) {
+  try {
+    const dropIds = KimiMetrics.sessionIdsToDrop(index);
+    if (!dropIds.length) return;
+    const next = { ...(index || {}) };
+    for (const id of dropIds) delete next[id];
+    await chrome.storage.local.set({ [KimiMetrics.SESSION_INDEX_KEY]: next });
+    await chrome.storage.local.remove(dropIds.map((id) => KimiMetrics.sessionStorageKey(id)));
+  } catch (error) {
+    // 剪枝失败不影响主链路
+  }
+}
+
+// 面板会话重建时恢复用：快照缺失 usage 时回退到本地持久化记录
+async function getSessionUsage(payload) {
+  const sessionId = String(payload?.sessionId || '');
+  if (!sessionId) return failure(new Error('缺少 sessionId'), 'INVALID_SESSION_QUERY');
+  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
+  const stored = await chrome.storage.local.get(sessionKey);
+  return { ok: true, record: stored[sessionKey] || null };
+}
+
+// 旧版单表 usageSessions 迁移为分键存储（一次性）：
+// 挂进写入队列，保证先于任何 usage.record 读写执行，避免启动窗口的索引覆盖竞态
+usageWriteQueue = usageWriteQueue.then(async () => {
+  try {
+    const stored = await chrome.storage.local.get(USAGE_SESSIONS_STORAGE_KEY);
+    const legacy = stored[USAGE_SESSIONS_STORAGE_KEY];
+    if (!legacy || typeof legacy !== 'object') return;
+    const writes = {};
+    const index = {};
+    for (const [id, record] of Object.entries(legacy)) {
+      const key = KimiMetrics.sessionStorageKey(id);
+      writes[key] = record;
+      index[id] = KimiMetrics.sessionIndexMeta(record, key);
+    }
+    if (Object.keys(writes).length) {
+      await chrome.storage.local.set({ ...writes, [KimiMetrics.SESSION_INDEX_KEY]: index });
+    }
+    await chrome.storage.local.remove(USAGE_SESSIONS_STORAGE_KEY);
+  } catch (error) {
+    console.warn('[Kimi Status] 会话存档迁移失败', error);
+  }
+});
 
 function failure(error, code = 'REQUEST_FAILED') {
   return { ok: false, code, error: error?.message || String(error) };
 }
 
-async function fetchQuota() {
-  if (quotaCache && Date.now() - quotaCache.fetchedAt < QUOTA_CACHE_TTL_MS) {
+async function fetchQuota(payload) {
+  if (!payload?.force && quotaCache && Date.now() - quotaCache.fetchedAt < QUOTA_CACHE_TTL_MS) {
     return quotaCache.response;
   }
   if (quotaFetchPromise) return quotaFetchPromise;
@@ -307,14 +449,68 @@ async function fetchQuotaFresh() {
 
   if (!response.ok) throw await httpError('额度 API', response);
   const data = await response.json();
+  // 月额度暂时下线：web token 寿命仅约 18 分钟，中转/轮询方案体验不佳，
+  // 找到更干净的通路前不再拉取（resolveMonthlyStats/requestMonthlyStats 保留备用）
+  data.monthly = null;
   if (requestRevision !== authRevision) {
     return failure(new Error('授权状态已改变'), 'AUTH_REQUIRED');
   }
   // 额度预警评估不阻塞响应
   evaluateQuotaAlerts(data);
+  recordQuotaSnapshot(data);
   const result = { ok: true, data };
   quotaCache = { fetchedAt: Date.now(), response: result };
   return result;
+}
+
+// 月额度：实时成功则落盘最后已知值；失败回退该值（stale 标记），面板不再横杠
+async function resolveMonthlyStats(deviceAccessToken) {
+  const fresh = await requestMonthlyStats(deviceAccessToken);
+  if (fresh) {
+    const record = { ...fresh, fetchedAt: Date.now() };
+    await chrome.storage.local.set({ [QUOTA_MONTHLY_STORAGE_KEY]: record }).catch(() => {});
+    return record;
+  }
+  try {
+    const stored = await chrome.storage.local.get(QUOTA_MONTHLY_STORAGE_KEY);
+    const last = stored[QUOTA_MONTHLY_STORAGE_KEY];
+    if (last && Number.isFinite(Number(last.usedRatio))) return { ...last, stale: true };
+  } catch (error) {
+    // 读取失败按无数据处理
+  }
+  return null;
+}
+
+// 三档额度每日快照（每 6 小时最多一条）；失败静默，不影响主链路
+async function recordQuotaSnapshot(data) {
+  try {
+    const dayKey = KimiMetrics.usageDayKey(new Date());
+    const percentages = extractQuotaPercentages(data);
+    const monthRatio = Number(data?.monthly?.usedRatio);
+    const stored = await chrome.storage.local.get(QUOTA_SNAPSHOT_STORAGE_KEY);
+    const snapshots =
+      stored[QUOTA_SNAPSHOT_STORAGE_KEY] && typeof stored[QUOTA_SNAPSHOT_STORAGE_KEY] === 'object'
+        ? { ...stored[QUOTA_SNAPSHOT_STORAGE_KEY] }
+        : {};
+    const existing = snapshots[dayKey];
+    if (existing && Date.now() - Number(existing.at || 0) < QUOTA_SNAPSHOT_INTERVAL_MS) return;
+    snapshots[dayKey] = {
+      '5h': percentages['5h'],
+      week: percentages.week,
+      month: Number.isFinite(monthRatio) ? Math.round(monthRatio * 1000) / 10 : null,
+      at: Date.now()
+    };
+    // 与 usageDaily 同口径保留 90 天
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (QUOTA_SNAPSHOT_KEEP_DAYS - 1));
+    const cutoffKey = KimiMetrics.usageDayKey(cutoff);
+    for (const key of Object.keys(snapshots)) {
+      if (key < cutoffKey) delete snapshots[key];
+    }
+    await chrome.storage.local.set({ [QUOTA_SNAPSHOT_STORAGE_KEY]: snapshots });
+  } catch (error) {
+    // 快照失败不影响额度主链路
+  }
 }
 
 function requestQuota(accessToken) {
@@ -322,6 +518,50 @@ function requestQuota(accessToken) {
     headers: { Authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(20_000)
   });
+}
+
+// 月额度 = 订阅余额的已用比例 + 月度周期结束时间；任何失败都返回 null，不影响主额度
+// 注意：重新启用此通路前，manifest 必须补 https://www.kimi.com/* 的 host_permissions
+// （以及 web-token.js 的 content_scripts matches），否则 MV3 跨域 fetch 会被直接拒绝
+async function requestMonthlyStats(deviceAccessToken) {
+  // 优先 web 端 token（方案 B，已验证可用）；设备 token 兜底（当前 401，保留以便未来放开）
+  const webToken = await getStoredWebToken();
+  if (webToken) {
+    const result = await callSubscriptionStats(webToken);
+    if (result) return result;
+    // web token 被拒（提前失效）：清掉缓存，等 kimi.com 页面下次补报
+    await chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY).catch(() => {});
+  }
+  return callSubscriptionStats(deviceAccessToken);
+}
+
+// 返回 { usedRatio, resetTime, kimiCodeUsedRatio }；任何失败（含 401/403）返回 null
+async function callSubscriptionStats(accessToken) {
+  try {
+    const response = await fetch(SUBSCRIPTION_STATS_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(15_000)
+    });
+    if (!response.ok) return null;
+    const stats = await response.json();
+    const balance = stats?.subscriptionBalance;
+    const usedRatio = Number(balance?.amountUsedRatio);
+    const resetMs = Date.parse(balance?.expireTime || '');
+    if (!Number.isFinite(usedRatio) || !Number.isFinite(resetMs)) return null;
+    const kimiCodeUsedRatio = Number(balance?.kimiCodeUsedRatio);
+    return {
+      usedRatio,
+      resetTime: balance.expireTime,
+      kimiCodeUsedRatio: Number.isFinite(kimiCodeUsedRatio) ? kimiCodeUsedRatio : null
+    };
+  } catch (error) {
+    return null;
+  }
 }
 
 async function getValidToken() {

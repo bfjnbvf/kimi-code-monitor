@@ -1,3 +1,35 @@
+/* ===== 宿主页面微调 ===== */
+/* 侧栏底部设置区的顶部分隔线：面板贴底后与面板边缘重复，隐藏 */
+aside.side .side-footer {
+  border-top: none;
+}
+
+/* 侧栏顶部改造（宠物 ≡ 菜单「侧栏改造」开关控制，默认开启）：
+   隐藏品牌 logo，工作区上移；伸缩按钮原位绝对定位，新建对话行上移与其居中对齐。
+   注意页面规则有 min-height: calc(26px + 2*space)，必须一并清掉 */
+html.ksb-sidebar-tidy aside.side .ch {
+  position: relative;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+html.ksb-sidebar-tidy aside.side .ch-brand {
+  display: none;
+}
+
+html.ksb-sidebar-tidy aside.side .ch-collapse {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
+html.ksb-sidebar-tidy aside.side .btn-wrap {
+  margin-top: 8px;
+}
+
 /* ===== Kimi Web Status Widget =====
  * 视觉值对齐 Kimi 设计 token：
  * labels / fills / separator / status(kimiBlue, positiveGreen, orange, danger)
@@ -12,6 +44,8 @@
   --ksb-fill-1: rgba(0, 0, 0, 0.03);
   --ksb-fill-2: rgba(0, 0, 0, 0.05);
   --ksb-fill-2-hover: rgba(0, 0, 0, 0.079);
+  --ksb-chart-bar: rgba(0, 0, 0, 0.15);
+  --ksb-chart-bar-sub: rgba(0, 0, 0, 0.28);
   --ksb-surface: #ffffff;
   --ksb-border: rgba(0, 0, 0, 0.13);
   --ksb-accent: #1783ff;
@@ -23,6 +57,7 @@
   /* 数值等宽字体：优先复用宿主页面已加载的 JetBrains Mono，系统 mono 兜底 */
   --ksb-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
+  position: relative;
   margin: 12px;
   padding: 12px;
   /* 规范卡片圆角：--radius-lg */
@@ -50,6 +85,8 @@ html[data-color-scheme="dark"] #ksb-widget {
   --ksb-fill-1: rgba(255, 255, 255, 0.05);
   --ksb-fill-2: rgba(255, 255, 255, 0.1);
   --ksb-fill-2-hover: rgba(255, 255, 255, 0.145);
+  --ksb-chart-bar: rgba(255, 255, 255, 0.25);
+  --ksb-chart-bar-sub: rgba(255, 255, 255, 0.4);
   --ksb-surface: #292929;
   --ksb-border: rgba(255, 255, 255, 0.12);
   --ksb-accent: #1a88ff;
@@ -70,6 +107,8 @@ html[data-color-scheme="dark"] #ksb-widget {
     --ksb-fill-1: rgba(255, 255, 255, 0.05);
     --ksb-fill-2: rgba(255, 255, 255, 0.1);
     --ksb-fill-2-hover: rgba(255, 255, 255, 0.145);
+    --ksb-chart-bar: rgba(255, 255, 255, 0.25);
+    --ksb-chart-bar-sub: rgba(255, 255, 255, 0.4);
     --ksb-surface: #292929;
     --ksb-border: rgba(255, 255, 255, 0.12);
     --ksb-accent: #1a88ff;
@@ -90,7 +129,9 @@ html[data-color-scheme="dark"] #ksb-widget {
 .ksb-reset,
 .ksb-quota-pct,
 .ksb-stat-value,
-.ksb-stat-sub {
+.ksb-stat-sub,
+.ksb-chart-total,
+.ksb-pet-total {
   font-family: var(--ksb-mono);
 }
 
@@ -111,12 +152,11 @@ html[data-color-scheme="dark"] #ksb-widget {
     0 0 0 1px var(--ksb-accent);
 }
 
-/* --- 头部：状态点 + 名称 + 余额 --- */
+/* --- 标题行（整宽模块的内容）：状态点 + 名称 + 余额 --- */
 .ksb-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
 }
 
 .ksb-title {
@@ -168,6 +208,11 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   .ksb-reset { display: none; }
 }
 
+/* 面板过窄时隐藏宠物右侧的标签文字，只留数据（阈值 150px，勿过早隐藏） */
+@container (max-width: 150px) {
+  #ksb-pet-label { display: none; }
+}
+
 .ksb-balance {
   margin-left: auto;
   padding: 1px 7px;
@@ -201,31 +246,58 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 
 .ksb-status-dot.ksb-idle { background: var(--ksb-text-quaternary); }
 .ksb-status-dot.ksb-thinking,
-.ksb-status-dot.ksb-running {
+.ksb-status-dot.ksb-running,
+.ksb-status-dot.ksb-executing {
   background: var(--ksb-accent);
   animation: ksb-pulse 1.2s ease-in-out infinite;
 }
 .ksb-status-dot.ksb-offline { background: var(--ksb-danger); }
 .ksb-status-dot.ksb-unauthorized { background: var(--ksb-danger); }
+.ksb-status-dot.ksb-ratelimit { background: var(--ksb-orange); }
+.ksb-status-dot.ksb-subagent { background: var(--ksb-green); }
+.ksb-status-dot.ksb-reconnecting {
+  background: var(--ksb-text-quaternary);
+  animation: ksb-pulse 1.2s ease-in-out infinite;
+}
 
 @keyframes ksb-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.8); }
 }
 
-/* --- 额度：一行两组，压缩放在卡片最底部；整行可点击切换 Mini 模式 --- */
-.ksb-quota {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* --- 模块区域：上（仅完整）下（迷你沉底）两个两列等宽网格 --- */
+.ksb-region {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.ksb-region:empty {
+  display: none;
+}
+
+.ksb-region-full {
+  margin-bottom: 10px;
+}
+
+/* 底部（迷你）区域整面可点切换模式，含模块间隙 */
+.ksb-region-mini {
   cursor: pointer;
+}
+
+.ksb-module {
+  position: relative;
+  min-width: 0;
+}
+
+.ksb-module.ksb-span-2 {
+  grid-column: 1 / -1;
 }
 
 .ksb-quota-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
   min-width: 0;
 }
 
@@ -250,42 +322,187 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   margin-left: auto;
 }
 
-.ksb-chevron {
-  flex-shrink: 0;
-  display: flex;
-  color: var(--ksb-text-quaternary);
-  transform: rotate(180deg); /* 完整模式：向下，表示点击可收起到一行 */
-  transition: transform 200ms ease, color 150ms ease;
+/* --- 编辑模式：长按进入，模块出描边 + 角标菜单 --- */
+#ksb-widget.ksb-editing .ksb-module {
+  outline: 1px dashed var(--ksb-text-quaternary);
+  outline-offset: 2px;
+  border-radius: 4px;
+  cursor: grab;
 }
 
-.ksb-quota:hover .ksb-chevron {
+#ksb-widget.ksb-editing .ksb-region-mini {
+  cursor: default;
+}
+
+.ksb-module.ksb-dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+  outline: 1px solid var(--ksb-accent);
+  z-index: 6;
+}
+
+.ksb-module-badge {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--ksb-border);
+  background: var(--ksb-surface);
+  color: var(--ksb-text-tertiary);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#ksb-widget.ksb-editing .ksb-module-badge {
+  display: flex;
+}
+
+.ksb-module-badge:hover {
+  color: var(--ksb-accent);
+  border-color: var(--ksb-accent);
+}
+
+.ksb-edit-menu {
+  position: absolute;
+  z-index: 30;
+  min-width: 132px;
+  /* shrink-to-fit 会随 left 左移不断变宽（正反馈），必须封顶 */
+  max-width: 190px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--ksb-border);
+  background: var(--ksb-surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
   color: var(--ksb-text-secondary);
 }
 
-#ksb-widget.ksb-mini .ksb-chevron {
-  transform: none; /* Mini 模式：向上，表示点击向上展开 */
+.ksb-menu-label {
+  margin: 4px 2px 2px;
+  font-size: 10px;
+  color: var(--ksb-text-quaternary);
+}
+
+.ksb-menu-label:first-child {
+  margin-top: 0;
+}
+
+.ksb-menu-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ksb-menu-opt {
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: var(--ksb-fill-2);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.ksb-menu-opt:hover {
+  background: var(--ksb-fill-2-hover);
+}
+
+.ksb-menu-opt.ksb-on {
+  background: var(--ksb-accent-bg);
+  color: var(--ksb-accent);
+}
+
+/* 编辑模式分区块：灰=隐藏、蓝=展开、绿=固定；浅色底 + 色点标题 + 同色模块描边，区块之间留真实间距 */
+#ksb-widget.ksb-editing .ksb-region {
+  border-radius: 8px;
+  padding: 6px;
+  margin-bottom: 10px;
+}
+
+#ksb-widget.ksb-editing .ksb-region-mini {
+  margin-bottom: 0;
+}
+
+#ksb-widget.ksb-editing .ksb-region-hidden {
+  background: color-mix(in srgb, var(--ksb-text) 5%, transparent);
+}
+
+#ksb-widget.ksb-editing .ksb-region-full {
+  background: color-mix(in srgb, var(--ksb-accent) 7%, transparent);
+}
+
+#ksb-widget.ksb-editing .ksb-region-mini {
+  background: color-mix(in srgb, var(--ksb-green) 8%, transparent);
+}
+
+#ksb-widget.ksb-editing .ksb-region-full .ksb-module { outline-color: var(--ksb-accent); }
+#ksb-widget.ksb-editing .ksb-region-mini .ksb-module { outline-color: var(--ksb-green); }
+#ksb-widget.ksb-editing .ksb-region-hidden .ksb-module { outline-color: var(--ksb-text-quaternary); }
+
+/* 区域标题：色点 + 说明文字，色点与模块描边一一对应 */
+.ksb-zone-label {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px 4px;
+  font-size: 10px;
+  color: var(--ksb-text-tertiary);
+}
+
+.ksb-zone-label::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+}
+
+#ksb-widget.ksb-editing .ksb-region-hidden .ksb-zone-label::before { background: var(--ksb-text-quaternary); }
+#ksb-widget.ksb-editing .ksb-region-full .ksb-zone-label::before { background: var(--ksb-accent); }
+#ksb-widget.ksb-editing .ksb-region-mini .ksb-zone-label::before { background: var(--ksb-green); }
+
+/* 拖动中的落点预览：进入哪个区域就变哪个区域的描边色 */
+#ksb-widget.ksb-editing .ksb-module.ksb-dragging.ksb-drag-to-hidden { outline-color: var(--ksb-text-quaternary); }
+#ksb-widget.ksb-editing .ksb-module.ksb-dragging.ksb-drag-to-full { outline-color: var(--ksb-accent); }
+#ksb-widget.ksb-editing .ksb-module.ksb-dragging.ksb-drag-to-mini { outline-color: var(--ksb-green); }
+
+/* 编辑模式下强制展开全部区域（即使当前是 Mini 状态） */
+#ksb-widget.ksb-mini.ksb-editing .ksb-region-full,
+#ksb-widget.ksb-mini.ksb-editing .ksb-auth-banner {
+  max-height: 480px;
+  opacity: 1;
+  margin-bottom: 10px;
+  pointer-events: auto;
 }
 
 #ksb-widget.ksb-mini {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  /* Mini 与完整状态内边距一致：四面 12px，切换时组件零位移 */
+  padding: 12px;
 }
 
-/* --- 待授权横幅：在 header 下方显眼提示，整卡可点 --- */
+/* --- 待授权横幅：面板顶部显眼提示，整卡可点；浅红底警示色，Mini 模式也常驻 --- */
 .ksb-auth-banner {
   margin: -2px 0 10px;
   padding: 6px 0;
   border-radius: 8px;
-  background: var(--ksb-accent-bg);
-  color: var(--ksb-accent);
+  background: rgba(255, 56, 73, 0.1);
+  color: var(--ksb-danger);
   font-size: 12px;
   font-weight: 500;
   text-align: center;
 }
 
-/* --- Mini 模式：只保留额度行 --- */
-.ksb-header,
-.ksb-stats,
+/* --- Mini 模式：上部区域向下收起（授权横幅不收起，未授权时必须始终可见） ---
+   overflow 只在 mini 状态启用：完整态允许宠物大摆幅动画越出模块边界不被裁 */
+.ksb-region-full,
 .ksb-auth-banner {
   overflow: hidden;
   transition:
@@ -294,14 +511,19 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
     margin 250ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-/* max-height 贴近真实高度，保证折叠全程匀速可见 */
-.ksb-header { max-height: 24px; }
-.ksb-stats { max-height: 90px; }
+.ksb-region-full {
+  overflow: visible;
+}
+
+/* 区域内容高度可变，max-height 取大于常见内容的固定值 */
+.ksb-region-full { max-height: 480px; }
 .ksb-auth-banner { max-height: 36px; }
 
-#ksb-widget.ksb-mini .ksb-header,
-#ksb-widget.ksb-mini .ksb-stats,
-#ksb-widget.ksb-mini .ksb-auth-banner {
+#ksb-widget.ksb-mini .ksb-region-full {
+  overflow: hidden;
+}
+
+#ksb-widget.ksb-mini .ksb-region-full {
   max-height: 0;
   opacity: 0;
   margin-bottom: 0;
@@ -315,10 +537,10 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 }
 
 .ksb-progress {
+  position: relative;
   height: 3px;
   border-radius: 100px;
   background: var(--ksb-fill-2);
-  overflow: hidden;
 }
 
 .ksb-progress-fill {
@@ -332,6 +554,18 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 .ksb-progress-fill.ksb-low { background: var(--ksb-green); }
 .ksb-progress-fill.ksb-mid { background: var(--ksb-orange); }
 .ksb-progress-fill.ksb-high { background: var(--ksb-danger); }
+
+/* 匀速参照：按窗口已流逝比例定位的竖标，上下各凸出 1px，置顶不被用量填充盖住 */
+.ksb-pace {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ksb-text-tertiary);
+  transition: left 300ms cubic-bezier(0.23, 1, 0.32, 1);
+}
 
 .ksb-quota-pct {
   min-width: 24px;
@@ -347,14 +581,206 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 .ksb-quota-pct.ksb-high { color: var(--ksb-danger); }
 .ksb-quota-pct.ksb-auth-hint { color: var(--ksb-accent); }
 
-/* --- 会话指标：2×2 栅格，标签在上、数值在下 --- */
-.ksb-stats {
+/* --- 会话折线：整宽统计模块显示，颜色随模块语义 --- */
+.ksb-spark {
+  display: none;
+  width: 100%;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.ksb-module.ksb-span-2 .ksb-spark {
+  display: block;
+}
+
+.ksb-spark-input { color: var(--ksb-text-tertiary); }
+.ksb-spark-output { color: var(--ksb-green); }
+.ksb-spark-cache { color: var(--ksb-orange); }
+.ksb-spark-speed { color: var(--ksb-accent); }
+.ksb-spark-duration { color: var(--ksb-text-secondary); }
+
+.ksb-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 面积填充色由 SVG 属性里的渐变 url 提供（渐停点用 currentColor），
+   这里不能再写 fill，否则 CSS 会覆盖属性、渐隐失效 */
+.ksb-spark-area {
+  opacity: 0.08;
+}
+
+.ksb-spark-dot {
+  fill: currentColor;
+}
+
+.ksb-spark-hit {
+  pointer-events: all;
+}
+
+/* 节点悬浮提示：竖线（上下渐隐，stroke 由渐变 url 提供）+ 节点圆点，默认隐藏 */
+.ksb-spark-pt-line {
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.ksb-spark-pt-dot {
+  fill: currentColor;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.ksb-spark-pt:hover .ksb-spark-pt-line {
+  opacity: 0.35;
+}
+
+.ksb-spark-pt:hover .ksb-spark-pt-dot {
+  opacity: 1;
+}
+
+/* 整宽统计模块：标签左、数字右，同一行（与消耗量整宽一致），顶部对齐 */
+.ksb-module.ksb-span-2 .ksb-stat {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+/* --- 消耗量图表模块：标签行 + 柱图（本日/7 日/30 日三档） --- */
+.ksb-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ksb-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* 整宽：标签行与总量同行、总量右对齐，下方画柱图 */
+.ksb-module.ksb-span-2 .ksb-chart {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-  margin-bottom: 10px;
-  /* 右列与额度行「本周」对齐：让出箭头的占位（12px 间距 + 8px 箭头） */
-  padding-right: 20px;
+  grid-template-columns: 1fr auto;
+  align-items: flex-start;
+  column-gap: 6px;
+}
+
+.ksb-module.ksb-span-2 .ksb-chart-bars {
+  grid-column: 1 / -1;
+}
+
+/* 半宽：与指标模块一致（标签行在上、数字在下），不画柱图；命中率紧随标签左对齐 */
+.ksb-module:not(.ksb-span-2) .ksb-chart {
+  gap: 1px;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-chart-bars {
+  display: none;
+}
+
+.ksb-chart-total {
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ksb-text);
+  white-space: nowrap;
+}
+
+.ksb-chart-hit {
+  min-width: 0;
+  font-size: 10px;
+  color: var(--ksb-text-quaternary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 命中率渐进降级：宽→全称，半宽或面板较窄→只留百分比，面板极窄→隐藏 */
+.ksb-chart-hit-short {
+  display: none;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-chart-hit-full {
+  display: none;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-chart-hit-short {
+  display: inline;
+}
+
+@container (max-width: 210px) {
+  .ksb-chart-hit-full {
+    display: none;
+  }
+  .ksb-chart-hit-short {
+    display: inline;
+  }
+}
+
+@container (max-width: 160px) {
+  .ksb-chart-hit {
+    display: none;
+  }
+}
+
+/* 编辑模式下放开裁切：拖出区域边界时模块不被 region-full 的 overflow 盖住 */
+#ksb-widget.ksb-editing .ksb-region-full {
+  overflow: visible;
+}
+
+.ksb-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 26px;
+}
+
+.ksb-chart-col {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.ksb-chart-stack {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.ksb-chart-bar {
+  width: 100%;
+  border-radius: 1px;
+  background: var(--ksb-chart-bar);
+  transition: background-color 120ms ease;
+}
+
+/* 主/子代理堆叠：常态皆为灰调（子代理更深），悬停才显蓝/绿 */
+.ksb-chart-bar.flat {
+  border-radius: 0;
+}
+
+.ksb-chart-bar.sub {
+  border-radius: 1px 1px 0 0;
+  background: var(--ksb-chart-bar-sub);
+}
+
+.ksb-chart-col:hover .ksb-chart-bar {
+  background: var(--ksb-accent);
+}
+
+.ksb-chart-col:hover .ksb-chart-bar.sub {
+  background: var(--ksb-green);
 }
 
 .ksb-stat {
@@ -404,29 +830,36 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   #ksb-widget {
     transition: none;
   }
-  .ksb-progress-fill {
+  .ksb-progress-fill,
+  .ksb-pace {
     transition: none;
   }
-  .ksb-header,
-  .ksb-stats,
-  .ksb-auth-banner,
-  .ksb-chevron {
+  .ksb-region-full,
+  .ksb-auth-banner {
     transition: none;
   }
   .ksb-status-dot.ksb-thinking,
-  .ksb-status-dot.ksb-running {
+  .ksb-status-dot.ksb-running,
+  .ksb-status-dot.ksb-executing {
     animation: none;
   }
-  #ksb-guide {
+  .ksb-pet-status[data-status="thinking"],
+  .ksb-pet-status[data-status="running"] {
+    animation: none;
+  }
+  #ksb-walk .ksb-walk-spot,
+  #ksb-walk .ksb-walk-bubble {
+    transition: none;
     animation: none;
   }
 }
 
-/* ===== 新手引导浮层 ===== */
-#ksb-guide {
+/* ===== 新手引导：分步气泡（高亮目标 + 说明气泡 + 箭头） ===== */
+#ksb-walk {
   --ksb-text: rgba(0, 0, 0, 0.9);
   --ksb-text-secondary: rgba(0, 0, 0, 0.6);
   --ksb-text-tertiary: rgba(0, 0, 0, 0.45);
+  --ksb-text-quaternary: rgba(0, 0, 0, 0.3);
   --ksb-fill-2: rgba(0, 0, 0, 0.05);
   --ksb-surface: #ffffff;
   --ksb-border: rgba(0, 0, 0, 0.13);
@@ -438,28 +871,21 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   --ksb-shadow: 0 4px 12px rgba(16, 24, 40, 0.07), 0 2px 4px rgba(16, 24, 40, 0.05);
 
   position: fixed;
-  left: 16px;
-  bottom: 16px;
-  width: 252px;
-  padding: 14px 14px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--ksb-border);
-  background: var(--ksb-surface);
-  box-shadow: var(--ksb-shadow);
+  inset: 0;
+  /* 规范 --z-max；注入第三方页面需要压过宿主浮层 */
+  z-index: 9999;
   /* 继承宿主页面字体，与 Kimi Web 保持一致 */
   font-family: inherit;
   font-size: 12px;
   line-height: 1.6;
   color: var(--ksb-text-secondary);
-  /* 规范 --z-max；注入第三方页面需要压过宿主浮层 */
-  z-index: 9999;
-  animation: ksb-guide-in 250ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-html[data-color-scheme="dark"] #ksb-guide {
+html[data-color-scheme="dark"] #ksb-walk {
   --ksb-text: rgba(255, 255, 255, 0.84);
   --ksb-text-secondary: rgba(255, 255, 255, 0.56);
   --ksb-text-tertiary: rgba(255, 255, 255, 0.42);
+  --ksb-text-quaternary: rgba(255, 255, 255, 0.3);
   --ksb-fill-2: rgba(255, 255, 255, 0.1);
   --ksb-surface: #292929;
   --ksb-border: rgba(255, 255, 255, 0.12);
@@ -471,11 +897,12 @@ html[data-color-scheme="dark"] #ksb-guide {
 }
 
 @media (prefers-color-scheme: dark) {
-  html[data-color-scheme="system"] #ksb-guide,
-  html:not([data-color-scheme]) #ksb-guide {
+  html[data-color-scheme="system"] #ksb-walk,
+  html:not([data-color-scheme]) #ksb-walk {
     --ksb-text: rgba(255, 255, 255, 0.84);
     --ksb-text-secondary: rgba(255, 255, 255, 0.56);
     --ksb-text-tertiary: rgba(255, 255, 255, 0.42);
+    --ksb-text-quaternary: rgba(255, 255, 255, 0.3);
     --ksb-fill-2: rgba(255, 255, 255, 0.1);
     --ksb-surface: #292929;
     --ksb-border: rgba(255, 255, 255, 0.12);
@@ -487,78 +914,307 @@ html[data-color-scheme="dark"] #ksb-guide {
   }
 }
 
-@keyframes ksb-guide-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-#ksb-guide * {
+#ksb-walk * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-#ksb-guide .ksb-guide-title {
+/* 目标高亮框：巨大投影把页面其余部分压暗，自身随步骤切换平滑移动 */
+#ksb-walk .ksb-walk-spot {
+  position: fixed;
+  border: 1.5px solid var(--ksb-accent);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  transition: left 200ms ease, top 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+#ksb-walk .ksb-walk-bubble {
+  position: fixed;
+  width: 252px;
+  padding: 12px 14px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ksb-border);
+  background: var(--ksb-surface);
+  box-shadow: var(--ksb-shadow);
+  animation: ksb-walk-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes ksb-walk-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 箭头：默认在气泡左缘指向目标；气泡被挤到目标左侧时（.ksb-walk-flip）翻到右缘 */
+#ksb-walk .ksb-walk-bubble::before {
+  content: '';
+  position: absolute;
+  top: var(--ksb-walk-arrow-y, 24px);
+  left: -5px;
+  width: 9px;
+  height: 9px;
+  background: var(--ksb-surface);
+  border-left: 1px solid var(--ksb-border);
+  border-bottom: 1px solid var(--ksb-border);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+#ksb-walk .ksb-walk-bubble.ksb-walk-flip::before {
+  left: auto;
+  right: -5px;
+  border-left: none;
+  border-bottom: none;
+  border-right: 1px solid var(--ksb-border);
+  border-top: 1px solid var(--ksb-border);
+}
+
+#ksb-walk .ksb-walk-step {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ksb-text-quaternary);
+  margin-bottom: 3px;
+}
+
+#ksb-walk .ksb-walk-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--ksb-text);
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
 
-#ksb-guide .ksb-guide-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 9px;
-}
-
-#ksb-guide .ksb-guide-key {
-  flex-shrink: 0;
-  min-width: 56px;
-  font-weight: 500;
+#ksb-walk b {
+  font-weight: 600;
   color: var(--ksb-text);
 }
 
-#ksb-guide .ksb-guide-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-right: 3px;
-  vertical-align: 1px;
+#ksb-walk .ksb-walk-hl {
+  color: var(--ksb-accent);
+  font-weight: 700;
 }
 
-#ksb-guide .ksb-guide-dot + span,
-#ksb-guide .ksb-guide-pair {
-  margin-right: 8px;
+/* 模块化三区域图例：色点与编辑模式描边颜色一一对应 */
+#ksb-walk .ksb-walk-zones {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
 }
 
-#ksb-guide .g-gray { background: var(--ksb-text-tertiary); }
-#ksb-guide .g-blue { background: var(--ksb-accent); }
-#ksb-guide .g-green { background: var(--ksb-green); }
-#ksb-guide .g-red { background: var(--ksb-danger); }
+#ksb-walk .ksb-walk-zone {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
 
-#ksb-guide .ksb-guide-btn {
-  display: block;
-  width: 100%;
-  margin-top: 12px;
-  padding: 6px 0;
+#ksb-walk .ksb-walk-zone i {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+
+#ksb-walk .ksb-walk-zone.z-gray i { background: var(--ksb-text-quaternary); }
+#ksb-walk .ksb-walk-zone.z-blue i { background: var(--ksb-accent); }
+#ksb-walk .ksb-walk-zone.z-green i { background: var(--ksb-green); }
+
+#ksb-walk .ksb-walk-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+#ksb-walk .ksb-walk-skip {
+  padding: 4px 6px;
   border: none;
-  border-radius: 8px;
+  background: none;
+  color: var(--ksb-text-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#ksb-walk .ksb-walk-skip:hover {
+  color: var(--ksb-text-secondary);
+}
+
+#ksb-walk .ksb-walk-next {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 7px;
   background: var(--ksb-accent);
   color: #ffffff;
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
-  text-align: center;
   cursor: pointer;
   transition: background-color 150ms ease, transform 120ms ease;
 }
 
-#ksb-guide .ksb-guide-btn:hover {
+#ksb-walk .ksb-walk-next:hover {
   background: var(--ksb-accent-hover);
 }
 
-#ksb-guide .ksb-guide-btn:active {
+#ksb-walk .ksb-walk-next:active {
   transform: scale(0.97);
+}
+/* ===== 宠物模块：吉祥物 + 状态气泡 + 24h 消耗 ===== */
+.ksb-pet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 画板自带留白：放大 ~1.55 倍后负边距居中，球视觉撑满 51px 框（全宽统一高度）；
+   裁切设为 visible——大摆幅动画（摇一摇等）允许越出边界，不被切 */
+.ksb-pet-clip {
+  width: 51px;
+  height: 51px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.ksb-pet-canvas {
+  display: block;
+  width: 79px;
+  height: 79px;
+  margin: -14px 0 0 -14px;
+  cursor: pointer;
+}
+
+/* Mini 折叠时宠物快速淡出：避免球被 region-full 的 max-height 裁切露出半张脸 */
+#ksb-widget.ksb-mini .ksb-region-full .ksb-module[data-module="pet"] {
+  opacity: 0;
+  transition: opacity 60ms ease;
+}
+
+/* 状态行：平常灰、处理中蓝色呼吸、未连接/未授权红 */
+.ksb-pet-status {
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--ksb-text-quaternary);
+  transition: color 300ms ease;
+}
+
+/* 状态时钟：与上方数值同尺寸等宽字体，颜色/呼吸随状态行继承；
+   间距与下行标签-数值间距一致（6px） */
+.ksb-pet-clock {
+  margin-left: 6px;
+  font-family: var(--ksb-mono);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 半宽：时钟/计时器加到状态行上方，字号与状态文字一致（10px），
+   时钟在上、状态文字在下，右对齐 */
+.ksb-module:not(.ksb-span-2) .ksb-pet-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-pet-clock {
+  order: -1;
+  margin-left: 0;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+/* 面板过窄（<155px）：隐藏状态文字，只留时钟/计时器，与其他降级策略一致 */
+@container (max-width: 155px) {
+  #ksb-pet-status-text { display: none; }
+  /* 最窄时去掉 AM/PM，防止时钟被挤出边框 */
+  #ksb-pet-ampm { display: none; }
+}
+
+.ksb-pet-status[data-status="thinking"],
+.ksb-pet-status[data-status="running"],
+.ksb-pet-status[data-status="executing"] {
+  color: var(--ksb-accent);
+  animation: ksb-pet-breathe 3.2s ease-in-out infinite;
+}
+
+.ksb-pet-status[data-status="offline"],
+.ksb-pet-status[data-status="unauthorized"] {
+  color: var(--ksb-danger);
+}
+
+/* 重连中/限流中：黑色；子代理工作中：绿色 */
+.ksb-pet-status[data-status="reconnecting"],
+.ksb-pet-status[data-status="ratelimit"] {
+  color: var(--ksb-text);
+}
+
+.ksb-pet-status[data-status="subagent"] {
+  color: var(--ksb-green);
+}
+
+@keyframes ksb-pet-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ksb-pet-stats {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.ksb-pet-total-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ksb-pet-total {
+  margin-top: -2px;
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ksb-text);
+  white-space: nowrap;
+}
+
+/* 半宽：高度对齐普通半宽模块——球缩到 32px 左对齐，数据行隐藏，
+   状态文字保留并右对齐；面板极窄时状态文字也隐藏 */
+.ksb-module:not(.ksb-span-2) .ksb-pet {
+  justify-content: flex-start;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-pet-clip {
+  width: 37px;
+  height: 37px;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-pet-canvas {
+  width: 57px;
+  height: 57px;
+  margin: -10px 0 0 -10px;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-pet-total-row {
+  display: none;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-pet-stats {
+  display: block;
+  margin-left: auto;
+}
+
+@container (max-width: 150px) {
+  .ksb-module:not(.ksb-span-2) .ksb-pet-status {
+    display: none;
+  }
 }

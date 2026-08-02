@@ -10,3 +10,6 @@ content 2.js
 # 打包产物
 kimi-web-status-bar-v*.zip
 .preview-*.html
+
+# 打包产物（新命名）
+kimi-code-monitor-v*.zip
