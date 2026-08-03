@@ -1,7 +1,10 @@
 /* ===== 宿主页面微调 ===== */
-/* 侧栏底部设置区的顶部分隔线：面板贴底后与面板边缘重复，隐藏 */
+/* 侧栏底部设置区：顶部分隔线与面板边缘重复，隐藏；
+   上间距由面板的 12px 下外边距提供，这里去掉上内边距、保留下内边距 12px，
+   使「设置」上下间距相等（12/12），面板下边缘随之下移与之对齐 */
 aside.side .side-footer {
   border-top: none;
+  padding: 0 12px 12px;
 }
 
 /* 侧栏顶部改造（宠物 ≡ 菜单「侧栏改造」开关控制，默认开启）：
@@ -44,8 +47,6 @@ html.ksb-sidebar-tidy aside.side .btn-wrap {
   --ksb-fill-1: rgba(0, 0, 0, 0.03);
   --ksb-fill-2: rgba(0, 0, 0, 0.05);
   --ksb-fill-2-hover: rgba(0, 0, 0, 0.079);
-  --ksb-chart-bar: rgba(0, 0, 0, 0.15);
-  --ksb-chart-bar-sub: rgba(0, 0, 0, 0.28);
   --ksb-surface: #ffffff;
   --ksb-border: rgba(0, 0, 0, 0.13);
   --ksb-accent: #1783ff;
@@ -85,8 +86,6 @@ html[data-color-scheme="dark"] #ksb-widget {
   --ksb-fill-1: rgba(255, 255, 255, 0.05);
   --ksb-fill-2: rgba(255, 255, 255, 0.1);
   --ksb-fill-2-hover: rgba(255, 255, 255, 0.145);
-  --ksb-chart-bar: rgba(255, 255, 255, 0.25);
-  --ksb-chart-bar-sub: rgba(255, 255, 255, 0.4);
   --ksb-surface: #292929;
   --ksb-border: rgba(255, 255, 255, 0.12);
   --ksb-accent: #1a88ff;
@@ -107,8 +106,6 @@ html[data-color-scheme="dark"] #ksb-widget {
     --ksb-fill-1: rgba(255, 255, 255, 0.05);
     --ksb-fill-2: rgba(255, 255, 255, 0.1);
     --ksb-fill-2-hover: rgba(255, 255, 255, 0.145);
-    --ksb-chart-bar: rgba(255, 255, 255, 0.25);
-    --ksb-chart-bar-sub: rgba(255, 255, 255, 0.4);
     --ksb-surface: #292929;
     --ksb-border: rgba(255, 255, 255, 0.12);
     --ksb-accent: #1a88ff;
@@ -246,8 +243,8 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 
 .ksb-status-dot.ksb-idle { background: var(--ksb-text-quaternary); }
 .ksb-status-dot.ksb-thinking,
-.ksb-status-dot.ksb-running,
-.ksb-status-dot.ksb-executing {
+.ksb-status-dot.ksb-executing,
+.ksb-status-dot.ksb-replying {
   background: var(--ksb-accent);
   animation: ksb-pulse 1.2s ease-in-out infinite;
 }
@@ -255,10 +252,6 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 .ksb-status-dot.ksb-unauthorized { background: var(--ksb-danger); }
 .ksb-status-dot.ksb-ratelimit { background: var(--ksb-orange); }
 .ksb-status-dot.ksb-subagent { background: var(--ksb-green); }
-.ksb-status-dot.ksb-reconnecting {
-  background: var(--ksb-text-quaternary);
-  animation: ksb-pulse 1.2s ease-in-out infinite;
-}
 
 @keyframes ksb-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -488,16 +481,26 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   padding: 12px;
 }
 
-/* --- 待授权横幅：面板顶部显眼提示，整卡可点；浅红底警示色，Mini 模式也常驻 --- */
+/* --- 待授权横幅：与 CLI 提醒框同一格式（虚线描边 + 浅底 + 左对齐），红字红框警示；
+   面板顶部显眼提示，整卡可点，Mini 模式也常驻 --- */
 .ksb-auth-banner {
   margin: -2px 0 10px;
-  padding: 6px 0;
-  border-radius: 8px;
-  background: rgba(255, 56, 73, 0.1);
+  padding: 5px 8px;
+  border: 1px dashed var(--ksb-danger);
+  border-radius: 7px;
+  background: var(--ksb-fill-1);
   color: var(--ksb-danger);
   font-size: 12px;
   font-weight: 500;
-  text-align: center;
+  text-align: left;
+}
+
+.ksb-auth-banner small {
+  display: block;
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 /* --- Mini 模式：上部区域向下收起（授权横幅不收起，未授权时必须始终可见） ---
@@ -517,7 +520,7 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 
 /* 区域内容高度可变，max-height 取大于常见内容的固定值 */
 .ksb-region-full { max-height: 480px; }
-.ksb-auth-banner { max-height: 36px; }
+.ksb-auth-banner { max-height: 48px; }
 
 #ksb-widget.ksb-mini .ksb-region-full {
   overflow: hidden;
@@ -685,6 +688,61 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   display: none;
 }
 
+/* 长期统计未连接本地 CLI：只锁定消耗量模块，其他实时指标照常工作。 */
+.ksb-cli-lock {
+  display: none;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 8px;
+  /* 虚线描边用主题蓝色，与待授权横幅的红色虚线同一格式 */
+  border: 1px dashed var(--ksb-accent);
+  border-radius: 7px;
+  background: var(--ksb-fill-1);
+  color: var(--ksb-accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ksb-cli-lock:hover {
+  background: var(--ksb-accent-bg);
+}
+
+.ksb-cli-lock span,
+.ksb-cli-lock small {
+  display: block;
+}
+
+.ksb-cli-lock span {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ksb-cli-lock small {
+  margin-top: 1px;
+  color: var(--ksb-text-quaternary);
+  font-size: 9px;
+}
+
+.ksb-module.ksb-cli-required .ksb-chart {
+  display: none;
+}
+
+.ksb-module.ksb-cli-required .ksb-cli-lock {
+  display: block;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-cli-lock {
+  min-height: 0;
+  padding: 3px 6px;
+  border: none;
+  background: transparent;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-cli-lock small {
+  display: none;
+}
+
 .ksb-chart-total {
   font-size: 14px;
   font-weight: 500;
@@ -715,7 +773,8 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   display: inline;
 }
 
-@container (max-width: 210px) {
+/* 「缓存命中 99.7%」全称只占约 75px，面板还有相当余量时不必降级 */
+@container (max-width: 170px) {
   .ksb-chart-hit-full {
     display: none;
   }
@@ -761,26 +820,163 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 .ksb-chart-bar {
   width: 100%;
   border-radius: 1px;
-  background: var(--ksb-chart-bar);
-  transition: background-color 120ms ease;
+  background: var(--ksb-accent);
+  opacity: 0.35;
+  transition: opacity 120ms ease;
 }
 
-/* 主/子代理堆叠：常态皆为灰调（子代理更深），悬停才显蓝/绿 */
+/* 主/子代理堆叠：主代理淡蓝在底、子代理淡绿叠上，悬停加深 */
 .ksb-chart-bar.flat {
   border-radius: 0;
 }
 
 .ksb-chart-bar.sub {
   border-radius: 1px 1px 0 0;
-  background: var(--ksb-chart-bar-sub);
+  background: var(--ksb-green);
 }
 
 .ksb-chart-col:hover .ksb-chart-bar {
-  background: var(--ksb-accent);
+  opacity: 1;
 }
 
-.ksb-chart-col:hover .ksb-chart-bar.sub {
-  background: var(--ksb-green);
+/* --- 外部账户模块 --- */
+.ksb-external-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ksb-external-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--ksb-text-tertiary);
+  white-space: nowrap;
+}
+
+.ksb-external-name {
+  flex-shrink: 0;
+  color: var(--ksb-text-secondary);
+}
+
+.ksb-external-value {
+  font-family: var(--ksb-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ksb-external-value.err {
+  color: var(--ksb-danger);
+}
+
+/* 类型前缀（API 余额 / 5小时 等）的颜色弱化；窄面板整体隐藏只留数字（参考缓存命中降级） */
+.ksb-external-kind {
+  color: var(--ksb-text-quaternary);
+}
+
+@container (max-width: 160px) {
+  .ksb-external-kind {
+    display: none;
+  }
+}
+
+.ksb-external-empty {
+  font-size: 10px;
+  color: var(--ksb-text-quaternary);
+}
+
+/* 整宽显示账户列表，半宽显示首个账户的大数字形态 */
+.ksb-module.ksb-span-2 .ksb-external-stat {
+  display: none;
+}
+
+.ksb-module:not(.ksb-span-2) .ksb-external-full {
+  display: none;
+}
+
+/* --- 子代理总览模块：一行一个代理 --- */
+/* 标题行与数据行共用同一组列宽：名称列先收缩，再窄则由模块 overflow 整体裁切（遮罩式）。
+   font-size 必须与数据行一致（10px），否则 ch 列宽不同导致列头错位 */
+.ksb-agents {
+  width: 100%;
+  overflow: hidden;
+}
+
+.ksb-agents-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 6ch 6ch 5ch;
+  column-gap: 4px;
+  align-items: baseline;
+  margin-bottom: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.ksb-agents-head .ksb-quota-label {
+  grid-column: 1 / 3;
+}
+
+.ksb-agents-head .ksb-agent-metric {
+  font-size: 9px;
+  color: var(--ksb-text-quaternary);
+}
+
+.ksb-agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 子代理表格：名称列先收缩，再窄时整体被模块边界裁切（遮罩式，不逐列处理） */
+.ksb-agent-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 6ch 6ch 5ch;
+  align-items: center;
+  column-gap: 4px;
+  font-size: 10px;
+  color: var(--ksb-text-tertiary);
+  white-space: nowrap;
+}
+
+.ksb-agent-metric {
+  font-family: var(--ksb-mono);
+  text-align: right;
+  overflow: hidden;
+}
+
+/* 代理徽标：常态灰底灰字；对应代理工作时点亮（主淡蓝、子淡绿） */
+.ksb-agent-badge {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--ksb-text-tertiary);
+  background: var(--ksb-fill-2);
+  transition: background-color 300ms ease;
+}
+
+.ksb-agent-badge.main.on {
+  background: rgba(23, 131, 255, 0.16);
+}
+
+.ksb-agent-badge.sub.on {
+  background: rgba(22, 196, 86, 0.18);
+}
+
+.ksb-agent-badge.sub.on {
+  background: rgba(22, 196, 86, 0.18);
+}
+
+/* 名称列：深灰以便与数字区分；紧贴徽标，窄了直接被裁切（遮罩式，无省略号） */
+.ksb-agent-model {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ksb-text-secondary);
 }
 
 .ksb-stat {
@@ -839,12 +1035,12 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
     transition: none;
   }
   .ksb-status-dot.ksb-thinking,
-  .ksb-status-dot.ksb-running,
-  .ksb-status-dot.ksb-executing {
+  .ksb-status-dot.ksb-executing,
+  .ksb-status-dot.ksb-replying {
     animation: none;
   }
   .ksb-pet-status[data-status="thinking"],
-  .ksb-pet-status[data-status="running"] {
+  .ksb-pet-status[data-status="replying"] {
     animation: none;
   }
   #ksb-walk .ksb-walk-spot,
@@ -1085,6 +1281,19 @@ html[data-color-scheme="dark"] #ksb-walk {
   height: 79px;
   margin: -14px 0 0 -14px;
   cursor: pointer;
+  opacity: 1;
+  filter: none;
+  transition: filter 180ms ease, opacity 180ms ease;
+}
+
+/* 动作由 Rive 命名动画控制；灰/红仅作为独立语义外观，移除后立即恢复默认蓝。 */
+.ksb-pet-canvas[data-appearance="gray"] {
+  filter: grayscale(1) saturate(0.2);
+  opacity: 0.72;
+}
+
+.ksb-pet-canvas[data-appearance="red"] {
+  filter: hue-rotate(140deg) saturate(1.35);
 }
 
 /* Mini 折叠时宠物快速淡出：避免球被 region-full 的 max-height 裁切露出半张脸 */
@@ -1099,6 +1308,18 @@ html[data-color-scheme="dark"] #ksb-walk {
   white-space: nowrap;
   color: var(--ksb-text-quaternary);
   transition: color 300ms ease;
+}
+
+/* 仅两行状态（如「子代理/工作中」）时切 flex 末端对齐：
+   文字块与时钟下边缘对齐、向上延伸；单行保持原有基线对齐与右对齐 */
+.ksb-pet-status:has(#ksb-pet-status-text.ksb-status-twoline) {
+  display: inline-flex;
+  align-items: flex-end;
+}
+
+/* 长状态两行排版：行高收紧，向上突出不挤压时钟 */
+#ksb-pet-status-text.ksb-status-twoline {
+  line-height: 1.25;
 }
 
 /* 状态时钟：与上方数值同尺寸等宽字体，颜色/呼吸随状态行继承；
@@ -1135,8 +1356,8 @@ html[data-color-scheme="dark"] #ksb-walk {
 }
 
 .ksb-pet-status[data-status="thinking"],
-.ksb-pet-status[data-status="running"],
-.ksb-pet-status[data-status="executing"] {
+.ksb-pet-status[data-status="executing"],
+.ksb-pet-status[data-status="replying"] {
   color: var(--ksb-accent);
   animation: ksb-pet-breathe 3.2s ease-in-out infinite;
 }
@@ -1146,8 +1367,7 @@ html[data-color-scheme="dark"] #ksb-walk {
   color: var(--ksb-danger);
 }
 
-/* 重连中/限流中：黑色；子代理工作中：绿色 */
-.ksb-pet-status[data-status="reconnecting"],
+/* 限流中：黑色；子代理工作中：绿色 */
 .ksb-pet-status[data-status="ratelimit"] {
   color: var(--ksb-text);
 }

@@ -87,6 +87,76 @@
     margin-bottom: 10px;
   }
 
+  #usage-section.locked .usage-data { display: none; }
+
+  .usage-lock {
+    padding: 2px 0;
+  }
+
+  .usage-lock-title {
+    margin-bottom: 3px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .usage-lock-desc {
+    margin-bottom: 8px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .cli-primary {
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 7px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .cli-primary:hover { background: var(--accent-hover); }
+  .cli-primary:disabled { opacity: 0.55; cursor: default; }
+
+  #cli-status-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cli-auth-row {
+    margin: 8px 0 0;
+    padding: 7px 0 0;
+    border-top: 1px solid var(--fill-2);
+    border-radius: 0;
+    background: none;
+  }
+
+  .usage-path-help {
+    margin: -2px 0 8px;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    line-height: 1.5;
+    user-select: text;
+  }
+
+  .usage-path-help code {
+    font-family: var(--mono);
+    word-break: break-all;
+  }
+
+  .cli-error {
+    margin-top: 7px;
+    color: var(--danger);
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
   .usage-title {
     font-size: 10px;
     font-weight: 500;
@@ -94,6 +164,112 @@
     text-transform: uppercase;
     color: var(--text-tertiary);
     margin-bottom: 2px;
+  }
+
+  /* --- 外部账户区块 --- */
+  #external-section {
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--fill-1);
+    margin-bottom: 10px;
+  }
+
+  .ext-desc {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .ext-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .ext-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ext-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 6px;
+    border: 1px solid var(--fill-2);
+    border-radius: 6px;
+    background: var(--fill-1);
+    color: inherit;
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+
+  .ext-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .ext-status {
+    margin: 2px 0 0 64px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    min-height: 12px;
+  }
+
+  .ext-status.err {
+    color: var(--danger);
+  }
+
+  .ext-value {
+    flex: 1;
+    min-width: 0;
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ext-value.err {
+    color: var(--danger);
+  }
+
+  .ext-row select {
+    flex-shrink: 0;
+    max-width: 150px;
+    padding: 3px 4px;
+    border: 1px solid var(--fill-2);
+    border-radius: 6px;
+    background: var(--fill-1);
+    color: inherit;
+    font-size: 11px;
+  }
+
+  #ext-add-btn {
+    margin-top: 8px;
+  }
+
+  #external-add {
+    margin-top: 8px;
+  }
+
+  .usage-title select {
+    max-width: 92px;
+    padding: 0 14px 0 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
   }
 
   /* 悬停柱子时显示的日期，样式对齐 widget 的「速度 上轮」次级灰字 */
@@ -106,7 +282,7 @@
     opacity: 0.8;
   }
 
-  /* 头部：左栏标题+缓存命中，右侧大数字 */
+  /* 头部：左栏指标选择，右侧大数字 */
   .usage-head {
     display: flex;
     align-items: center;
@@ -120,13 +296,6 @@
     font-size: 18px;
     font-weight: 600;
     color: var(--text);
-  }
-
-  .usage-big-hit {
-    font-family: var(--mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 11px;
-    color: var(--text-tertiary);
   }
 
   /* 按天柱状图：1px 缝隙保证任何天数下柱子都比缝隙粗 */
@@ -263,19 +432,43 @@
 </head>
 <body>
   <div id="usage-section">
-    <div class="usage-head">
-      <div>
-        <div class="usage-title">消耗量<span id="usage-day"></span></div>
-        <div class="usage-big-hit" id="usage-hit" title="缓存命中率"></div>
+    <div class="usage-data">
+      <div class="usage-head">
+        <div>
+          <div class="usage-title">
+            <select id="usage-metric" aria-label="统计指标">
+              <option value="total">消耗量</option>
+              <option value="input">输入</option>
+              <option value="output">输出</option>
+              <option value="cache">缓存命中</option>
+            </select>
+            <span id="usage-day"></span>
+          </div>
+        </div>
+        <span class="usage-big-tokens" id="usage-tokens">--</span>
       </div>
-      <span class="usage-big-tokens" id="usage-tokens">--</span>
+      <div class="usage-chart" id="usage-chart"></div>
+      <div class="usage-dates">
+        <input type="date" id="usage-start" aria-label="起始日期">
+        <span class="usage-dates-sep">–</span>
+        <input type="date" id="usage-end" aria-label="结束日期">
+      </div>
+      <div class="status-row cli-auth-row" id="cli-connected-row">
+        <span class="dot ok" id="cli-status-dot"></span>
+        <span id="cli-status-text">本地记录已授权</span>
+        <span class="status-actions">
+          <button type="button" class="action" id="cli-reauth-btn">重新授权</button>
+          <button type="button" class="action" id="cli-disconnect-btn">取消</button>
+        </span>
+      </div>
     </div>
-    <div class="usage-chart" id="usage-chart"></div>
-    <div class="usage-dates">
-      <input type="date" id="usage-start" aria-label="起始日期">
-      <span class="usage-dates-sep">–</span>
-      <input type="date" id="usage-end" aria-label="结束日期">
+    <div class="usage-lock hidden" id="cli-lock">
+      <div class="usage-lock-title">开启长期用量统计</div>
+      <div class="usage-lock-desc">授权读取本机 Kimi CLI 使用记录，用于7天、30天统计。不会保存或上传对话内容。</div>
+      <div class="usage-path-help" id="cli-path-help"></div>
+      <button type="button" class="cli-primary" id="cli-connect-btn">连接本地 CLI</button>
     </div>
+    <div class="cli-error hidden" id="cli-error" role="alert"></div>
   </div>
   <div class="status-row">
     <span class="dot" id="status-dot"></span>
@@ -286,11 +479,27 @@
     </span>
   </div>
   <div id="auth-hint" class="hidden"></div>
+  <div id="external-section">
+    <div class="usage-title">外部账户</div>
+    <div class="ext-desc">添加后，面板「外部账户」模块会显示对应余额/额度，Key只保存在本机扩展存储中。</div>
+    <div id="external-list"></div>
+    <div id="external-add" class="hidden">
+      <div class="ext-row">
+        <select id="ext-provider-select"></select>
+        <input type="password" id="ext-key-input" placeholder="粘贴 API Key" autocomplete="off" spellcheck="false">
+        <button type="button" class="action primary" id="ext-add-save">保存</button>
+      </div>
+      <div class="ext-status" id="ext-add-status"></div>
+    </div>
+    <button type="button" class="action" id="ext-add-btn">+ 添加账户</button>
+  </div>
   <div class="footer">
-    <span><a href="#" id="export-link">导出数据</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
+    <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
     <span>v<span id="version"></span> · <a href="https://github.com/bfjnbvf/kimi-code-monitor/releases" target="_blank" rel="noopener">检查更新</a></span>
   </div>
   <script src="metrics.js"></script>
+  <script src="cli-usage.js"></script>
+  <script src="providers.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -5,7 +5,6 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const SPEED_SAMPLE_WINDOW = 5;
   const MIN_SPEED_DURATION_MS = 100;
 
   function toNonNegativeInteger(value) {
@@ -44,7 +43,21 @@
 
   function cacheReadPercentage(usage) {
     const total = totalInputTokens(usage);
-    return total > 0 ? Math.round((usage.cacheReadTokens / total) * 100) : null;
+    return total > 0 ? (usage.cacheReadTokens / total) * 100 : null;
+  }
+
+  // 百分比统一显示一位小数，向下截断而非四舍五入：使用率类指标宁少算不多算，
+  // 99.95% 显示 99.9%，不会提前跳到 100.0%。显示上限仍为 100（超用不展示真实比例）。
+  function formatPercentage(value, decimals = 1) {
+    if (value == null || value === '') return null;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return null;
+    const places = Math.max(0, Math.min(6, Math.floor(Number(decimals) || 0)));
+    const factor = 10 ** places;
+    const clamped = Math.max(0, Math.min(100, number));
+    // 末位加 1e-6 仅抵消二进制浮点误差（如 79.999…→80），不会把真实末位进上去
+    const truncated = Math.floor(clamped * factor + 1e-6) / factor;
+    return truncated.toFixed(places);
   }
 
   /* ---------- 按天消耗量累计（popup 消耗量板块数据源） ---------- */
@@ -55,28 +68,6 @@
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${d.getFullYear()}-${month}-${day}`;
-  }
-
-  // 桶结构：{ input, output, cacheRead, sub? }，input 为总输入（含缓存读/写）；
-  // isSubagent 为 true 时同额累加进 sub 子桶，供主/子代理分维度展示
-  function accumulateDailyUsage(daily, dayKey, usage, isSubagent = false) {
-    const next = { ...(daily && typeof daily === 'object' ? daily : {}) };
-    const bucket = { input: 0, output: 0, cacheRead: 0, ...(next[dayKey] || {}) };
-    const input = totalInputTokens(usage);
-    const output = toNonNegativeInteger(usage.outputTokens);
-    const cacheRead = toNonNegativeInteger(usage.cacheReadTokens);
-    bucket.input += input;
-    bucket.output += output;
-    bucket.cacheRead += cacheRead;
-    if (isSubagent) {
-      const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
-      sub.input += input;
-      sub.output += output;
-      sub.cacheRead += cacheRead;
-      bucket.sub = sub;
-    }
-    next[dayKey] = bucket;
-    return next;
   }
 
   // 只保留最近 keepDays 个自然日（含今天）的桶，防止存储无限膨胀
@@ -135,18 +126,23 @@
     return Math.round(output / (duration / 1_000));
   }
 
-  function appendSpeedSample(samples, speed) {
-    if (!Number.isFinite(speed) || speed <= 0) return [...samples].slice(-SPEED_SAMPLE_WINDOW);
-    return [...samples, speed].slice(-SPEED_SAMPLE_WINDOW);
-  }
-
-  function medianSpeed(samples) {
-    if (!samples.length) return 0;
-    const sorted = [...samples].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 1
-      ? sorted[middle]
-      : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  // 面板速度大数字：最近若干步的聚合速度（总输出 ÷ 总流式时长）。
+  // 单步时长过短的离群点（缓存秒回/高速模型）不会把显示值顶到不可能的高度
+  function aggregateSpeed(samples, maxSamples = 10, minDurationMs = MIN_SPEED_DURATION_MS) {
+    let totalOut = 0;
+    let totalMs = 0;
+    let counted = 0;
+    for (let i = samples.length - 1; i >= 0 && counted < maxSamples; i -= 1) {
+      const sample = samples[i];
+      const ms = Number(sample?.outMs);
+      const output = Number(sample?.output);
+      if (Number.isFinite(ms) && ms >= minDurationMs && Number.isFinite(output) && output > 0) {
+        totalOut += output;
+        totalMs += ms;
+        counted += 1;
+      }
+    }
+    return totalMs > 0 ? Math.round(totalOut / (totalMs / 1_000)) : 0;
   }
 
   function boosterBalanceYuan(wallet) {
@@ -163,9 +159,8 @@
   // 注：quotaMonth（本月额度）暂时下线——web token 方案不理想，找到更干净的通路前隐藏
   const WIDGET_MODULE_IDS = [
     'header', 'input', 'cache', 'output', 'speed', 'duration',
-    'quota5h', 'quotaWeek', 'usageChart', 'pet'
+    'quota5h', 'quotaWeek', 'usageChart', 'pet', 'agents', 'external'
   ];
-  const USAGE_DAILY_STORAGE_KEY = 'usageDaily';
   const WIDGET_SHOW_STATES = ['full', 'mini', 'hidden'];
   const CHART_RANGES = ['week', 'month'];
   const PET_STATS = ['daily', 'input', 'output', 'cache', 'speed', 'balance'];
@@ -185,11 +180,13 @@
         quota5h: { show: 'mini', span: 1, pace: true },
         quotaWeek: { show: 'mini', span: 1, pace: true },
         usageChart: { show: 'full', span: 2, chartRange: 'week' },
-        pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' }
+        pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
+        agents: { show: 'hidden', span: 2, hiddenAgents: [] },
+        external: { show: 'hidden', span: 2, hiddenAccounts: [] }
       },
       orderFull: ['input', 'cache', 'output', 'speed', 'usageChart'],
       orderMini: ['pet', 'quota5h', 'quotaWeek'],
-      orderHidden: ['header', 'duration']
+      orderHidden: ['header', 'duration', 'agents', 'external']
     };
   }
 
@@ -248,6 +245,18 @@
       if (id.startsWith('quota')) {
         normalized.pace = typeof entry.pace === 'boolean' ? entry.pace : fallback.pace;
       }
+      if (id === 'agents') {
+        // 子代理列表需要多行高度，只允许整宽
+        normalized.span = 2;
+        normalized.hiddenAgents = Array.isArray(entry.hiddenAgents)
+          ? entry.hiddenAgents.filter((v) => typeof v === 'string')
+          : [];
+      }
+      if (id === 'external') {
+        normalized.hiddenAccounts = Array.isArray(entry.hiddenAccounts)
+          ? entry.hiddenAccounts.filter((v) => typeof v === 'string')
+          : [];
+      }
       modules[id] = normalized;
     }
 
@@ -270,99 +279,6 @@
     };
   }
 
-  /* ---------- 会话级用量持久化（导出与面板恢复） ---------- */
-
-  // 分键存储：每会话一个键（usageSession:<id>），索引键记录活跃时间与字节数。
-  // 步数/轮次不设条数上限；容量是唯一剪枝标准：索引总量超 6MB 按最旧会话逐出
-  // （chrome.storage.local 总限额 10MB，其余键合计 <200KB，6MB ≈ 8.5 万步）
-  const SESSIONS_MAX_BYTES = 6_000_000;
-  const SESSION_KEY_PREFIX = 'usageSession:';
-  const SESSION_INDEX_KEY = 'usageSessionsIndex';
-
-  // 每会话一个键：避免整表读-改-写随总量放大
-  function sessionStorageKey(sessionId) {
-    return `${SESSION_KEY_PREFIX}${sessionId}`;
-  }
-
-  // 索引条目：updatedAt 用于新旧排序，bytes 用于容量累计（与存储序列化口径近似）
-  function sessionIndexMeta(record, key) {
-    return {
-      updatedAt: record?.updatedAt || '',
-      bytes: String(key).length + JSON.stringify(record || {}).length
-    };
-  }
-
-  // 容量剪枝：索引总量超 maxBytes 时，按最旧会话逐出直到降回预算内
-  function sessionIdsToDrop(index, maxBytes = SESSIONS_MAX_BYTES) {
-    const entries = Object.entries(index || {})
-      .map(([id, meta]) => ({
-        id,
-        updatedAt: Date.parse(meta?.updatedAt || '') || 0,
-        bytes: Number(meta?.bytes) || 0
-      }))
-      .sort((a, b) => a.updatedAt - b.updatedAt);
-    let total = entries.reduce((sum, entry) => sum + entry.bytes, 0);
-    const drop = [];
-    while (drop.length < entries.length && total > maxBytes) {
-      total -= entries[drop.length].bytes;
-      drop.push(entries[drop.length].id);
-    }
-    return drop;
-  }
-
-  function emptySessionUsage(record) {
-    return {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheCreation: 0,
-      lastDuration: 0,
-      maxSeq: 0,
-      maxTurnSeq: -1,
-      steps: [],
-      durations: [],
-      ...(record && typeof record === 'object' ? record : {})
-    };
-  }
-
-  // 每个 step 累加一次（调用方已完成 sessionId+seq 去重）；steps 全量保留，剪枝见 pruneSessionUsage
-  function accumulateSessionUsage(record, usage, speed, seq) {
-    const next = emptySessionUsage(record);
-    const input = totalInputTokens(usage);
-    const output = toNonNegativeInteger(usage.outputTokens);
-    const cacheRead = toNonNegativeInteger(usage.cacheReadTokens);
-    next.input += input;
-    next.output += output;
-    next.cacheRead += cacheRead;
-    next.cacheCreation += toNonNegativeInteger(usage.cacheCreationTokens);
-    next.maxSeq = Math.max(toNonNegativeInteger(next.maxSeq), toNonNegativeInteger(seq));
-    next.steps = [
-      ...(Array.isArray(next.steps) ? next.steps : []),
-      {
-        input,
-        output,
-        cachePct: input > 0 ? (cacheRead / input) * 100 : null,
-        speed: Number.isFinite(speed) && speed > 0 ? Math.round(speed) : null
-      }
-    ];
-    next.updatedAt = new Date().toISOString();
-    return next;
-  }
-
-  // 每轮结束追加一次耗时；maxTurnSeq 供调用方去重（同会话多标签页）
-  function appendTurnDuration(record, durationMs, seq) {
-    const next = emptySessionUsage(record);
-    const duration = toNonNegativeInteger(durationMs);
-    next.lastDuration = duration;
-    next.durations = [
-      ...(Array.isArray(next.durations) ? next.durations : []),
-      duration
-    ];
-    if (Number.isFinite(seq)) next.maxTurnSeq = seq;
-    next.updatedAt = new Date().toISOString();
-    return next;
-  }
-
   // 额度使用率推导（content/background 共用）：used 缺省时用 limit - remaining
   function quotaPercentage(detail) {
     const limit = Number(detail?.limit);
@@ -375,33 +291,23 @@
   }
 
   return {
-    accumulateDailyUsage,
-    accumulateSessionUsage,
-    appendSpeedSample,
-    appendTurnDuration,
     boosterBalanceYuan,
     cacheReadPercentage,
     CHART_RANGES,
+    aggregateSpeed,
     decodeSpeed,
     defaultWidgetConfig,
     formatTokenCount,
+    formatPercentage,
     listDayKeysBetween,
-    medianSpeed,
     normalizeUsage,
     normalizeWidgetConfig,
     PET_STATS,
     pruneDailyUsage,
     quotaPercentage,
-    SESSION_INDEX_KEY,
-    SESSION_KEY_PREFIX,
-    SESSIONS_MAX_BYTES,
-    sessionIdsToDrop,
-    sessionIndexMeta,
-    sessionStorageKey,
     sumUsageBetween,
     toNonNegativeInteger,
     totalInputTokens,
-    USAGE_DAILY_STORAGE_KEY,
     usageDayKey,
     WIDGET_MODULE_IDS,
     WIDGET_SHOW_STATES

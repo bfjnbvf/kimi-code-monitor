@@ -1,0 +1,391 @@
+(function (root, factory) {
+  const metrics = root.KimiMetrics ||
+    (typeof module === 'object' && module.exports ? require('./metrics.js') : null);
+  const api = factory(metrics);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.KimiCliUsage = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (KimiMetrics) {
+  'use strict';
+
+  const DB_NAME = 'kimi-code-monitor';
+  const DB_VERSION = 1;
+  const HANDLE_STORE = 'file-handles';
+  const SESSIONS_HANDLE_KEY = 'kimi-cli-sessions';
+  const DAILY_STORAGE_KEY = 'kimiCliUsageDaily';
+  const INDEX_STORAGE_KEY = 'kimiCliUsageIndex';
+  const STATE_STORAGE_KEY = 'kimiCliUsageState';
+  const SESSIONS_STORAGE_KEY = 'kimiCliUsageSessions';
+  // 按会话汇总只保留最近有活动的若干条，避免长期无限增长
+  const SESSIONS_SUMMARY_LIMIT = 200;
+  // v4：meta 新增 modelAlias（config.update 里的真实模型名），旧缓存没有，必须全量重扫一次
+  const INDEX_VERSION = 4;
+  const READ_CHUNK_BYTES = 1024 * 1024;
+
+  function openHandleDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(HANDLE_STORE)) db.createObjectStore(HANDLE_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('无法打开本地目录授权存储'));
+    });
+  }
+
+  async function withHandleStore(mode, operation) {
+    const db = await openHandleDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(HANDLE_STORE, mode);
+        const request = operation(transaction.objectStore(HANDLE_STORE));
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('本地目录授权存储失败'));
+        transaction.onabort = () => reject(transaction.error || new Error('本地目录授权事务失败'));
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  function saveDirectoryHandle(handle) {
+    return withHandleStore('readwrite', (store) => store.put(handle, SESSIONS_HANDLE_KEY));
+  }
+
+  function getDirectoryHandle() {
+    return withHandleStore('readonly', (store) => store.get(SESSIONS_HANDLE_KEY));
+  }
+
+  function clearDirectoryHandle() {
+    return withHandleStore('readwrite', (store) => store.delete(SESSIONS_HANDLE_KEY));
+  }
+
+  async function permissionState(handle) {
+    if (!handle || typeof handle.queryPermission !== 'function') return 'missing';
+    try {
+      return await handle.queryPermission({ mode: 'read' });
+    } catch (error) {
+      return 'denied';
+    }
+  }
+
+  function emptyBucket() {
+    return { input: 0, output: 0, cacheRead: 0 };
+  }
+
+  function addBucket(target, source) {
+    target.input += KimiMetrics.toNonNegativeInteger(source?.input);
+    target.output += KimiMetrics.toNonNegativeInteger(source?.output);
+    target.cacheRead += KimiMetrics.toNonNegativeInteger(source?.cacheRead);
+  }
+
+  function addUsageRecord(daily, record, isSubagent = false, meta = null) {
+    if (record?.type !== 'usage.record' || !record.usage) return false;
+    const time = Number(record.time);
+    if (!Number.isFinite(time)) return false;
+    const usage = KimiMetrics.normalizeUsage(record.usage);
+    const key = KimiMetrics.usageDayKey(new Date(time));
+    const bucket = { ...emptyBucket(), ...(daily[key] || {}) };
+    const input = KimiMetrics.totalInputTokens(usage);
+    bucket.input += input;
+    bucket.output += usage.outputTokens;
+    bucket.cacheRead += usage.cacheReadTokens;
+    if (isSubagent) {
+      // 子代理同额累加进 sub 子桶，供主/子代理堆叠展示
+      const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+      sub.input += input;
+      sub.output += usage.outputTokens;
+      sub.cacheRead += usage.cacheReadTokens;
+      bucket.sub = sub;
+    }
+    daily[key] = bucket;
+    if (meta) {
+      // 按模型分 token 权重与记录时间范围，供按代理展示（不记录任何文本内容）
+      const total = input + usage.outputTokens;
+      const model = typeof record.model === 'string' && record.model ? record.model : 'unknown';
+      meta.models[model] = (meta.models[model] || 0) + total;
+      if (meta.firstAt == null || time < meta.firstAt) meta.firstAt = time;
+      if (meta.lastAt == null || time > meta.lastAt) meta.lastAt = time;
+    }
+    return true;
+  }
+
+  function emptyScanMeta() {
+    return { models: {}, firstAt: null, lastAt: null, modelAlias: null };
+  }
+
+  function mergeScanMeta(target, source) {
+    if (!source) return target;
+    for (const [model, tokens] of Object.entries(source.models || {})) {
+      target.models[model] = (target.models[model] || 0) + KimiMetrics.toNonNegativeInteger(tokens);
+    }
+    if (source.firstAt != null && (target.firstAt == null || source.firstAt < target.firstAt)) {
+      target.firstAt = source.firstAt;
+    }
+    if (source.lastAt != null && (target.lastAt == null || source.lastAt > target.lastAt)) {
+      target.lastAt = source.lastAt;
+    }
+    // 增量扫描时后扫到的覆盖：文件的模型配置以最新记录为准
+    if (typeof source.modelAlias === 'string' && source.modelAlias) {
+      target.modelAlias = source.modelAlias;
+    }
+    return target;
+  }
+
+  function parseUsageLines(text, daily, isSubagent = false, meta = null) {
+    let count = 0;
+    for (const line of String(text || '').split('\n')) {
+      // 先用子串粗筛，避免对话正文进入 JSON 解析器；真实类型由 addUsageRecord
+      // 校验 parsed.type === 'usage.record'，不依赖 type 是行内第一个字段。
+      if (line.includes('"usage.record"')) {
+        try {
+          if (addUsageRecord(daily, JSON.parse(line), isSubagent, meta)) count += 1;
+        } catch (error) {
+          // 单行损坏不阻塞其他会话；未完整写入的末行不会传到这里。
+        }
+      } else if (meta && line.includes('"config.update"') && line.includes('"modelAlias"')) {
+        // config.update 携带解析后的真实模型名（子代理的 usage.record 只写 __secondary__ 占位符）
+        try {
+          const alias = JSON.parse(line)?.modelAlias;
+          if (typeof alias === 'string' && alias) meta.modelAlias = alias;
+        } catch (error) {
+          // 同上，单行损坏忽略
+        }
+      }
+    }
+    return count;
+  }
+
+  function lastNewlineIndex(bytes) {
+    for (let index = bytes.length - 1; index >= 0; index -= 1) {
+      if (bytes[index] === 10) return index;
+    }
+    return -1;
+  }
+
+  function scanStartOffset(file, previous) {
+    const sameKnownFile =
+      previous &&
+      Number(previous.size) === file.size &&
+      Number(previous.lastModified) === file.lastModified;
+    const canAppend =
+      previous &&
+      Number(previous.offset) >= 0 &&
+      Number(previous.offset) <= file.size &&
+      (
+        Number(previous.size) < file.size ||
+        (sameKnownFile && Number(previous.offset) < file.size)
+      );
+    return canAppend ? Number(previous.offset) : 0;
+  }
+
+  async function scanFile(file, previous, onBytesProcessed, isSubagent = false) {
+    let offset = scanStartOffset(file, previous);
+    const canAppend = offset > 0;
+    const daily = canAppend && previous.daily && typeof previous.daily === 'object'
+      ? structuredClone(previous.daily)
+      : {};
+    let usageRecords = canAppend ? KimiMetrics.toNonNegativeInteger(previous.usageRecords) : 0;
+    const meta = canAppend && previous.meta && typeof previous.meta === 'object'
+      ? mergeScanMeta(emptyScanMeta(), previous.meta)
+      : emptyScanMeta();
+
+    while (offset < file.size) {
+      let end = Math.min(file.size, offset + READ_CHUNK_BYTES);
+      let bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+      let newline = lastNewlineIndex(bytes);
+
+      // 一条记录可能大于常规块大小；继续扩展到完整换行，避免拆开 JSON。
+      while (newline < 0 && end < file.size) {
+        end = Math.min(file.size, end + READ_CHUNK_BYTES);
+        bytes = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+        newline = lastNewlineIndex(bytes);
+      }
+
+      // 文件末尾尚未写完的行留到下次扫描，不推进 offset。
+      if (newline < 0) break;
+      const complete = bytes.subarray(0, newline + 1);
+      usageRecords += parseUsageLines(new TextDecoder().decode(complete), daily, isSubagent, meta);
+      offset += complete.byteLength;
+      onBytesProcessed?.(complete.byteLength);
+    }
+
+    return {
+      size: file.size,
+      lastModified: file.lastModified,
+      offset,
+      usageRecords,
+      daily: KimiMetrics.pruneDailyUsage(daily),
+      meta
+    };
+  }
+
+  async function listWireFiles(sessionsHandle) {
+    const files = [];
+    for await (const [workspaceName, workspaceHandle] of sessionsHandle.entries()) {
+      if (workspaceHandle.kind !== 'directory') continue;
+      // 单个 workspace/session/agents 目录不可读（权限、句柄失效）时跳过，
+      // 不中断整次扫描。异步迭代器的异常在消费时抛出，故 try 要包住整个 for await。
+      try {
+        for await (const [sessionName, sessionHandle] of workspaceHandle.entries()) {
+          if (sessionHandle.kind !== 'directory' || !sessionName.startsWith('session_')) continue;
+          let agentsHandle;
+          try {
+            agentsHandle = await sessionHandle.getDirectoryHandle('agents');
+          } catch (error) {
+            continue;
+          }
+          try {
+            for await (const [agentName, agentHandle] of agentsHandle.entries()) {
+              if (agentHandle.kind !== 'directory') continue;
+              try {
+                const wireHandle = await agentHandle.getFileHandle('wire.jsonl');
+                files.push({
+                  path: `${workspaceName}/${sessionName}/agents/${agentName}/wire.jsonl`,
+                  handle: wireHandle,
+                  // agents/main 为主代理，其余（agent-N 等）按子代理分桶
+                  isSubagent: agentName !== 'main'
+                });
+              } catch (error) {
+                // 尚未生成 wire.jsonl 的代理跳过。
+              }
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    return files;
+  }
+
+  function combineFileDaily(files) {
+    let combined = {};
+    for (const entry of Object.values(files || {})) {
+      for (const [key, source] of Object.entries(entry?.daily || {})) {
+        const bucket = { ...emptyBucket(), ...(combined[key] || {}) };
+        addBucket(bucket, source);
+        if (source?.sub) {
+          const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+          addBucket(sub, source.sub);
+          bucket.sub = sub;
+        }
+        combined[key] = bucket;
+      }
+    }
+    combined = KimiMetrics.pruneDailyUsage(combined);
+    return combined;
+  }
+
+  // 由逐文件索引合并出按会话汇总（纯内存计算，零额外 IO）：
+  // 面板刷新/切会话时用它做本地恢复底数；sub 为其中子代理的部分；
+  // agents 按代理目录逐个拆分（含模型分布与起止时间），供子代理模块展示。
+  function summarizeSessions(files) {
+    const sessions = {};
+    const lastDay = {};
+    for (const [path, entry] of Object.entries(files || {})) {
+      const match = path.match(/^[^/]+\/(session_[^/]+)\/agents\/([^/]+)\/wire\.jsonl$/);
+      if (!match) continue;
+      const [, sid, agentName] = match;
+      const total = sessions[sid] || { input: 0, output: 0, cacheRead: 0 };
+      for (const [day, source] of Object.entries(entry?.daily || {})) {
+        addBucket(total, source);
+        if (source?.sub) {
+          const sub = { input: 0, output: 0, cacheRead: 0, ...(total.sub || {}) };
+          addBucket(sub, source.sub);
+          total.sub = sub;
+        }
+        if (!lastDay[sid] || day > lastDay[sid]) lastDay[sid] = day;
+      }
+      sessions[sid] = total;
+      const agents = total.agents || (total.agents = {});
+      const agentEntry = agents[agentName] || (agents[agentName] = {
+        input: 0, output: 0, cacheRead: 0, models: {}, firstAt: null, lastAt: null, modelAlias: null
+      });
+      for (const source of Object.values(entry?.daily || {})) addBucket(agentEntry, source);
+      mergeScanMeta(agentEntry, entry?.meta);
+    }
+    const ids = Object.keys(sessions);
+    if (ids.length > SESSIONS_SUMMARY_LIMIT) {
+      ids.sort((a, b) => (lastDay[b] || '').localeCompare(lastDay[a] || ''));
+      for (const id of ids.slice(SESSIONS_SUMMARY_LIMIT)) delete sessions[id];
+    }
+    return sessions;
+  }
+
+  async function scanSessionsDirectory(sessionsHandle, previousIndex, onProgress) {
+    const previousFiles =
+      previousIndex?.version === INDEX_VERSION && previousIndex.files
+        ? previousIndex.files
+        : {};
+    const wireFiles = await listWireFiles(sessionsHandle);
+    const preparedFiles = [];
+    let totalBytes = 0;
+    for (const entry of wireFiles) {
+      const file = await entry.handle.getFile();
+      const previous = previousFiles[entry.path];
+      const unchanged = Boolean(
+        previous &&
+        Number(previous.size) === file.size &&
+        Number(previous.lastModified) === file.lastModified &&
+        Number(previous.offset) === file.size
+      );
+      if (!unchanged) totalBytes += Math.max(0, file.size - scanStartOffset(file, previous));
+      preparedFiles.push({ ...entry, file, previous, unchanged });
+    }
+
+    let processedBytes = 0;
+    const reportProgress = (forceComplete = false) => {
+      const percent = forceComplete || totalBytes === 0
+        ? 100
+        : Math.max(0, Math.min(99, Math.floor((processedBytes / totalBytes) * 100)));
+      onProgress?.(percent);
+    };
+    reportProgress();
+
+    const files = {};
+    let changedFiles = 0;
+
+    for (const entry of preparedFiles) {
+      if (entry.unchanged) {
+        files[entry.path] = entry.previous;
+        continue;
+      }
+      files[entry.path] = await scanFile(entry.file, entry.previous, (bytes) => {
+        processedBytes += bytes;
+        reportProgress();
+      }, entry.isSubagent === true);
+      changedFiles += 1;
+    }
+    reportProgress(true);
+
+    const scannedAt = new Date().toISOString();
+    const index = { version: INDEX_VERSION, scannedAt, files };
+    return {
+      index,
+      daily: combineFileDaily(files),
+      sessions: summarizeSessions(files),
+      scannedAt,
+      fileCount: wireFiles.length,
+      changedFiles
+    };
+  }
+
+  return {
+    DAILY_STORAGE_KEY,
+    INDEX_STORAGE_KEY,
+    STATE_STORAGE_KEY,
+    SESSIONS_STORAGE_KEY,
+    clearDirectoryHandle,
+    combineFileDaily,
+    getDirectoryHandle,
+    parseUsageLines,
+    permissionState,
+    saveDirectoryHandle,
+    scanFile,
+    scanSessionsDirectory,
+    summarizeSessions
+  };
+});

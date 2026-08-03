@@ -11,6 +11,10 @@
   const QUOTA_INTERVAL_MS = 60_000;
   const ROUTE_POLL_INTERVAL_MS = 1_000;
   const WS_RECONNECT_DELAY_MS = 3_000;
+  const TOOL_STATUS_MIN_MS = 1_500;
+  const STATUS_MIN_DISPLAY_MS = 1_500;
+  const CLI_REFRESH_AFTER_TURN_MS = 1_500;
+  const CLI_REFRESH_STALE_MS = 60_000;
   const CREDENTIAL_STORAGE_KEY = 'kimi-web.server-credential';
   const SUBSCRIPTION_URL = 'https://www.kimi.com/membership/subscription?tab=quota';
   const MINI_STORAGE_KEY = 'kimi-statusbar.mini';
@@ -31,26 +35,28 @@
   }
   const CHART_RANGE_DAYS = { week: 7, month: 30 };
   const CHART_RANGE_LABELS = { week: '7d消耗', month: '30d消耗' };
-  // 会话内逐 step 样本（折线图数据源）：只保留最近 40 步
-  const SESSION_SAMPLE_LIMIT = 40;
+  // 会话内逐 step 样本（折线图数据源）：只保留最近 50 步
+  const SESSION_SAMPLE_LIMIT = 50;
   const MODULE_LABELS = {
     header: '标题行',
     input: '输入', cache: '缓存命中', output: '输出', speed: '速度', duration: '上轮耗时',
-    quota5h: '5h 额度', quotaWeek: '本周额度', usageChart: '消耗量', pet: '宠物'
+    quota5h: '5h 额度', quotaWeek: '本周额度', usageChart: '消耗量', pet: '宠物', agents: '子代理',
+    external: '外部账户'
     // quotaMonth: '本月额度' —— 暂时下线，见 metrics.js WIDGET_MODULE_IDS 注释
   };
   const {
-    appendSpeedSample,
     boosterBalanceYuan,
     cacheReadPercentage,
+    formatPercentage,
+    aggregateSpeed,
     decodeSpeed,
     formatTokenCount,
     listDayKeysBetween,
-    medianSpeed,
     normalizeUsage,
     normalizeWidgetConfig,
     quotaPercentage,
     sumUsageBetween,
+    toNonNegativeInteger,
     totalInputTokens,
     usageDayKey
   } = globalThis.KimiMetrics;
@@ -58,30 +64,45 @@
   const STATUS_TEXT = {
     idle: '空闲',
     thinking: '思考中',
-    running: '运行中',
-    executing: '执行中',
+    executing: '调用中',
+    replying: '回复中',
     offline: '未连接',
     unauthorized: '未授权',
     ratelimit: '限流中',
-    subagent: '子代理工作中',
-    reconnecting: '重连中'
+    subagent: '子代理工作中'
   };
+
+  // 超过 4 字的状态在宠物模块按语义切两行（不超 6 字），避免挤压右侧时钟
+  const STATUS_TEXT_LINES = { subagent: ['子代理', '工作中'] };
 
   let token = '';
   let sessionId = '';
   let ws = null;
   let reconnectTimer = null;
   let quotaTimer = null;
+  let externalTimer = null;
   let routeTimer = null;
   let quotaAuthRequired = false;
   let oauthStarting = false;
   let pageActivated = false;
   let disposed = false;
   let lastSeq = 0;
+  // 快照失败时这两个游标只负责避免当前页面已处理事件再次计入 UI，不参与 client_hello。
+  // 实测：服务端对过期游标只回 resync_required，从不补发历史事件，
+  // 因此会话数据恢复完全依赖「快照 + 本地按会话汇总」，WS 只接实时事件。
+  let lastUsageSeq = 0;
+  let lastTurnSeq = -1;
   let sessionRequestId = 0;
+  let sessionSnapshotPending = false;
   let reconnectAttempts = 0;
   let lastServerErrorLogAt = 0;
   let helloWatchdog = null;
+  // 工具调用可能与 step / agent 状态事件交错；在结果返回前保持「执行中」，
+  // 避免刚显示就被紧随其后的 running / thinking 覆盖。
+  let activeToolCalls = 0;
+  let toolStatusUntil = 0;
+  let toolStatusTimer = null;
+  let deferredWorkStatus = 'thinking';
 
   // 创建 widget 时缓存一次，后续渲染不再重复查询 DOM
   let els = null;
@@ -92,6 +113,8 @@
   const lastQuotaPct = { '5h': null, week: null, month: null };
   let lastWallet = null;
   let usageDailyCache = {};
+  let cliUsageConnected = false;
+  let cliRefreshTimer = null;
   // 编辑模式 / 拖拽状态
   let editing = false;
   let menuModuleId = null;
@@ -106,16 +129,50 @@
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
-    speedSamples: [],
-    lastSpeed: 0,
     lastDuration: 0,
     agentStatus: 'idle'
   };
 
-  // 逐 step 样本：{ input, output, cachePct, speed }，整宽模块的折线图数据源
+  // 逐 step 样本：{ input, output, cachePct, speed, turnEnd? }，整宽模块的折线图数据源
   let sessionSamples = [];
   // 逐轮耗时样本（上轮耗时模块的折线图数据源）
   let turnDurations = [];
+
+  /* ---------- 按代理统计（子代理总览模块数据源） ---------- */
+
+  function emptyAgentMetric() {
+    return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 };
+  }
+
+  // 当前会话按代理的计数器；'main' 为主代理，其余为子代理 id（agent-N）
+  let agentTotals = { main: emptyAgentMetric() };
+  // 子代理显示顺序：按本会话首次出现排序；模型名来自 CLI 扫描的按代理汇总
+  let sessionAgentOrder = ['main'];
+  let agentTopModels = {};
+  // 正在工作中的子代理（subagent.* 生命周期事件维护）
+  const activeSubagents = new Set();
+
+  function registerSessionAgent(agentId) {
+    if (!agentTotals[agentId]) {
+      agentTotals[agentId] = emptyAgentMetric();
+      sessionAgentOrder.push(agentId);
+    }
+  }
+
+  // 显示名：主代理 / 子代理 1 / 子代理 2…（按本会话首次出现顺序）
+  function agentDisplayName(agentId) {
+    if (agentId === 'main') return '主代理';
+    const index = sessionAgentOrder.indexOf(agentId);
+    return index > 0 ? `子代理 ${index}` : '子代理';
+  }
+
+  function agentModelLabel(agentId) {
+    const model = agentTopModels[agentId];
+    if (!model) return '';
+    if (model === '__secondary__') return '次级模型';
+    // 去掉 kimi-code/ 与 kimi- 前缀，窄面板里尽量多保留可辨识部分
+    return String(model).replace(/^kimi-code\//, '').replace(/^kimi-/, '');
+  }
 
   /* ---------- 格式化 ---------- */
 
@@ -221,6 +278,30 @@
         </div>
         <span class="ksb-chart-total" id="ksb-chart-total">--</span>
         <div class="ksb-chart-bars" id="ksb-chart-bars"></div>
+      </div>
+      <button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
+        <span>连接本地 CLI</span><small>开启7d、30d长期统计</small>
+      </button>`,
+    agents: `
+      <div class="ksb-agents">
+        <div class="ksb-agents-head">
+          <span class="ksb-quota-label">代理</span>
+          <span class="ksb-agent-metric m-in">输入</span>
+          <span class="ksb-agent-metric m-out">输出</span>
+          <span class="ksb-agent-metric m-hit">命中</span>
+        </div>
+        <div class="ksb-agents-list" id="ksb-agents-list"></div>
+      </div>`,
+    external: `
+      <div class="ksb-stat ksb-external-stat">
+        <span class="ksb-stat-label"><span id="ksb-external-title">外部账户</span><span class="ksb-stat-sub" id="ksb-external-sub" hidden></span></span>
+        <span class="ksb-stat-value" id="ksb-external-value">--</span>
+      </div>
+      <div class="ksb-agents ksb-external-full">
+        <div class="ksb-agents-head">
+          <span class="ksb-quota-label">外部账户</span>
+        </div>
+        <div class="ksb-external-list" id="ksb-external-list"></div>
       </div>`
   };
 
@@ -256,6 +337,13 @@
         event.stopPropagation();
         if (editing) return;
         window.open(toConsole ? CONSOLE_URL : SUBSCRIPTION_URL, '_blank');
+      });
+    }
+    if (id === 'usageChart') {
+      module.querySelector('.ksb-cli-lock')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (editing) return;
+        chrome.runtime.sendMessage({ type: 'cli.usage.open_settings' }).catch(() => {});
       });
     }
     return module;
@@ -313,6 +401,8 @@
     renderWidgetStructure();
     // 额度模块/余额从隐藏恢复可见时立即补一次拉取（background 有 30s 缓存兜底）
     if (quotaPollingWanted()) fetchQuota();
+    // 外部账户模块可见时补一次拉取（background 有 60s 缓存兜底）
+    if (widgetConfig.modules.external?.show !== 'hidden') fetchExternalProviders();
     if (persist) {
       try {
         chrome.storage.local.set({ [CONFIG_STORAGE_KEY]: widgetConfig }).catch(() => {
@@ -345,7 +435,7 @@
       }
     });
     widget.innerHTML = `
-      <div class="ksb-auth-banner" id="ksb-auth-banner" hidden>点击完成 Kimi 授权</div>
+      <div class="ksb-auth-banner" id="ksb-auth-banner" hidden><span class="ksb-auth-banner-text" id="ksb-auth-banner-text">点击完成 Kimi 授权</span><small>授权后显示 5h / 本周额度、余额与超额预警</small></div>
       <div class="ksb-region ksb-region-full"></div>
       <div class="ksb-region ksb-region-mini"></div>
       <div class="ksb-edit-menu" id="ksb-edit-menu" hidden></div>
@@ -356,8 +446,8 @@
       event.stopPropagation();
       if (editing || quotaAuthRequired) return;
       toggleMini();
-      // 宠物在迷你区时，点迷你区也给它一段小动作
-      if (widgetConfig.orderMini.includes('pet')) petPlayOnce(petRandomOf(PET_CLICK_ANIMS));
+      // 缩放仍随机播放轻动作，但使用独立安全池，排除会让球从无到有蹦出的 in。
+      if (widgetConfig.orderMini.includes('pet')) petHandleToggle();
     });
     widget.querySelector('#ksb-edit-menu').addEventListener('click', (event) => {
       event.stopPropagation();
@@ -405,6 +495,7 @@
       statusDot: byId('ksb-status-dot'),
       balance: byId('ksb-balance'),
       authBanner: byId('ksb-auth-banner'),
+      authBannerText: byId('ksb-auth-banner-text'),
       regionFull: widget?.querySelector('.ksb-region-full'),
       regionMini: widget?.querySelector('.ksb-region-mini'),
       editMenu: byId('ksb-edit-menu'),
@@ -421,6 +512,12 @@
       chartHitFull: byId('ksb-chart-hit-full'),
       chartHitShort: byId('ksb-chart-hit-short'),
       chartBars: byId('ksb-chart-bars'),
+      agentsList: byId('ksb-agents-list'),
+      externalList: byId('ksb-external-list'),
+      externalTitle: byId('ksb-external-title'),
+      externalValue: byId('ksb-external-value'),
+      externalSub: byId('ksb-external-sub'),
+      cliLock: byId('ksb-cli-lock'),
       petCanvas: byId('ksb-pet-canvas'),
       petStatus: byId('ksb-pet-status'),
       petStatusText: byId('ksb-pet-status-text'),
@@ -448,6 +545,7 @@
     if (document.getElementById('ksb-widget')) {
       // SPA 可能重建 sidebar，导致缓存的引用失效
       if (!els || !els.widget.isConnected) cacheElements();
+      if (els?.widget) sparkResizeObserver.observe(els.widget);
       return true;
     }
     const column = document.querySelector('aside.side > .col');
@@ -456,6 +554,7 @@
     const widget = createWidget();
     footer ? column.insertBefore(widget, footer) : column.appendChild(widget);
     renderWidgetStructure();
+    sparkResizeObserver.observe(widget);
     return true;
   }
 
@@ -469,6 +568,9 @@
     setConnectionHint('正在刷新…');
     // 手动刷新绕过 background 的 30s 缓存，强制重拉 5h/本周/本月额度
     fetchQuota(true);
+    if (cliUsageConnected) {
+      chrome.runtime.sendMessage({ type: 'cli.usage.refresh' }).catch(() => {});
+    }
     // 手动刷新才显式清零并重拉（自动重建走快照/本地记录裁决，不清零）
     resetMetrics();
     if (sessionId && token) startSession(sessionId);
@@ -598,6 +700,17 @@
       `;
     }
     const mod = widgetConfig.modules[id];
+    // 子代理列表模块内容是多行列表，不提供半宽；外部账户提供（半宽显示首个选中账户）
+    const widthRow = id === 'agents'
+      ? ''
+      : `<div class="ksb-menu-label">${MODULE_LABELS[id]} · 宽度</div>
+      ${menuOpts('span', [[1, '半宽'], [2, '整宽']], mod.span)}`;
+    const agentsRow = id === 'agents'
+      ? `<div class="ksb-menu-label">显示代理</div>${agentVisibilityOpts()}`
+      : '';
+    const externalRow = id === 'external'
+      ? `<div class="ksb-menu-label">显示账户</div>${externalVisibilityOpts()}`
+      : '';
     const rangeRow = id === 'usageChart'
       ? `<div class="ksb-menu-label">统计范围</div>${menuOpts('chartRange', [['week', '7d'], ['month', '30d']], mod.chartRange)}`
       : '';
@@ -610,12 +723,43 @@
         <div class="ksb-menu-label">侧栏改造（去 logo 上移）</div>${menuOpts('sidebarTidy', [[true, '开启'], [false, '关闭']], mod.sidebarTidy !== false)}`
       : '';
     return `
-      <div class="ksb-menu-label">${MODULE_LABELS[id]} · 宽度</div>
-      ${menuOpts('span', [[1, '半宽'], [2, '整宽']], mod.span)}
+      ${widthRow}
+      ${agentsRow}
+      ${externalRow}
       ${statRow}
       ${paceRow}
       ${rangeRow}
     `;
+  }
+
+  // 外部账户模块的显隐开关：每个已配置账户一项，点亮为显示，可连续切换
+  function externalVisibilityOpts() {
+    const hidden = widgetConfig.modules.external?.hiddenAccounts || [];
+    if (!externalProviders.length) {
+      return '<div class="ksb-menu-opts"><span class="ksb-menu-opt">暂无已配置账户</span></div>';
+    }
+    const opts = externalProviders
+      .map((account) => {
+        const visible = !hidden.includes(account.id);
+        const label = `${account.name} ·${account.keyTail || ''}`;
+        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="accountToggle" data-value="${account.id}">${label}</span>`;
+      })
+      .join('');
+    return `<div class="ksb-menu-opts">${opts}</div>`;
+  }
+
+  // 子代理模块的显隐开关：每个本会话出现过的代理一项（附模型名区分），点亮为显示，可连续切换
+  function agentVisibilityOpts() {
+    const hidden = widgetConfig.modules.agents?.hiddenAgents || [];
+    const opts = sessionAgentOrder
+      .map((agentId) => {
+        const visible = !hidden.includes(agentId);
+        const model = agentModelLabel(agentId);
+        const label = `${agentDisplayName(agentId)}${model ? ` · ${model}` : ''}`;
+        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="agentToggle" data-value="${agentId}">${label}</span>`;
+      })
+      .join('');
+    return `<div class="ksb-menu-opts">${opts}</div>`;
   }
 
   function openModuleMenu(id) {
@@ -660,8 +804,29 @@
       next.modules[id].sidebarTidy = value === 'true';
     } else if (kind === 'chartRange') {
       next.modules[id].chartRange = value;
+    } else if (kind === 'agentToggle') {
+      const hidden = Array.isArray(next.modules.agents.hiddenAgents)
+        ? [...next.modules.agents.hiddenAgents]
+        : [];
+      const index = hidden.indexOf(value);
+      if (index >= 0) hidden.splice(index, 1);
+      else hidden.push(value);
+      next.modules.agents.hiddenAgents = hidden;
+    } else if (kind === 'accountToggle') {
+      const hidden = Array.isArray(next.modules.external.hiddenAccounts)
+        ? [...next.modules.external.hiddenAccounts]
+        : [];
+      const index = hidden.indexOf(value);
+      if (index >= 0) hidden.splice(index, 1);
+      else hidden.push(value);
+      next.modules.external.hiddenAccounts = hidden;
     }
     applyWidgetConfig(next, { persist: true });
+    // 显隐开关支持连续操作：菜单保持打开并刷新勾选状态
+    if (kind === 'agentToggle' || kind === 'accountToggle') {
+      openModuleMenu(id);
+      return;
+    }
     // 选项生效后即关闭菜单
     menuModuleId = null;
     hideModuleMenu();
@@ -847,11 +1012,9 @@
   /* ---------- 渲染 ---------- */
 
   function updateProgress(prefix, percentage) {
-    // 本月用量占比小，保留一位小数；5h/本周保持整数
-    const decimals = prefix === 'month' ? 1 : 0;
     const clamped = Math.max(0, Math.min(100, percentage));
-    const safePercentage = Number(clamped.toFixed(decimals));
-    lastQuotaPct[prefix] = safePercentage;
+    const displayPercentage = formatPercentage(clamped);
+    lastQuotaPct[prefix] = clamped;
     const target = els?.quota[prefix];
     if (!target) return;
     const color = progressClass(clamped);
@@ -860,7 +1023,7 @@
       target.fill.className = `ksb-progress-fill ${color}`;
     }
     if (target.pct) {
-      target.pct.textContent = `${safePercentage}%`;
+      target.pct.textContent = `${displayPercentage}%`;
       target.pct.className = `ksb-quota-pct ${color}`;
     }
   }
@@ -885,14 +1048,15 @@
     if (!els?.cachePct) return;
     const percentage = cacheReadPercentage(metrics);
     els.cachePct.textContent = percentage != null
-      ? `${percentage}%`
+      ? `${formatPercentage(percentage)}%`
       : '--';
   }
 
   function updatePerfDisplay() {
     if (!els) return;
     if (els.speedVal) {
-      els.speedVal.textContent = metrics.lastSpeed > 0 ? `${metrics.lastSpeed} tok/s` : '--';
+      const speed = currentSpeed();
+      els.speedVal.textContent = speed > 0 ? `${speed} tok/s` : '--';
     }
     if (els.durationSub && els.durationVal) {
       if (metrics.lastDuration > 0) {
@@ -908,14 +1072,49 @@
     }
   }
 
+  // 状态最短显示时长：任何状态至少停留 1.5 秒，避免思考/回复/调用高速
+  // 交替时文字一闪而过。挂起期间来的新状态覆盖待生效槽，到点播最新的一个。
+  let displayedAgentStatus = '';
+  let statusMinUntil = 0;
+  let pendingDisplayStatus = null;
+  let pendingStatusTimer = null;
+
+  function paintAgentStatus(display) {
+    if (!els) return;
+    if (els.statusDot) els.statusDot.className = `ksb-status-dot ksb-${display}`;
+    if (els.agentStatus) els.agentStatus.textContent = STATUS_TEXT[display] || display;
+    petUpdateStatus(display);
+  }
+
   function setAgentStatus(status) {
     metrics.agentStatus = status;
     if (!els) return;
     // 未授权时状态灯恒红（除非 WS 已断开，优先显示未连接）
     const display = quotaAuthRequired && status !== 'offline' ? 'unauthorized' : status;
-    if (els.statusDot) els.statusDot.className = `ksb-status-dot ksb-${display}`;
-    if (els.agentStatus) els.agentStatus.textContent = STATUS_TEXT[display] || display;
-    petUpdateStatus(display);
+    // 同状态重绘（如 DOM 重建后）不受最短时长限制
+    if (display === displayedAgentStatus) {
+      paintAgentStatus(display);
+      return;
+    }
+    const wait = statusMinUntil - Date.now();
+    if (wait <= 0) {
+      displayedAgentStatus = display;
+      statusMinUntil = Date.now() + STATUS_MIN_DISPLAY_MS;
+      paintAgentStatus(display);
+      return;
+    }
+    pendingDisplayStatus = display;
+    if (!pendingStatusTimer) {
+      pendingStatusTimer = setTimeout(() => {
+        pendingStatusTimer = null;
+        const next = pendingDisplayStatus;
+        pendingDisplayStatus = null;
+        if (next == null || next === displayedAgentStatus) return;
+        displayedAgentStatus = next;
+        statusMinUntil = Date.now() + STATUS_MIN_DISPLAY_MS;
+        paintAgentStatus(next);
+      }, wait);
+    }
   }
 
   function renderAll() {
@@ -924,34 +1123,52 @@
     updatePerfDisplay();
     setAgentStatus(metrics.agentStatus);
     renderSparks();
+    renderAgents();
+    renderExternal();
     renderPetStats();
   }
 
   /* ---------- 会话折线（整宽统计模块） ---------- */
 
   const SPARK_DEFS = {
-    input: { values: () => sessionSamples.map((s) => s.input), fmt: (v) => formatTokenCount(v) },
-    output: { values: () => sessionSamples.map((s) => s.output), fmt: (v) => formatTokenCount(v) },
-    cache: { values: () => sessionSamples.map((s) => s.cachePct), fmt: (v) => `${Math.round(v)}%` },
-    speed: { values: () => sessionSamples.map((s) => s.speed), fmt: (v) => `${v} tok/s` },
+    input: { values: () => sessionSamples.map((s) => s.input), fmt: (v) => formatTokenCount(v), marks: () => sessionSamples.map((s) => s.turnEnd === true) },
+    output: { values: () => sessionSamples.map((s) => s.output), fmt: (v) => formatTokenCount(v), marks: () => sessionSamples.map((s) => s.turnEnd === true) },
+    cache: { values: () => sessionSamples.map((s) => s.cachePct), fmt: (v) => `${formatPercentage(v)}%`, marks: () => sessionSamples.map((s) => s.turnEnd === true) },
+    speed: { values: () => sessionSamples.map((s) => s.speed), fmt: (v) => `${v} tok/s`, marks: () => sessionSamples.map((s) => s.turnEnd === true) },
     duration: { values: () => turnDurations, fmt: (v) => fmtDuration(v) }
   };
 
   function renderSparks() {
     if (!els?.sparks) return;
     for (const [id, def] of Object.entries(SPARK_DEFS)) {
-      renderSpark(els.sparks[id], def.values(), def.fmt);
+      renderSpark(els.sparks[id], def.values(), def.fmt, def.marks?.());
     }
   }
 
-  // 100×28 viewBox 的迷你折线：面积淡填充（两端渐隐）+ 折线 + 末点；基线恒含 0
-  function renderSpark(svg, values, fmt) {
+  // 侧栏拖拽改变面板宽度后，圆点反缩放参数（渲染时按当时宽度计算）会过期；
+  // 监听面板尺寸变化重绘折线，任何宽度下圆点保持正圆
+  let sparkResizeRaf = 0;
+  const sparkResizeObserver = new ResizeObserver(() => {
+    if (sparkResizeRaf) return;
+    sparkResizeRaf = requestAnimationFrame(() => {
+      sparkResizeRaf = 0;
+      renderSparks();
+    });
+  });
+
+  // 100×28 viewBox 的迷你折线：面积淡填充（两端渐隐）+ 折线 + 末点；基线恒含 0。
+  // preserveAspectRatio="none" 横向拉伸 viewBox，直接画圆会变成扁椭圆；
+  // 所有圆点用 transform 反缩放，r 按屏幕像素给，任何宽度下都是正圆。
+  function renderSpark(svg, values, fmt, marks) {
     if (!svg) return;
-    const pts = values.filter((v) => Number.isFinite(v));
-    if (!pts.length) {
+    const pairs = values
+      .map((v, i) => ({ v, turn: marks?.[i] === true }))
+      .filter((p) => Number.isFinite(p.v));
+    if (!pairs.length) {
       svg.replaceChildren();
       return;
     }
+    const pts = pairs.map((p) => p.v);
     const max = Math.max(...pts);
     const min = Math.min(0, ...pts);
     const range = max - min || 1;
@@ -964,6 +1181,11 @@
       const y = H - P - ((v - min) / range) * (H - 2 * P);
       return [x, y];
     });
+    const rect = svg.getBoundingClientRect();
+    const kx = rect.width > 0 ? rect.width / W : 1;
+    const ky = rect.height > 0 ? rect.height / H : 1;
+    const dot = (x, y, r, cls) =>
+      `<circle class="${cls}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(1 / kx).toFixed(4)} ${(1 / ky).toFixed(4)})" r="${r}"/>`;
     const linePoints = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
     const [lastX, lastY] = coords[n - 1];
     const areaPoints = `${P},${H - P} ${linePoints} ${lastX.toFixed(1)},${H - P}`;
@@ -975,8 +1197,13 @@
         const fy = y.toFixed(1);
         const rx = Math.max(0, Math.min(W, x - spacing / 2));
         const rw = Math.max(1, Math.min(W, x + spacing / 2) - rx);
-        return `<g class="ksb-spark-pt"><line class="ksb-spark-pt-line" x1="${fx}" y1="1" x2="${fx}" y2="27" stroke="url(#${svg.id}-linefade)"/><circle class="ksb-spark-pt-dot" cx="${fx}" cy="${fy}" r="2"/><rect class="ksb-spark-hit" x="${rx.toFixed(1)}" y="0" width="${rw.toFixed(1)}" height="28" fill="transparent"><title>第${i + 1}步 · ${fmt(pts[i])}</title></rect></g>`;
+        const label = pairs[i].turn ? `第${i + 1}步 · 本轮结束` : `第${i + 1}步`;
+        return `<g class="ksb-spark-pt"><line class="ksb-spark-pt-line" x1="${fx}" y1="1" x2="${fx}" y2="27" stroke="url(#${svg.id}-linefade)"/>${dot(x, y, 2.6, 'ksb-spark-pt-dot')}<rect class="ksb-spark-hit" x="${rx.toFixed(1)}" y="0" width="${rw.toFixed(1)}" height="28" fill="transparent"><title>${label} · ${fmt(pts[i])}</title></rect></g>`;
       })
+      .join('');
+    // 整轮对话结束的步加常驻大节点，与最新点同款；最后一个点常与轮末重叠，画两次无视觉差异
+    const turnDots = coords
+      .map(([x, y], i) => (pairs[i].turn ? dot(x, y, 2.2, 'ksb-spark-dot') : ''))
       .join('');
     svg.innerHTML = `
       <defs>
@@ -990,27 +1217,75 @@
           <stop offset="0.85" stop-color="currentColor" stop-opacity="1"/>
           <stop offset="1" stop-color="currentColor" stop-opacity="0"/>
         </linearGradient>
+        <linearGradient id="${svg.id}-xfade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="0.06" stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset="0.94" stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <mask id="${svg.id}-xmask">
+          <rect x="0" y="0" width="100" height="28" fill="url(#${svg.id}-xfade)"/>
+        </mask>
       </defs>
-      <polygon class="ksb-spark-area" points="${areaPoints}" fill="url(#${svg.id}-vfade)"/>
-      <polyline class="ksb-spark-line" points="${linePoints}"/>
-      <circle class="ksb-spark-dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="1.6"/>
+      <g mask="url(#${svg.id}-xmask)">
+        <polygon class="ksb-spark-area" points="${areaPoints}" fill="url(#${svg.id}-vfade)"/>
+        <polyline class="ksb-spark-line" points="${linePoints}"/>
+      </g>
+      ${turnDots}
+      ${dot(lastX, lastY, 2.2, 'ksb-spark-dot')}
       ${hits}`;
   }
 
   /* ---------- 消耗量图表模块 ---------- */
 
-  async function loadUsageDaily() {
+  async function loadUsageDaily({ refreshIfStale = false } = {}) {
     try {
-      const stored = await chrome.storage.local.get('usageDaily');
-      usageDailyCache = stored.usageDaily || {};
+      const status = await chrome.runtime.sendMessage({ type: 'cli.usage.status' });
+      cliUsageConnected = status?.ok === true && status.connected === true;
+      const stored = await chrome.storage.local.get(KimiCliUsage.DAILY_STORAGE_KEY);
+      usageDailyCache = cliUsageConnected
+        ? stored[KimiCliUsage.DAILY_STORAGE_KEY] || {}
+        : {};
       renderChart();
+      renderPetStats();
+      const lastScannedAt = Date.parse(status?.lastScannedAt || '');
+      if (
+        refreshIfStale &&
+        cliUsageConnected &&
+        !status.scanning &&
+        (!Number.isFinite(lastScannedAt) || Date.now() - lastScannedAt >= CLI_REFRESH_STALE_MS)
+      ) {
+        chrome.runtime.sendMessage({ type: 'cli.usage.refresh' }).catch(() => {});
+      }
     } catch (error) {
-      // 读取失败保持既有数据
+      cliUsageConnected = false;
+      renderChart();
+      renderPetStats();
     }
+  }
+
+  function scheduleCliUsageRefresh() {
+    if (!cliUsageConnected) return;
+    if (cliRefreshTimer) clearTimeout(cliRefreshTimer);
+    // turn.ended 可能早于 wire 异步落盘；稍后只触发一次低频增量校准。
+    cliRefreshTimer = setTimeout(() => {
+      cliRefreshTimer = null;
+      chrome.runtime.sendMessage({ type: 'cli.usage.refresh' }).catch(() => {});
+    }, CLI_REFRESH_AFTER_TURN_MS);
   }
 
   function renderChart() {
     if (!els?.chartBars || !els.chartTotal) return;
+    const module = els.chartBars.closest('.ksb-module');
+    module?.classList.toggle('ksb-cli-required', !cliUsageConnected);
+    if (els.cliLock) els.cliLock.hidden = cliUsageConnected;
+    if (!cliUsageConnected) {
+      els.chartTotal.textContent = '需连接';
+      if (els.chartHitFull) els.chartHitFull.textContent = '';
+      if (els.chartHitShort) els.chartHitShort.textContent = '';
+      els.chartBars.replaceChildren();
+      return;
+    }
     const range = widgetConfig.modules.usageChart?.chartRange || 'week';
     const days = CHART_RANGE_DAYS[range] || 7;
     const endKey = usageDayKey(new Date());
@@ -1020,7 +1295,7 @@
     const sum = sumUsageBetween(usageDailyCache, startKey, endKey);
     if (els.chartLabel) els.chartLabel.textContent = CHART_RANGE_LABELS[range] || CHART_RANGE_LABELS.week;
     els.chartTotal.textContent = sum.totalTokens > 0 ? formatTokenCount(sum.totalTokens) : '--';
-    const hitPct = sum.cacheHitRate != null ? `${Math.round(sum.cacheHitRate * 100)}%` : '';
+    const hitPct = sum.cacheHitRate != null ? `${formatPercentage(sum.cacheHitRate * 100)}%` : '';
     if (els.chartHitFull) els.chartHitFull.textContent = hitPct ? `缓存命中 ${hitPct}` : '';
     if (els.chartHitShort) els.chartHitShort.textContent = hitPct;
     els.chartBars.replaceChildren();
@@ -1060,11 +1335,144 @@
     }
   }
 
+  // 子代理总览模块：无分隔线的表格——表头 入/出/命，每行一个代理
+  // （主代理淡蓝徽标置顶，子代理淡绿徽标 + 序号），模型列自适应截断
+  function renderAgents() {
+    if (!els?.agentsList) return;
+    const hiddenAgents = widgetConfig.modules.agents?.hiddenAgents || [];
+    const mainWorking = petTurnActive || PET_ANSWER_STATUSES.includes(metrics.agentStatus);
+    const rows = [];
+    for (const agentId of sessionAgentOrder) {
+      const totals = agentTotals[agentId];
+      if (!totals || hiddenAgents.includes(agentId)) continue;
+      const isMain = agentId === 'main';
+      const hasUsage = totalInputTokens(totals) > 0 || totals.outputTokens > 0;
+      const working = isMain ? mainWorking : activeSubagents.has(agentId);
+      // 无用量的子代理只在「工作中」时占位；主代理始终显示
+      if (!hasUsage && !working && !isMain) continue;
+      const hit = cacheReadPercentage(totals);
+      const model = agentModelLabel(agentId);
+      const badge = isMain
+        ? `<span class="ksb-agent-badge main${working ? ' on' : ''}">主</span>`
+        : `<span class="ksb-agent-badge sub${working ? ' on' : ''}">子</span>`;
+      rows.push(`
+        <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${agentDisplayName(agentId)}${model ? ` · ${model}` : ''}">
+          <span class="ksb-agent-id">${badge}</span>
+          <span class="ksb-agent-model">${model}</span>
+          <span class="ksb-agent-metric m-in">${formatTokenCount(totalInputTokens(totals))}</span>
+          <span class="ksb-agent-metric m-out">${formatTokenCount(totals.outputTokens)}</span>
+          <span class="ksb-agent-metric m-hit">${hit != null ? `${formatPercentage(hit)}%` : '--'}</span>
+        </div>`);
+    }
+    els.agentsList.innerHTML = rows.join('');
+  }
+
+  /* ---------- 外部账户模块（DeepSeek / Kimi API / 智谱 / MiniMax） ---------- */
+
+  let externalProviders = [];
+
+  // 格式化单个账户的主数值与子数值：余额类「API 余额 ¥4.46」；
+  // 套餐类「5h 40.0% · 1w 12.0%」；半宽只取主数值 + 次要窗口做下角标
+  function formatExternalValue(provider) {
+    if (provider.error) return { main: '获取失败', sub: '', note: provider.error };
+    if (provider.kind === 'balance') {
+      const main = `${provider.currency}${provider.total.toFixed(2)}`;
+      return {
+        main,
+        sub: '',
+        note: `赠送 ${provider.currency}${provider.granted.toFixed(2)} · 充值 ${provider.currency}${provider.paid.toFixed(2)}`
+      };
+    }
+    if (provider.windows?.length) {
+      const [first, second] = provider.windows;
+      const reset = provider.windows.find((w) => w.resetAt)?.resetAt;
+      return {
+        main: `${formatPercentage(first.pct)}%`,
+        sub: second ? `${second.label} ${formatPercentage(second.pct)}%` : '',
+        note: [provider.plan, reset ? `重置 ${new Date(reset).toLocaleString()}` : '']
+          .filter(Boolean)
+          .join(' · ')
+      };
+    }
+    return { main: provider.plan || '已启用', sub: '', note: '' };
+  }
+
+  function renderExternal() {
+    const hiddenAccounts = widgetConfig.modules.external?.hiddenAccounts || [];
+    const visible = externalProviders.filter((p) => !hiddenAccounts.includes(p.id));
+
+    // 半宽：标题换成第一个选中账户的名称，大数字是它的余额/用量百分比
+    if (els?.externalTitle) {
+      const first = visible[0];
+      els.externalTitle.textContent = first ? first.name : '外部账户';
+      if (!first) {
+        els.externalValue.textContent = '--';
+        els.externalSub.hidden = true;
+      } else {
+        const formatted = formatExternalValue(first);
+        els.externalValue.textContent = formatted.main;
+        els.externalSub.textContent = formatted.sub;
+        els.externalSub.hidden = !formatted.sub;
+      }
+    }
+
+    // 整宽：一行一个账户，名称在左、格式化数值在右。
+    // 数值的类型前缀（API 余额 / 5小时 等）单独成 span，窄面板时整体隐藏只留数字
+    if (!els?.externalList) return;
+    if (!visible.length) {
+      els.externalList.innerHTML =
+        '<div class="ksb-external-empty">在扩展弹窗中配置 API Key</div>';
+      return;
+    }
+    // 同一 provider 多个账户时，用 key 尾号区分
+    const nameCounts = {};
+    for (const p of visible) nameCounts[p.name] = (nameCounts[p.name] || 0) + 1;
+    const valueHtml = (provider) => {
+      if (provider.error) return '获取失败';
+      if (provider.kind === 'balance') {
+        return `<span class="ksb-external-kind">API 余额</span> ${provider.currency}${provider.total.toFixed(2)}`;
+      }
+      if (provider.windows?.length) {
+        return provider.windows
+          .map((w) => `<span class="ksb-external-kind">${w.label}</span> ${formatPercentage(w.pct)}%`)
+          .join(' · ');
+      }
+      return provider.plan || '已启用';
+    };
+    els.externalList.innerHTML = visible
+      .map((provider) => {
+        const label = nameCounts[provider.name] > 1
+          ? `${provider.name} ·${provider.keyTail}`
+          : provider.name;
+        const formatted = formatExternalValue(provider);
+        return `
+          <div class="ksb-external-row" title="${label}${formatted.note ? ` · ${formatted.note}` : ''}">
+            <span class="ksb-external-name">${label}</span>
+            <span class="ksb-external-value${provider.error ? ' err' : ''}">${valueHtml(provider)}</span>
+          </div>`;
+      })
+      .join('');
+  }
+
+  async function fetchExternalProviders() {
+    if (widgetConfig.modules.external?.show === 'hidden') return;
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'external.status' });
+      if (response?.ok) {
+        externalProviders = response.providers || [];
+        renderExternal();
+      }
+    } catch (error) {
+      // 扩展重载等场景下静默失败，保留现有显示
+    }
+  }
+
   // 宠物模块右侧数据：五种口径可选（≡ 菜单切换），标签与数值联动
   const PET_STAT_DEFS = {
     daily: {
       label: '24h消耗',
       value: () => {
+        if (!cliUsageConnected) return '需连接 CLI';
         const bucket = usageDailyCache[usageDayKey(new Date())];
         const total = bucket ? bucket.input + bucket.output : 0;
         return total > 0 ? formatTokenCount(total) : '--';
@@ -1076,12 +1484,15 @@
       label: '缓存命中',
       value: () => {
         const pct = cacheReadPercentage(metrics);
-        return pct != null ? `${pct}%` : '--';
+        return pct != null ? `${formatPercentage(pct)}%` : '--';
       }
     },
     speed: {
       label: '速度',
-      value: () => (metrics.lastSpeed > 0 ? `${metrics.lastSpeed} tok/s` : '--')
+      value: () => {
+        const speed = currentSpeed();
+        return speed > 0 ? `${speed} tok/s` : '--';
+      }
     },
     balance: {
       label: '余额',
@@ -1102,51 +1513,44 @@
   /* ---------- 宠物模块：Kimi 吉祥物 Rive 动画 ---------- */
 
   // 资产取自 kimi.com 前端公开 CDN（对话头像），运行时 @rive-app/canvas-lite 本地打包。
-  // 该 .riv 状态机默认姿态静止，需 stop() 后手动播放命名动画；UpDown 会越界裁切不可用
+  // 沿用 2.0.0 的命名动画方式：动作直接播放，颜色独立由 CSS 表达。
   const PET_RIV_URL = chrome.runtime.getURL('rive/kimi_avatar_web-PnsTWI-X.riv');
   const PET_WASM_URL = chrome.runtime.getURL('rive/rive.wasm');
-  // 行为模型（用户选定）：空闲 paopao/look_right_stop；思考/运行 loading；
-  // 未连接/未授权 history_gary（置灰）；恢复时重建实例（回默认蓝）；
-  // 限流 redface（仅一次）；子代理 angrywink；重连 change_dark；
-  // 思考/运行结束 stars（仅一次）；点击 yaoyiyao/angryface/in（仅一次）
-  const PET_BASE_ANIMS = {
-    idle: ['paopao', 'look_right_stop'],
-    thinking: ['loading'],
-    running: ['loading'],
-    executing: ['loading'],
-    offline: ['history_gary'],
-    unauthorized: ['history_gary'],
-    ratelimit: [],
-    subagent: ['angrywink'],
-    reconnecting: ['change_dark']
-  };
-  // 点击球/迷你区：一次性小动作随机池（非静帧动画；基底循环动画除外。
-  // UpDown / jump / look_forward / look_right 纵向行程会越界或残留位移，已剔除）
-  const PET_CLICK_ANIMS = [
-    'yaoyiyao', 'angryface', 'in', 'wink', 'stars', 'angryeye',
-    'hover', 'hover100', 'wink_stop', 'paopao_stop',
-    'history_blue', 'nostars', 'change_light'
-  ];
+  const PET_IDLE_ANIM = 'paopao';
+  const PET_LOADING_ANIM = 'loading';
   const PET_DONE_ANIM = 'stars';
-  const PET_RATELIMIT_ANIM = 'redface';
+  const PET_CLICK_ANIMS = [
+    'yaoyiyao', 'angryface', 'wink', 'angryeye',
+    'hover', 'hover100', 'wink_stop', 'paopao_stop'
+  ];
+  const PET_TOGGLE_ANIMS = [
+    'yaoyiyao', 'angryface', 'wink', 'angryeye', 'hover', 'hover100'
+  ];
+  // 不重新引入颜色/状态混合的官网状态机，只恢复它的低频空闲变化。
+  const PET_IDLE_AMBIENT_ANIMS = ['wink', 'look_right_stop'];
+  const PET_IDLE_AMBIENT_MIN_MS = 8_000;
+  const PET_IDLE_AMBIENT_JITTER_MS = 10_000;
 
   let petRive = null;
   let petCanvasEl = null;
-  // 记录点球监听器绑在哪个 canvas 上，实例重建时避免重复绑定
+  // 记录点球监听器绑在哪个 canvas 上，结构重建时避免重复绑定
   let petClickBoundCanvas = null;
   let petStatus = 'idle';
-  let petBaseTimer = null;
-  // 一次性动画播完后是否回基底（常驻 stop 监听读取此标志，见 petStart）
-  let petPendingBase = false;
-  // 一次性动画的后续链（如 stars → nostars 退场）
-  let petChain = [];
+  let petMotion = '';
+  let petSwitchingMotion = false;
+  let petReturnToBase = false;
+  let petIdleAmbientTimer = null;
+  let petTurnSessionId = '';
+  let petTurnActive = false;
+  let petTurnSince = 0;
   // 状态时钟：进入当前状态的时间点与 1s 计时器
   let petStatusSince = Date.now();
+  let restoredPetStatusSince = 0;
   let petClockTimer = null;
 
-  const PET_CLOCK_STATUSES = ['thinking', 'running', 'executing', 'subagent', 'ratelimit', 'reconnecting'];
+  const PET_CLOCK_STATUSES = ['thinking', 'executing', 'replying', 'subagent', 'ratelimit'];
   // 一轮回答的组成状态：这些状态之间切换（思考↔执行↔运行↔子代理↔限流）不打断计时
-  const PET_ANSWER_STATUSES = ['thinking', 'running', 'executing', 'subagent', 'ratelimit'];
+  const PET_ANSWER_STATUSES = ['thinking', 'executing', 'replying', 'subagent', 'ratelimit'];
 
   function petClockStart() {
     if (petClockTimer) return;
@@ -1177,33 +1581,108 @@
     if (els.petAmpm) els.petAmpm.textContent = '';
   }
 
-  function petRandomOf(list) {
-    return list[Math.floor(Math.random() * list.length)];
+  function petAppearanceForStatus(status) {
+    if (status === 'offline' || status === 'unauthorized') return 'gray';
+    if (status === 'ratelimit') return 'red';
+    return 'blue';
   }
 
-  function petPlayMood(name) {
+  function petApplyAppearance() {
+    if (!els?.petCanvas) return;
+    els.petCanvas.dataset.appearance = petAppearanceForStatus(petStatus);
+  }
+
+  function petClearIdleAmbient() {
+    if (petIdleAmbientTimer) clearTimeout(petIdleAmbientTimer);
+    petIdleAmbientTimer = null;
+  }
+
+  function petScheduleIdleAmbient() {
+    petClearIdleAmbient();
+    if (petStatus !== 'idle' || !petRive) return;
+    const delay = PET_IDLE_AMBIENT_MIN_MS + Math.random() * PET_IDLE_AMBIENT_JITTER_MS;
+    petIdleAmbientTimer = setTimeout(() => {
+      petIdleAmbientTimer = null;
+      if (petStatus !== 'idle' || petMotion !== PET_IDLE_ANIM || !petRive) {
+        petScheduleIdleAmbient();
+        return;
+      }
+      const name = PET_IDLE_AMBIENT_ANIMS[
+        Math.floor(Math.random() * PET_IDLE_AMBIENT_ANIMS.length)
+      ];
+      petPlayMotion(name, { returnToBase: true });
+    }, delay);
+  }
+
+  function petPlayMotion(name, { returnToBase = false } = {}) {
     if (!petRive) return;
+    petClearIdleAmbient();
     try {
+      petSwitchingMotion = true;
+      petReturnToBase = returnToBase;
       petRive.stop();
       petRive.play(name);
+      petMotion = name;
+      if (name === PET_IDLE_ANIM) petScheduleIdleAmbient();
     } catch (error) {
-      // 动画名异常时静默，下一拍再试
+      console.warn('[Kimi Status] 吉祥物动画切换失败', error);
+    } finally {
+      petSwitchingMotion = false;
     }
   }
 
-  function petPlayBase() {
-    petChain = [];
-    const anims = PET_BASE_ANIMS[petStatus];
-    if (anims?.length) petPlayMood(petRandomOf(anims));
+  function petBaseMotion() {
+    return PET_ANSWER_STATUSES.includes(petStatus) ? PET_LOADING_ANIM : PET_IDLE_ANIM;
   }
 
-  // 一次性动作：可带后续链（chain 逐段播完再回基底，如 stars → nostars 退场）
-  function petPlayOnce(name, { toBase = true, chain = [] } = {}) {
-    if (!petRive) return;
-    petPendingBase = false;
-    petChain = [...chain];
-    petPlayMood(name);
-    petPendingBase = toBase;
+  function petPlayBase() {
+    const desired = petBaseMotion();
+    if (petMotion === desired && petRive?.playingAnimationNames?.includes(desired)) return;
+    petPlayMotion(desired);
+  }
+
+  function petSyncState() {
+    petApplyAppearance();
+    petPlayBase();
+  }
+
+  function petBeginTurn() {
+    petTurnSessionId = sessionId;
+    petTurnActive = Boolean(sessionId);
+    petTurnSince = Date.now();
+  }
+
+  function petCancelTurn() {
+    petTurnSessionId = '';
+    petTurnActive = false;
+    petTurnSince = 0;
+  }
+
+  function petCompleteTurn() {
+    // 重放的历史事件里 turn.started 与 turn.ended 间隔只有几毫秒；
+    // 真实一轮回答至少持续一秒以上，据此抑制重放触发的 Stars
+    const shouldCelebrate =
+      petTurnActive &&
+      petTurnSessionId === sessionId &&
+      Date.now() - petTurnSince > 1_000;
+    petCancelTurn();
+    if (shouldCelebrate) petPlayDoneEffect();
+  }
+
+  function petHandleClick() {
+    const name = PET_CLICK_ANIMS[Math.floor(Math.random() * PET_CLICK_ANIMS.length)];
+    petPlayMotion(name, { returnToBase: true });
+  }
+
+  function petHandleToggle() {
+    const name = PET_TOGGLE_ANIMS[Math.floor(Math.random() * PET_TOGGLE_ANIMS.length)];
+    petPlayMotion(name, { returnToBase: true });
+  }
+
+  // Stars 只由真实 turn 生命周期触发，播放完回到当前基底动画。
+  function petPlayDoneEffect() {
+    if (!petRive || petMotion === PET_DONE_ANIM) return;
+    petPlayMotion(PET_DONE_ANIM, { returnToBase: true });
   }
 
   // 结构重建后调用：canvas 未变且实例存活时复用（避免配置回声造成 Rive 双重实例化）
@@ -1219,50 +1698,55 @@
       }
       petRive = null;
       petCanvasEl = null;
+      petMotion = '';
+      petSwitchingMotion = false;
+      petReturnToBase = false;
+      petClearIdleAmbient();
     }
-    if (petBaseTimer) clearTimeout(petBaseTimer);
-    petBaseTimer = null;
     if (!els?.petCanvas) return;
     // wasm 强制走本地，禁用 CDN 回退（扩展不允许远程代码）
     api.RuntimeLoader.setWasmUrl(PET_WASM_URL);
     api.RuntimeLoader.setWasmFallbackUrl(null);
-    petRive = new api.Rive({
+    const instance = new api.Rive({
       src: PET_RIV_URL,
       canvas: els.petCanvas,
-      autoplay: true,
+      autoplay: false,
       fit: api.Fit?.Contain,
       alignment: api.Alignment?.Center,
-      onLoad: petPlayBase,
+      onLoad: () => {
+        if (petRive !== instance) return;
+        petSyncState();
+      },
+      onStop: (event) => {
+        // stop()+play() 的主动切换不处理；只有 one-shot 自然结束才续播。
+        if (petRive !== instance || petSwitchingMotion) return;
+        const stopped = Array.isArray(event?.data) ? event.data : [];
+        if (!stopped.includes(petMotion)) return;
+        queueMicrotask(() => {
+          if (petRive !== instance || petSwitchingMotion) return;
+          if (petMotion === PET_LOADING_ANIM && PET_ANSWER_STATUSES.includes(petStatus)) {
+            petPlayMotion(PET_LOADING_ANIM);
+            return;
+          }
+          if (petReturnToBase) {
+            petReturnToBase = false;
+            petPlayBase();
+          }
+        });
+      },
       onLoadError: (error) => console.warn('[Kimi Status] 吉祥物动画加载失败', error)
     });
+    petRive = instance;
     petCanvasEl = els.petCanvas;
+    petApplyAppearance();
     petSyncRendering();
     petClockStart();
-    // 常驻 stop 监听（每个实例只注册一次）：播放列表非空=自家切换，为空=自然播完才推进。
-    // 链式段播完后回基底用 setTimeout 跳出同步递归
-    try {
-      petRive.on('stop', () => {
-        // 自家切换（stop+play）时新动画已在播放列表里；只有自然播完列表才为空
-        const playing = petRive?.playingAnimationNames;
-        if (Array.isArray(playing) && playing.length) return;
-        if (petChain.length) {
-          petPlayMood(petChain.shift());
-          return;
-        }
-        if (!petPendingBase) return;
-        petPendingBase = false;
-        setTimeout(petPlayBase, 0);
-      });
-    } catch (error) {
-      // 事件不可用时退回定时器兜底
-      petBaseTimer = setTimeout(petPlayBase, 2_500);
-    }
-    // 点球：播一段一次性小动作；配置了跳转则同时打开（控制台/充值页，≡ 菜单可选）。
-    // 同一 canvas 只绑一次：实例重建（灰球恢复）不重复绑定
+    // 点球：播放一次命名动作；配置了跳转则同时打开（控制台/充值页，≡ 菜单可选）。
+    // 同一 canvas 只绑一次，避免结构复用时重复触发。
     if (petClickBoundCanvas !== els.petCanvas) {
       els.petCanvas.addEventListener('click', (event) => {
         event.stopPropagation();
-        petPlayOnce(petRandomOf(PET_CLICK_ANIMS));
+        petHandleClick();
         const link = widgetConfig.modules.pet?.ballLink;
         if (link === 'console' || link === 'subscription') {
           window.open(link === 'console' ? CONSOLE_URL : SUBSCRIPTION_URL, '_blank');
@@ -1272,51 +1756,38 @@
     }
   }
 
-  // 在同一 canvas 上重建 Rive 实例：history_gary 把球置灰后，.riv 内没有动画
-  // 能还原默认蓝（change_light 偏浅，已弃用），只有新实例的默认渲染是正蓝色
-  function petRecreate() {
-    try {
-      petRive?.cleanup();
-    } catch (error) {
-      // 忽略
-    }
-    petRive = null;
-    petStart();
-  }
-
-  // 与状态灯同源：状态行常显文字并变色；状态转变的动画规则：
-  // 进入限流 → redface 一次（无基底）；灰球（未授权/未连接）恢复 → 重建实例回默认蓝；
-  // 思考/运行结束 → stars 一次后回新基底；其余直接换基底
+  // 与状态灯同源：命名动画只负责动作，CSS 只负责蓝/灰/红外观。
+  // Stars 由同一会话的 turn 生命周期触发，不再从显示状态变化推断。
   function petUpdateStatus(display) {
     if (els?.petStatusText) {
-      els.petStatusText.textContent = STATUS_TEXT[display] || display;
+      const lines = STATUS_TEXT_LINES[display];
+      if (lines) {
+        // 长状态按语义切两行（如「子代理/工作中」），下边缘与单行状态对齐
+        els.petStatusText.replaceChildren(lines[0], document.createElement('br'), lines[1]);
+        els.petStatusText.classList.add('ksb-status-twoline');
+      } else {
+        els.petStatusText.textContent = STATUS_TEXT[display] || display;
+        els.petStatusText.classList.remove('ksb-status-twoline');
+      }
       els.petStatus.dataset.status = display;
     }
-    if (display === petStatus) return;
+    if (display === petStatus) {
+      // 重复状态只刷新颜色，不能打断正在播放的 Stars / 点击动作；
+      // loading 自然结束后的续播由唯一的 onStop 分支负责。
+      petApplyAppearance();
+      return;
+    }
     const previous = petStatus;
     petStatus = display;
     // 计时不被工具调用打断：仅在「非回答状态 → 回答状态」或进入非回答状态时重置起点；
-    // 思考↔运行↔子代理↔限流之间切换属于同一轮回答，连续计时
+    // 思考↔回复↔调用↔子代理↔限流之间切换属于同一轮回答，连续计时
     if (PET_ANSWER_STATUSES.includes(display) && !PET_ANSWER_STATUSES.includes(previous)) {
       petStatusSince = Date.now();
     } else if (!PET_ANSWER_STATUSES.includes(display)) {
       petStatusSince = Date.now();
     }
     petClockTick();
-    if (display === 'ratelimit') {
-      petPlayOnce(PET_RATELIMIT_ANIM, { toBase: false });
-    } else if (
-      (previous === 'unauthorized' || previous === 'offline') &&
-      display !== 'unauthorized' && display !== 'offline'
-    ) {
-      // 灰球恢复：重建实例，onLoad 自动回当前基底（上面 petStatus 已更新）
-      petRecreate();
-    } else if ((previous === 'thinking' || previous === 'running') && display === 'idle') {
-      // 只在整轮回答结束时庆祝一次；stars 后接 nostars 让星星粒子退场，再回基底
-      petPlayOnce(PET_DONE_ANIM, { chain: ['nostars'] });
-    } else {
-      petPlayBase();
-    }
+    petSyncState();
   }
 
   /* ---------- 额度与授权 ---------- */
@@ -1432,7 +1903,9 @@
       (id) => modules[id]?.show !== 'hidden'
     );
     const balanceVisible = modules.header?.show !== 'hidden' && modules.header?.showBalance !== false;
-    return quotaVisible || balanceVisible;
+    const petBalanceVisible =
+      modules.pet?.show !== 'hidden' && modules.pet?.stat === 'balance';
+    return quotaVisible || balanceVisible || petBalanceVisible;
   }
 
   async function fetchQuota(force = false) {
@@ -1487,7 +1960,7 @@
     els.widget.setAttribute('role', required ? 'button' : 'status');
     if (els.authBanner) {
       els.authBanner.hidden = !required;
-      if (required) els.authBanner.textContent = '点击完成 Kimi 授权';
+      if (required && els.authBannerText) els.authBannerText.textContent = '点击完成 Kimi 授权';
     }
     // 授权状态变化会改变状态灯的显示（未授权恒红 / 恢复后回到真实状态）
     setAgentStatus(metrics.agentStatus);
@@ -1504,8 +1977,8 @@
       const response = await chrome.runtime.sendMessage({ type: 'oauth.start' });
       if (!response?.ok) throw new Error(response?.error || '无法开始授权');
       // 轮询由后台 service worker 驱动，授权页完成后自动关闭，面板自动恢复
-      if (els.authBanner) {
-        els.authBanner.textContent = '授权中，完成后自动恢复';
+      if (els.authBannerText) {
+        els.authBannerText.textContent = '授权中，完成后自动恢复';
       }
       setConnectionHint('请在新打开的页面完成授权');
     } catch (error) {
@@ -1523,17 +1996,123 @@
     metrics.outputTokens = 0;
     metrics.cacheReadTokens = 0;
     metrics.cacheCreationTokens = 0;
-    metrics.speedSamples = [];
-    metrics.lastSpeed = 0;
     metrics.lastDuration = 0;
     metrics.agentStatus = 'idle';
-    lastSeq = 0;
+    // 游标不在这里重置：startSession 已统一归零，
+    // 空壳快照/快照失败只是数据不可用，不能据此把游标打回 0 触发全量重放
     sessionSamples = [];
     turnDurations = [];
+    agentTotals = { main: emptyAgentMetric() };
+    sessionAgentOrder = ['main'];
+    agentTopModels = {};
     renderAll();
   }
 
-  async function loadSessionSnapshot(targetSessionId, targetToken, requestId, sessionChanged) {
+  function clearSessionHistory() {
+    metrics.lastDuration = 0;
+    sessionSamples = [];
+    turnDurations = [];
+    agentTotals = { main: emptyAgentMetric() };
+    sessionAgentOrder = ['main'];
+    agentTopModels = {};
+  }
+
+  // 空壳快照（忙碌会话）或拉取失败时的本地恢复：CLI 扫描的按会话汇总做底，
+  // 之后的实时 WS 事件在其上累计——底数只含扫描时刻之前的记录，不双算。
+  function applySessionSeed(seed) {
+    metrics.inputTokens = Math.max(
+      0,
+      toNonNegativeInteger(seed.input) - toNonNegativeInteger(seed.cacheRead)
+    );
+    metrics.outputTokens = toNonNegativeInteger(seed.output);
+    metrics.cacheReadTokens = toNonNegativeInteger(seed.cacheRead);
+    metrics.cacheCreationTokens = 0;
+
+    // 按代理拆分：主代理置顶，子代理按最早记录时间排序；模型取 token 权重最高者
+    agentTotals = {};
+    sessionAgentOrder = [];
+    agentTopModels = {};
+    const agents = seed.agents && typeof seed.agents === 'object' ? seed.agents : {};
+    const names = Object.keys(agents).sort((a, b) => {
+      if (a === 'main') return -1;
+      if (b === 'main') return 1;
+      return (agents[a].firstAt || 0) - (agents[b].firstAt || 0);
+    });
+    for (const name of names.length ? names : ['main']) {
+      const entry = agents[name];
+      agentTotals[name] = {
+        inputTokens: Math.max(
+          0,
+          toNonNegativeInteger(entry?.input) - toNonNegativeInteger(entry?.cacheRead)
+        ),
+        outputTokens: toNonNegativeInteger(entry?.output),
+        cacheReadTokens: toNonNegativeInteger(entry?.cacheRead),
+        cacheCreationTokens: 0
+      };
+      sessionAgentOrder.push(name);
+      // config.update 的 modelAlias 是解析后的真实模型名（子代理的 usage 记录只有占位符）
+      const alias = typeof entry?.modelAlias === 'string' ? entry.modelAlias : '';
+      const models = entry?.models && typeof entry.models === 'object' ? entry.models : {};
+      const top = Object.entries(models).sort((x, y) => y[1] - x[1])[0];
+      if (alias || top) agentTopModels[name] = alias || top[0];
+    }
+  }
+
+  async function readSessionSeed(targetSessionId) {
+    const stored = await chrome.storage.local.get(KimiCliUsage.SESSIONS_STORAGE_KEY);
+    return stored[KimiCliUsage.SESSIONS_STORAGE_KEY]?.[targetSessionId] || null;
+  }
+
+  // 只补按代理拆分（不清空服务端已给的总量）：快照没有 agents 维度
+  async function seedAgentsFromScan(targetSessionId) {
+    try {
+      const seed = await readSessionSeed(targetSessionId);
+      if (!seed?.agents || targetSessionId !== sessionId) return;
+      const keep = { ...metrics };
+      applySessionSeed(seed);
+      metrics.inputTokens = keep.inputTokens;
+      metrics.outputTokens = keep.outputTokens;
+      metrics.cacheReadTokens = keep.cacheReadTokens;
+      metrics.cacheCreationTokens = keep.cacheCreationTokens;
+      renderAll();
+    } catch (error) {
+      // 读取失败不影响主显示
+    }
+  }
+
+  async function restoreSessionFromScan(targetSessionId, stale) {
+    try {
+      const seed = await readSessionSeed(targetSessionId);
+      if (stale()) return;
+      if (seed) {
+        applySessionSeed(seed);
+        sessionSamples = [];
+        turnDurations = [];
+        renderAll();
+      } else {
+        resetMetrics();
+      }
+    } catch (error) {
+      if (!stale()) resetMetrics();
+    }
+  }
+
+  // 轮次结束后台重扫完成：本地按会话汇总已包含刚结束的轮次；空闲时用它刷新
+  // 面板底数（实时累计已被汇总覆盖，直接替换不双算），忙碌时跳过等下一轮。
+  async function refreshSessionSeedFromScan() {
+    if (!sessionId || petTurnActive) return;
+    if (PET_ANSWER_STATUSES.includes(metrics.agentStatus)) return;
+    try {
+      const seed = await readSessionSeed(sessionId);
+      if (!seed) return;
+      applySessionSeed(seed);
+      renderAll();
+    } catch (error) {
+      // 读取失败不影响现有显示
+    }
+  }
+
+  async function loadSessionSnapshot(targetSessionId, targetToken, requestId, sessionChanged, hasLocalState = false) {
     if (!targetSessionId || !targetToken) return;
     const stale = () =>
       requestId !== sessionRequestId || targetSessionId !== sessionId || targetToken !== token;
@@ -1543,59 +2122,54 @@
         signal: AbortSignal.timeout(15_000)
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
+      const body = await response.json();
+      // 新版接口返回 { code, data, msg }，旧版直接返回会话对象。
+      const data = body?.data && typeof body.data === 'object' ? body.data : body;
       if (stale()) return;
       // 快照带 usage：以服务器累计为准
-      if (data.usage) {
-        const usage = normalizeUsage(data.usage);
+      const snapshotUsage = data?.usage ? normalizeUsage(data.usage) : null;
+      // 服务端对忙碌中的会话返回全零 usage/last_seq 的空壳快照（实测），
+      // 这种会话由本地按会话汇总恢复，服务器值不可信。
+      const snapshotLooksUnavailable =
+        snapshotUsage &&
+        toNumber(data.last_seq) === 0 &&
+        totalInputTokens(snapshotUsage) === 0 &&
+        snapshotUsage.outputTokens === 0;
+      if (snapshotUsage && !snapshotLooksUnavailable) {
+        const usage = snapshotUsage;
         metrics.inputTokens = usage.inputTokens;
         metrics.outputTokens = usage.outputTokens;
         metrics.cacheReadTokens = usage.cacheReadTokens;
         metrics.cacheCreationTokens = usage.cacheCreationTokens;
-        metrics.agentStatus = data.busy || data.main_turn_active ? 'running' : 'idle';
-        lastSeq = toNumber(data.last_seq);
+        metrics.agentStatus = data.busy || data.main_turn_active ? 'thinking' : 'idle';
+        // 游标只前进不回退：快照的 last_seq 可能早于已处理的实时事件
+        const snapshotSeq = toNumber(data.last_seq);
+        lastSeq = Math.max(lastSeq, snapshotSeq);
+        lastUsageSeq = Math.max(lastUsageSeq, snapshotSeq);
+        lastTurnSeq = Math.max(lastTurnSeq, snapshotSeq);
+        // 有本地恢复（内存缓存/汇总）时样本与计时保持连续，不清空
+        if (sessionChanged && !hasLocalState) {
+          clearSessionHistory();
+          // 服务端快照没有按代理拆分，用本地扫描的按代理汇总补齐子代理视图
+          seedAgentsFromScan(targetSessionId);
+        }
         renderAll();
         return;
       }
-      metrics.agentStatus = data.busy || data.main_turn_active ? 'running' : 'idle';
-      lastSeq = toNumber(data.last_seq);
-      // 快照没有 usage：回退本地持久化记录，仍没有才按场景处理
-      await restoreSessionLocal(targetSessionId, stale, sessionChanged);
+      metrics.agentStatus = data?.busy || data?.main_turn_active ? 'thinking' : 'idle';
+      // 空壳快照：内存缓存已由 startSession 恢复时不动数据；否则用本地汇总做底
+      if (sessionChanged && !hasLocalState) {
+        await restoreSessionFromScan(targetSessionId, stale);
+        return;
+      }
+      renderAll();
     } catch (error) {
-      console.warn('[Kimi Status] 会话快照拉取失败，尝试本地持久化记录', error);
-      if (!stale()) await restoreSessionLocal(targetSessionId, stale, sessionChanged);
+      console.warn('[Kimi Status] 会话快照拉取失败，改由本地按会话汇总恢复', error);
+      if (!stale() && sessionChanged) {
+        if (hasLocalState) renderAll();
+        else await restoreSessionFromScan(targetSessionId, stale);
+      }
     }
-  }
-
-  // 会话重建的本地兜底：background 按 sessionId 持久化的用量记录。
-  // 换会话且无记录 → 清零；同会话（credential 轮换等）无记录 → 保留现有累计
-  async function restoreSessionLocal(targetSessionId, stale, sessionChanged) {
-    let record = null;
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'session.usage.get',
-        payload: { sessionId: targetSessionId }
-      });
-      record = response?.ok ? response.record : null;
-    } catch (error) {
-      record = null;
-    }
-    if (stale()) return;
-    if (!record) {
-      if (sessionChanged) resetMetrics();
-      return;
-    }
-    metrics.inputTokens = toNumber(record.input);
-    metrics.outputTokens = toNumber(record.output);
-    metrics.cacheReadTokens = toNumber(record.cacheRead);
-    metrics.cacheCreationTokens = toNumber(record.cacheCreation);
-    metrics.lastDuration = toNumber(record.lastDuration);
-    metrics.lastSpeed = 0;
-    sessionSamples = Array.isArray(record.steps) ? record.steps.slice(-SESSION_SAMPLE_LIMIT) : [];
-    turnDurations = Array.isArray(record.durations) ? record.durations.slice(-SESSION_SAMPLE_LIMIT) : [];
-    // 游标只以服务器快照的 last_seq 为准：本地 maxSeq 仅恢复计数器，
-    // 抬高游标会吞掉服务器补发的真实新消息
-    renderAll();
   }
 
   function clearHelloWatchdog() {
@@ -1642,8 +2216,9 @@
     ws.onclose = (event) => {
       clearHelloWatchdog();
       ws = null;
-      setAgentStatus('reconnecting');
-      setConnectionHint(`WebSocket 已断开（${event.code}${event.reason ? `: ${event.reason}` : ''}）`);
+      // 断线统一显示「未连接」，后台退避重连；重连成功后由 server_hello 恢复
+      setAgentStatus('offline');
+      setConnectionHint(`WebSocket 已断开（${event.code}${event.reason ? `: ${event.reason}` : ''}），正在重连…`);
       reconnectAttempts += 1;
       scheduleReconnect();
     };
@@ -1653,8 +2228,6 @@
 
   function scheduleReconnect() {
     if (disposed || reconnectTimer) return;
-    // 连续失败超过 6 次：从「重连中」转为「未连接」（仍在后台退避重试）
-    if (reconnectAttempts >= 6) setAgentStatus('offline');
     const exponentialDelay = Math.min(
       30_000,
       WS_RECONNECT_DELAY_MS * (2 ** Math.min(reconnectAttempts, 4))
@@ -1666,20 +2239,108 @@
     }, delay);
   }
 
+  // 订阅重放闸门：服务器对游标落后的空闲会话会全量重放历史事件（实测），
+  // 重放结束后才发 ack/resync_required。ack 之前到达的事件不改状态、不播 Stars；
+  // 历史重放只进折线样本（真实历史，图表数据源），断线补发照常计数。
+  let awaitingAck = false;
+  let ackWatchdog = null;
+  // 下次 client_hello 使用的游标：会话切换后固定为 0（换取历史重放来填充折线样本），
+  // ack 之后更新为当前水位（断线重连时只补发未见事件）
+  let subscriptionCursor = 0;
+  let replayIsHistory = false;
+  let replaySamplesExpected = false;
+
+  function clearAckWatchdog() {
+    if (ackWatchdog) clearTimeout(ackWatchdog);
+    ackWatchdog = null;
+  }
+
   function sendFrame(frame) {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
   }
 
   function sendClientHello() {
+    awaitingAck = true;
+    replayIsHistory = subscriptionCursor === 0;
+    // 已有样本（内存缓存恢复 / 断线重连）时重放不再进样本，避免重复
+    replaySamplesExpected = sessionSamples.length === 0;
+    // 个别服务端可能不回 ack：超时强制放行，避免实时事件被永久抑制
+    clearAckWatchdog();
+    ackWatchdog = setTimeout(() => {
+      ackWatchdog = null;
+      awaitingAck = false;
+    }, 3_000);
     sendFrame({
       type: 'client_hello',
       id: `ksb-${Date.now()}`,
       payload: {
         client_id: 'kimi-statusbar',
         subscriptions: [sessionId],
-        cursors: { [sessionId]: { seq: lastSeq } }
+        cursors: { [sessionId]: { seq: subscriptionCursor } }
       }
     });
+  }
+
+  function setAgentWorkStatus(status) {
+    deferredWorkStatus = status;
+    if (activeToolCalls > 0 || Date.now() < toolStatusUntil) {
+      setAgentStatus('executing');
+      return;
+    }
+    setAgentStatus(status);
+  }
+
+  function clearToolStatus() {
+    activeToolCalls = 0;
+    toolStatusUntil = 0;
+    deferredWorkStatus = 'thinking';
+    if (toolStatusTimer) clearTimeout(toolStatusTimer);
+    toolStatusTimer = null;
+  }
+
+  function beginToolStatus() {
+    activeToolCalls += 1;
+    toolStatusUntil = Math.max(toolStatusUntil, Date.now() + TOOL_STATUS_MIN_MS);
+    if (toolStatusTimer) clearTimeout(toolStatusTimer);
+    toolStatusTimer = null;
+    setAgentStatus('executing');
+  }
+
+  function finishToolStatus() {
+    activeToolCalls = Math.max(0, activeToolCalls - 1);
+    // deferredWorkStatus 保留 setAgentWorkStatus 写入的最新工作状态，
+    // 工具锁释放后直接用它恢复；默认值由 turn.started/turn.ended 的 clearToolStatus 重置
+    if (activeToolCalls > 0) {
+      setAgentStatus('executing');
+      return;
+    }
+    const remaining = toolStatusUntil - Date.now();
+    if (remaining <= 0) {
+      toolStatusUntil = 0;
+      setAgentStatus(deferredWorkStatus);
+      return;
+    }
+    if (toolStatusTimer) clearTimeout(toolStatusTimer);
+    toolStatusTimer = setTimeout(() => {
+      toolStatusTimer = null;
+      toolStatusUntil = 0;
+      if (activeToolCalls === 0) setAgentStatus(deferredWorkStatus);
+    }, remaining);
+  }
+
+  // 事件的子代理身份：step/delta 事件在 message 或 payload 上带 agent_id/agentId，
+  // subagent.* 生命周期事件带 payload.subagentId
+  function isSubagentEvent(message, payload) {
+    const id =
+      message.agent_id ?? payload.agent_id ?? payload.agentId ?? payload.subagentId;
+    return Boolean(id) && id !== 'main';
+  }
+
+  // 事件归属的代理 id：缺省视为主代理
+  function eventAgentId(message, payload) {
+    return (
+      message.agent_id ?? payload.agent_id ?? payload.agentId ?? payload.subagentId ?? 'main'
+    );
   }
 
   function handleWsMessage(message) {
@@ -1688,7 +2349,7 @@
       reconnectAttempts = 0;
       setConnectionHint('Kimi Status 已连接');
       // 重连成功后先回到空闲，后续事件（含游标补发的）会把状态修正过来
-      if (metrics.agentStatus === 'offline' || metrics.agentStatus === 'reconnecting') {
+      if (metrics.agentStatus === 'offline') {
         setAgentStatus('idle');
       }
       sendClientHello();
@@ -1700,8 +2361,46 @@
       return;
     }
 
+    // 订阅应答：重放边界。ack / resync_required 之后到达的才是实时事件
+    if (message.type === 'ack' || message.type === 'resync_required') {
+      clearAckWatchdog();
+      awaitingAck = false;
+      subscriptionCursor = lastSeq;
+      renderAll();
+      return;
+    }
+
+    // 重放事件（ack 之前到达）：不改状态、不播 Stars。
+    // 历史重放（订阅游标为 0）只进折线样本，面板计数已由快照/本地汇总恢复；
+    // 断线补发（游标非 0）是页面加载后的新事件，汇总未含，照常计数。
+    if (awaitingAck) {
+      const replaySeq = Number(message.seq);
+      if (Number.isFinite(replaySeq)) {
+        lastSeq = Math.max(lastSeq, replaySeq);
+        lastUsageSeq = Math.max(lastUsageSeq, replaySeq);
+        lastTurnSeq = Math.max(lastTurnSeq, replaySeq);
+      }
+      const replayPayload = message.payload || {};
+      if (message.type === 'turn.step.completed') {
+        const replayAgent = eventAgentId(message, replayPayload);
+        if (replayIsHistory) {
+          // 历史重放：只进折线样本并登记代理顺序，不进任何计数器
+          registerSessionAgent(replayAgent);
+          if (replaySamplesExpected) pushStepSample(replayPayload);
+        } else {
+          handleStepCompleted(replayPayload, replayAgent);
+        }
+      } else if (message.type === 'turn.ended' || message.type === 'turn.completed') {
+        pushReplayedTurnDuration(replayPayload);
+        if (!replayIsHistory) scheduleCliUsageRefresh();
+      }
+      return;
+    }
+
     if (message.session_id && message.session_id !== sessionId) return;
-    if (message.seq != null) {
+    // volatile 帧复用当前 durable watermark；相同 seq 不代表重复，不能被游标过滤。
+    // 只有 durable 事件推进/校验 lastSeq，client_hello 的补发游标也只认 durable 序号。
+    if (message.seq != null && message.volatile !== true) {
       const sequence = Number(message.seq);
       if (Number.isFinite(sequence)) {
         if (sequence <= lastSeq) return;
@@ -1712,52 +2411,92 @@
 
     switch (message.type) {
       case 'turn.started':
-        setAgentStatus('running');
+        clearToolStatus();
+        petBeginTurn();
+        setAgentStatus('thinking');
         break;
       case 'turn.step.started':
-        setAgentStatus('thinking');
+        setAgentWorkStatus(isSubagentEvent(message, payload) ? 'subagent' : 'thinking');
         break;
       case 'turn.step.completed':
-        handleStepCompleted(payload, message.seq, message.agent_id ?? payload.agentId);
-        // step 之间的间隙通常在执行工具，用绿色「运行中」和思考（蓝）区分；
+        // 快照失败后 cursor=0 会补发旧事件；当前页面已处理过的 step 只用于恢复状态，
+        // 不再重复累加面板数值。真正缺失的新 step 仍会正常进入。
+        if (!Number.isFinite(Number(message.seq)) || Number(message.seq) > lastUsageSeq) {
+          handleStepCompleted(payload, eventAgentId(message, payload));
+          if (Number.isFinite(Number(message.seq))) lastUsageSeq = Number(message.seq);
+        }
+        // step 之间的间隙通常在执行工具或等待模型，主代理统一显示「思考中」；
         // 子代理的 step 单独显示「子代理工作中」
-        setAgentStatus(
-          Boolean(message.agent_id ?? payload.agentId) && (message.agent_id ?? payload.agentId) !== 'main'
-            ? 'subagent'
-            : 'running'
-        );
+        setAgentWorkStatus(isSubagentEvent(message, payload) ? 'subagent' : 'thinking');
         break;
+      case 'thinking.delta':
+        // 主代理的推理流；子代理的 delta 不改变「子代理工作中」显示
+        if (!isSubagentEvent(message, payload) && deferredWorkStatus !== 'thinking') {
+          setAgentWorkStatus('thinking');
+        }
+        break;
+      case 'assistant.delta':
+        // 主代理正在输出回复正文
+        if (!isSubagentEvent(message, payload) && deferredWorkStatus !== 'replying') {
+          setAgentWorkStatus('replying');
+        }
+        break;
+      case 'subagent.spawned':
+      case 'subagent.started':
+      case 'subagent.suspended': {
+        const subId = payload.subagentId ?? payload.agentId;
+        if (subId) {
+          registerSessionAgent(String(subId));
+          activeSubagents.add(String(subId));
+        }
+        setAgentWorkStatus('subagent');
+        break;
+      }
+      case 'subagent.completed':
+      case 'subagent.failed': {
+        const subId = payload.subagentId ?? payload.agentId;
+        if (subId) activeSubagents.delete(String(subId));
+        // 子代理结束后主代理通常继续本轮；后续事件会修正具体状态
+        setAgentWorkStatus('thinking');
+        break;
+      }
       case 'tool.call.started':
-        // 工具级事件（抓包确认存在）：工具执行期间显示「执行中」
-        setAgentStatus('executing');
+        // 当前服务通常在 1–20ms 内连续发 started/result；保留最短可见时长供人眼识别。
+        beginToolStatus();
         break;
       case 'tool.result':
-        // 工具返回后回到「思考中」（模型消化结果，直到下一 step 或下一次调用）
-        setAgentStatus('thinking');
+        finishToolStatus();
         break;
       case 'turn.ended':
-      case 'turn.completed':
-        metrics.lastDuration = toNumber(payload.durationMs ?? payload.duration_ms ?? payload.duration);
-        if (metrics.lastDuration > 0) {
-          turnDurations.push(metrics.lastDuration);
+      case 'turn.completed': {
+        const turnSequence = Number(message.seq);
+        const alreadyRecorded = Number.isFinite(turnSequence) && turnSequence <= lastTurnSeq;
+        const duration = toNumber(payload.durationMs ?? payload.duration_ms ?? payload.duration);
+        if (!alreadyRecorded && duration > 0) {
+          metrics.lastDuration = duration;
+          turnDurations.push(duration);
           if (turnDurations.length > SESSION_SAMPLE_LIMIT) turnDurations.shift();
-          // 轮次耗时持久化（background 按 maxTurnSeq 去重）
-          const turnSeq = Number(message.seq);
-          if (sessionId && Number.isFinite(turnSeq)) {
-            chrome.runtime
-              .sendMessage({
-                type: 'usage.turn',
-                payload: { sessionId, seq: turnSeq, durationMs: metrics.lastDuration }
-              })
-              .catch(() => {});
-          }
         }
+        if (Number.isFinite(turnSequence)) lastTurnSeq = Math.max(lastTurnSeq, turnSequence);
+        clearToolStatus();
         setAgentStatus('idle');
+        if (!alreadyRecorded) {
+          // 折线图：本轮最后一个 step 样本加常驻大节点，区分轮内调用与整轮结束
+          const lastSample = sessionSamples[sessionSamples.length - 1];
+          if (lastSample) lastSample.turnEnd = true;
+          petCompleteTurn();
+        }
         renderAll();
+        scheduleCliUsageRefresh();
         break;
-      case 'event.session.work_changed':
-        setAgentStatus(payload.busy || payload.main_turn_active ? 'running' : 'idle');
+      }
+      case 'event.session.work_changed': {
+        const busy = Boolean(payload.busy || payload.main_turn_active);
+        // 订阅初期推送的可能是滞留状态：页面未观察到轮次活动时只接受收工信号
+        if (busy && !petTurnActive) break;
+        setAgentWorkStatus(busy ? 'thinking' : 'idle');
         break;
+      }
       case 'agent.status.updated':
         handleAgentStatus(payload);
         break;
@@ -1785,12 +2524,52 @@
 
   function handleAgentStatus(payload) {
     const status = payload.status || payload.agent_status;
-    if (status === 'thinking' || status === 'processing') setAgentStatus('thinking');
-    else if (status === 'running' || status === 'working') setAgentStatus('running');
-    else if (status === 'idle' || status === 'waiting') setAgentStatus('idle');
+    // 订阅后服务端会补推该会话最后一次 agent 状态，可能是滞留的 working/thinking；
+    // 开工状态只以快照 busy 标志与真实 turn 事件为准，这里在轮次活动外只接受收工
+    if (status === 'idle' || status === 'waiting') {
+      setAgentWorkStatus('idle');
+      return;
+    }
+    if (!petTurnActive) return;
+    if (status === 'thinking' || status === 'processing') setAgentWorkStatus('thinking');
+    else if (status === 'running' || status === 'working') setAgentWorkStatus('thinking');
   }
 
-  function handleStepCompleted(payload, seq, agentId) {
+  // 记录本步样本（折线图数据源，实时与重放共用）；速度/命中率无法计算时为 null，渲染跳过
+  function pushStepSample(payload) {
+    const usage = normalizeUsage(payload.usage || payload.token_usage);
+    const streamDuration = payload.llmStreamDurationMs ?? payload.llmServerDecodeMs;
+    const speed = decodeSpeed(usage.outputTokens, streamDuration);
+    const stepInput = totalInputTokens(usage);
+    sessionSamples.push({
+      input: stepInput,
+      output: usage.outputTokens,
+      cachePct: stepInput > 0 ? (usage.cacheReadTokens / stepInput) * 100 : null,
+      speed,
+      outMs: Number.isFinite(Number(streamDuration)) ? Number(streamDuration) : null
+    });
+    if (sessionSamples.length > SESSION_SAMPLE_LIMIT) sessionSamples.shift();
+  }
+
+  // 面板速度大数字：最近若干步的聚合速度（总输出 ÷ 总流式时长），
+  // 单步时长极短的离群样本（缓存秒回/高速模型）不会把显示值顶飞
+  function currentSpeed() {
+    return aggregateSpeed(sessionSamples);
+  }
+
+  // 重放的轮次结束：只记耗时样本与轮末标记，不播 Stars、不动状态
+  function pushReplayedTurnDuration(payload) {
+    const duration = toNumber(payload.durationMs ?? payload.duration_ms ?? payload.duration);
+    if (duration > 0) {
+      metrics.lastDuration = duration;
+      turnDurations.push(duration);
+      if (turnDurations.length > SESSION_SAMPLE_LIMIT) turnDurations.shift();
+    }
+    const lastSample = sessionSamples[sessionSamples.length - 1];
+    if (lastSample) lastSample.turnEnd = true;
+  }
+
+  function handleStepCompleted(payload, agentId = 'main') {
     const usage = normalizeUsage(payload.usage || payload.token_usage);
 
     metrics.inputTokens += usage.inputTokens;
@@ -1798,50 +2577,69 @@
     metrics.cacheReadTokens += usage.cacheReadTokens;
     metrics.cacheCreationTokens += usage.cacheCreationTokens;
 
-    const streamDuration = payload.llmStreamDurationMs ?? payload.llmServerDecodeMs;
-    const speed = decodeSpeed(usage.outputTokens, streamDuration);
+    registerSessionAgent(agentId);
+    const totals = agentTotals[agentId];
+    totals.inputTokens += usage.inputTokens;
+    totals.outputTokens += usage.outputTokens;
+    totals.cacheReadTokens += usage.cacheReadTokens;
+    totals.cacheCreationTokens += usage.cacheCreationTokens;
 
-    // 上报给 background 按天累计（popup 消耗量板块）+ 会话级持久化；background 按 sessionId+seq 去重
-    // agentId 区分主代理/子代理（'main' 为主代理），speed 供会话折线图样本
-    const sequence = Number(seq);
-    if (sessionId && Number.isFinite(sequence)) {
-      chrome.runtime
-        .sendMessage({
-          type: 'usage.record',
-          payload: {
-            sessionId,
-            seq: sequence,
-            usage,
-            dayKey: usageDayKey(new Date()),
-            subagent: Boolean(agentId) && agentId !== 'main',
-            speed
-          }
-        })
-        .catch(() => {});
-    }
-
-    if (speed != null) {
-      metrics.speedSamples = appendSpeedSample(metrics.speedSamples, speed);
-      metrics.lastSpeed = medianSpeed(metrics.speedSamples);
-    } else {
-      metrics.lastSpeed = 0;
-    }
-
-    // 记录本步样本（折线图）；速度/命中率在本步无法计算时为 null，渲染时跳过
-    const stepInput = totalInputTokens(usage);
-    sessionSamples.push({
-      input: stepInput,
-      output: usage.outputTokens,
-      cachePct: stepInput > 0 ? (usage.cacheReadTokens / stepInput) * 100 : null,
-      speed
-    });
-    if (sessionSamples.length > SESSION_SAMPLE_LIMIT) sessionSamples.shift();
-
+    pushStepSample(payload);
     renderAll();
+  }
+
+  // 同页切换会话的面板状态缓存：切走存档、切回瞬时恢复（数值、折线、计时连续）。
+  // 只活在页面内存里；单会话约 2-3KB，上限 30 个会话，超出淘汰最久未访问的。
+  const PANEL_SESSION_CACHE_LIMIT = 30;
+  const panelSessionCache = new Map();
+
+  function cachePanelState(sid) {
+    if (!sid) return;
+    if (panelSessionCache.has(sid)) panelSessionCache.delete(sid);
+    panelSessionCache.set(sid, {
+      inputTokens: metrics.inputTokens,
+      outputTokens: metrics.outputTokens,
+      cacheReadTokens: metrics.cacheReadTokens,
+      cacheCreationTokens: metrics.cacheCreationTokens,
+      lastDuration: metrics.lastDuration,
+      agentStatus: metrics.agentStatus,
+      petStatusSince,
+      sessionSamples: sessionSamples.slice(),
+      turnDurations: turnDurations.slice(),
+      agentTotals: JSON.parse(JSON.stringify(agentTotals)),
+      sessionAgentOrder: sessionAgentOrder.slice(),
+      agentTopModels: { ...agentTopModels }
+    });
+    while (panelSessionCache.size > PANEL_SESSION_CACHE_LIMIT) {
+      panelSessionCache.delete(panelSessionCache.keys().next().value);
+    }
+  }
+
+  function restorePanelState(sid) {
+    const cached = panelSessionCache.get(sid);
+    if (!cached) return false;
+    panelSessionCache.delete(sid);
+    panelSessionCache.set(sid, cached); // 移到最新
+    metrics.inputTokens = cached.inputTokens;
+    metrics.outputTokens = cached.outputTokens;
+    metrics.cacheReadTokens = cached.cacheReadTokens;
+    metrics.cacheCreationTokens = cached.cacheCreationTokens;
+    metrics.lastDuration = cached.lastDuration;
+    metrics.agentStatus = cached.agentStatus;
+    sessionSamples = cached.sessionSamples;
+    turnDurations = cached.turnDurations;
+    agentTotals = cached.agentTotals;
+    sessionAgentOrder = cached.sessionAgentOrder;
+    agentTopModels = cached.agentTopModels;
+    // 计时起点在 setAgentStatus 之后由调用方恢复（状态切换会重置它）
+    restoredPetStatusSince = cached.petStatusSince;
+    return true;
   }
 
   function disconnectWebSocket() {
     clearHelloWatchdog();
+    clearAckWatchdog();
+    awaitingAck = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
     reconnectAttempts = 0;
@@ -1855,22 +2653,52 @@
 
   async function startSession(nextSessionId) {
     const requestId = ++sessionRequestId;
+    sessionSnapshotPending = true;
     disconnectWebSocket();
     const sessionChanged = nextSessionId !== sessionId;
+    if (sessionChanged) {
+      cachePanelState(sessionId);
+      petCancelTurn();
+      clearToolStatus();
+      activeSubagents.clear();
+      // 上一会话挂起的状态节流不能带到新会话，立即放行下一个状态
+      if (pendingStatusTimer) clearTimeout(pendingStatusTimer);
+      pendingStatusTimer = null;
+      pendingDisplayStatus = null;
+      statusMinUntil = 0;
+      // 换会话：游标固定归零。空闲会话的历史重放由 ack 闸门控制（只进折线样本），
+      // 面板数据由「快照 + 本地按会话汇总」恢复，WS 只接实时事件。
+      lastSeq = 0;
+      lastUsageSeq = 0;
+      lastTurnSeq = -1;
+      subscriptionCursor = 0;
+    }
     sessionId = nextSessionId;
     if (!sessionId || !token) {
+      if (requestId === sessionRequestId) sessionSnapshotPending = false;
       resetMetrics();
       return;
     }
+    let hasLocalState = false;
     if (sessionChanged) {
-      // 换会话：折线样本与耗时属旧会话，立即清；计数器等快照/本地记录裁决，不盲目清零
-      sessionSamples = [];
-      turnDurations = [];
-      metrics.lastDuration = 0;
-      metrics.lastSpeed = 0;
+      // 状态立即归位：同页切回过的会话恢复其缓存状态，否则先归空闲，
+      // 数字则等快照/本地底数一次性替换，不再把上一会话的状态停在屏幕上
+      hasLocalState = restorePanelState(nextSessionId);
+      setAgentStatus(hasLocalState ? metrics.agentStatus : 'idle');
+      if (hasLocalState) {
+        // 恢复计时起点（petUpdateStatus 在状态切换时重置过它），计时保持连续
+        petStatusSince = restoredPetStatusSince;
+        petClockTick();
+        renderAll();
+      }
     }
     const targetToken = token;
-    await loadSessionSnapshot(nextSessionId, targetToken, requestId, sessionChanged);
+    try {
+      await loadSessionSnapshot(nextSessionId, targetToken, requestId, sessionChanged, hasLocalState);
+    } finally {
+      // 旧请求结束不能解除新请求的闸门；只有当前请求可以放行 WebSocket。
+      if (requestId === sessionRequestId) sessionSnapshotPending = false;
+    }
     if (
       !disposed &&
       requestId === sessionRequestId &&
@@ -1889,9 +2717,10 @@
     maybeShowGuide();
     fetchQuota();
     loadWidgetConfig();
-    loadUsageDaily();
+    loadUsageDaily({ refreshIfStale: true });
     startSession(initialSessionId);
     quotaTimer = setInterval(fetchQuota, QUOTA_INTERVAL_MS);
+    externalTimer = setInterval(fetchExternalProviders, QUOTA_INTERVAL_MS);
   }
 
   function checkPageState() {
@@ -1912,7 +2741,9 @@
       return;
     }
     if (nextSessionId !== sessionId) startSession(nextSessionId);
-    else if (sessionId && token && !ws && !reconnectTimer) connectWebSocket();
+    else if (sessionId && token && !sessionSnapshotPending && !ws && !reconnectTimer) {
+      connectWebSocket();
+    }
   }
 
   function handleStorageChanged(changes, area) {
@@ -1936,8 +2767,14 @@
         applyWidgetConfig(next);
       }
     }
-    if (changes.usageDaily) {
-      usageDailyCache = changes.usageDaily.newValue || {};
+    if (changes[KimiCliUsage.DAILY_STORAGE_KEY]) {
+      usageDailyCache = changes[KimiCliUsage.DAILY_STORAGE_KEY].newValue || {};
+      renderChart();
+      renderPetStats();
+    }
+    if (changes[KimiCliUsage.STATE_STORAGE_KEY]) {
+      cliUsageConnected = changes[KimiCliUsage.STATE_STORAGE_KEY].newValue?.connected === true;
+      if (!cliUsageConnected) usageDailyCache = {};
       renderChart();
       renderPetStats();
     }
@@ -1960,6 +2797,14 @@
       setQuotaAuthRequired(true);
       updateBalance(null);
     }
+    if (message?.type === 'cli.usage.updated') {
+      loadUsageDaily();
+      // 后台重扫完成：空闲时按最新按会话汇总刷新当前面板底数
+      refreshSessionSeedFromScan();
+    }
+    if (message?.type === 'cli.usage.disconnected') {
+      loadUsageDaily();
+    }
   }
 
   function handlePageHide(event) {
@@ -1978,13 +2823,13 @@
     if (disposed) return;
     disposed = true;
     sessionRequestId += 1;
+    sessionSnapshotPending = false;
     cancelLongPress();
     clearDrag();
     if (editing) exitEditMode();
-    if (petBaseTimer) clearTimeout(petBaseTimer);
-    petBaseTimer = null;
     if (petClockTimer) clearInterval(petClockTimer);
     petClockTimer = null;
+    petClearIdleAmbient();
     if (petRive) {
       try {
         petRive.cleanup();
@@ -1993,17 +2838,37 @@
       }
       petRive = null;
       petCanvasEl = null;
+      petMotion = '';
+      petSwitchingMotion = false;
+      petReturnToBase = false;
     }
+    petCancelTurn();
+    clearToolStatus();
     // 侧栏改造的全局 class 一并移除，避免扩展重载后样式残留无法关闭
     document.documentElement.classList.remove('ksb-sidebar-tidy');
     disconnectWebSocket();
     if (quotaTimer) clearInterval(quotaTimer);
+    if (externalTimer) clearInterval(externalTimer);
+    externalTimer = null;
+    if (pendingStatusTimer) clearTimeout(pendingStatusTimer);
+    pendingStatusTimer = null;
+    pendingDisplayStatus = null;
+    sparkResizeObserver.disconnect();
+    if (sparkResizeRaf) cancelAnimationFrame(sparkResizeRaf);
+    sparkResizeRaf = 0;
+    if (cliRefreshTimer) clearTimeout(cliRefreshTimer);
+    cliRefreshTimer = null;
     if (routeTimer) clearInterval(routeTimer);
     if (resetRefetchTimer) clearTimeout(resetRefetchTimer);
     // 扩展重载后 Chrome 不会自动重新注入 content script，
     // 残留脚本退出时一并移除 widget，避免留下一个永远灰色的「僵尸面板」
     if (els?.widget) els.widget.remove();
-    document.getElementById('ksb-guide')?.remove();
+    // 引导层还注册了 document/window 监听，必须走它自己的 cleanup；DOM 兜底使用真实 id。
+    try {
+      window.KsbWalkthrough?.stop?.();
+    } catch (error) {
+      document.getElementById('ksb-walk')?.remove();
+    }
     try {
       chrome.storage.onChanged.removeListener(handleStorageChanged);
       chrome.runtime.onMessage.removeListener(handleRuntimeMessage);

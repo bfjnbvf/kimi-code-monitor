@@ -2,22 +2,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  accumulateDailyUsage,
-  accumulateSessionUsage,
-  appendSpeedSample,
-  appendTurnDuration,
+  aggregateSpeed,
   boosterBalanceYuan,
   cacheReadPercentage,
+  formatPercentage,
   decodeSpeed,
   defaultWidgetConfig,
   formatTokenCount,
   listDayKeysBetween,
-  medianSpeed,
   normalizeUsage,
   normalizeWidgetConfig,
   pruneDailyUsage,
-  sessionIdsToDrop,
-  sessionIndexMeta,
   sumUsageBetween,
   totalInputTokens,
   usageDayKey
@@ -39,6 +34,17 @@ test('总输入包含未缓存、缓存读取和缓存创建 token', () => {
   });
   assert.equal(totalInputTokens(usage), 1_000);
   assert.equal(cacheReadPercentage(usage), 80);
+});
+
+test('百分比统一一位小数并向下截断，真实值不足 100 时不显示为 100.0', () => {
+  assert.equal(formatPercentage(99.5), '99.5');
+  assert.equal(formatPercentage(99.95), '99.9');
+  assert.equal(formatPercentage(99.96), '99.9');
+  assert.equal(formatPercentage(64.07), '64.0');
+  assert.equal(formatPercentage(100), '100.0');
+  assert.equal(formatPercentage(-2), '0.0');
+  assert.equal(formatPercentage(null), null);
+  assert.equal(formatPercentage(undefined), null);
 });
 
 test('快照和 OpenAI 风格字段使用同一归一化逻辑', () => {
@@ -80,17 +86,19 @@ test('缓存分母为零时不生成百分比', () => {
   assert.equal(cacheReadPercentage(normalizeUsage({})), null);
 });
 
-test('速度忽略计时精度过低的样本，并使用最近五次中位数', () => {
+test('速度忽略计时精度过低的样本，聚合速度用总输出除以总时长', () => {
   assert.equal(decodeSpeed(24, 1), null);
   assert.equal(decodeSpeed(57, 12), null);
   assert.equal(decodeSpeed(200, 4_000), 50);
 
-  let samples = [];
-  for (const speed of [40, 42, 41, 900, 43, 44]) {
-    samples = appendSpeedSample(samples, speed);
-  }
-  assert.deepEqual(samples, [42, 41, 900, 43, 44]);
-  assert.equal(medianSpeed(samples), 43);
+  // 聚合口径：单步离群（900 tok/s 级别）不会顶飞显示值
+  const samples = [
+    { output: 40, outMs: 1_000 },
+    { output: 900, outMs: 90 }, // 时长过短，被忽略
+    { output: 60, outMs: 1_000 }
+  ];
+  assert.equal(aggregateSpeed(samples), 50);
+  assert.equal(aggregateSpeed([{ output: 0, outMs: 1_000 }]), 0);
 });
 
 test('钱包未启用时不展示接口中的伪余额', () => {
@@ -103,36 +111,6 @@ test('钱包未启用时不展示接口中的伪余额', () => {
     status: 'STATUS_ACTIVE',
     balance: { amountLeft: '315250700' }
   }), 3.152507);
-});
-
-test('按天累计：输入含缓存读写，命中率口径与 widget 一致', () => {
-  const usage = normalizeUsage({
-    inputOther: 120,
-    output: 30,
-    inputCacheRead: 800,
-    inputCacheCreation: 80
-  });
-  let daily = accumulateDailyUsage(null, '2026-07-30', usage);
-  daily = accumulateDailyUsage(daily, '2026-07-30', usage);
-  daily = accumulateDailyUsage(daily, '2026-07-29', usage);
-
-  assert.deepEqual(daily['2026-07-30'], { input: 2_000, output: 60, cacheRead: 1_600 });
-  assert.deepEqual(daily['2026-07-29'], { input: 1_000, output: 30, cacheRead: 800 });
-});
-
-test('子代理消耗同额累加进 sub 子桶，主代理事件不产生 sub', () => {
-  const usage = normalizeUsage({ inputOther: 100, output: 10, inputCacheRead: 900 });
-  let daily = accumulateDailyUsage(null, '2026-07-30', usage, false);
-  assert.equal(daily['2026-07-30'].sub, undefined);
-
-  daily = accumulateDailyUsage(daily, '2026-07-30', usage, true);
-  daily = accumulateDailyUsage(daily, '2026-07-30', usage, true);
-  assert.deepEqual(daily['2026-07-30'], {
-    input: 3_000,
-    output: 30,
-    cacheRead: 2_700,
-    sub: { input: 2_000, output: 20, cacheRead: 1_800 }
-  });
 });
 
 test('日期键使用本地时区且可字符串比较，修剪只保留近期桶', () => {
@@ -197,7 +175,7 @@ test('Widget 配置：默认布局（标题行隐藏作备份、宠物沉底置�
   const config = defaultWidgetConfig();
   assert.deepEqual(config.orderFull, ['input', 'cache', 'output', 'speed', 'usageChart']);
   assert.deepEqual(config.orderMini, ['pet', 'quota5h', 'quotaWeek']);
-  assert.deepEqual(config.orderHidden, ['header', 'duration']);
+  assert.deepEqual(config.orderHidden, ['header', 'duration', 'agents', 'external']);
   assert.deepEqual(config.modules.header, {
     show: 'hidden', span: 2, showBalance: true, balanceLink: 'subscription'
   });
@@ -243,6 +221,16 @@ test('Widget 配置：非法字段逐项回落，标题行宽度强制整宽', (
   assert.equal(config.modules.usageChart.chartRange, 'week');
 });
 
+test('Widget 配置：子代理模块默认隐藏且强制整宽', () => {
+  const defaults = defaultWidgetConfig();
+  assert.deepEqual(defaults.modules.agents, { show: 'hidden', span: 2, hiddenAgents: [] });
+  const config = normalizeWidgetConfig({
+    modules: { agents: { show: 'full', span: 1 } }
+  });
+  assert.equal(config.modules.agents.span, 2); // 列表模块不接受半宽
+  assert.equal(config.modules.agents.show, 'full');
+});
+
 test('Widget 配置：order 数组与显隐状态强制一致（含隐藏区）', () => {
   // input 改成 mini 沉底、quota5h 隐藏后，三个区域的 order 各自一致
   const config = normalizeWidgetConfig({
@@ -252,7 +240,7 @@ test('Widget 配置：order 数组与显隐状态强制一致（含隐藏区）'
   });
   assert.deepEqual(config.orderFull, ['cache', 'output', 'speed', 'usageChart']);
   assert.deepEqual(config.orderMini, ['quotaWeek', 'pet', 'input']);
-  assert.deepEqual(config.orderHidden, ['header', 'duration', 'quota5h']);
+  assert.deepEqual(config.orderHidden, ['header', 'duration', 'agents', 'external', 'quota5h']);
 
   // 存储顺序优先于默认顺序；未知 id 被剔除；缺漏的补在末尾
   const reordered = normalizeWidgetConfig({
@@ -283,57 +271,6 @@ test('Widget 配置：额度模块 pace 开关与消耗量统计范围', () => {
     normalizeWidgetConfig({ modules: { usageChart: { chartRange: 'curMonth' } } }).modules.usageChart.chartRange,
     'week'
   );
-});
-
-test('会话累计：逐 step 累加计数与样本，步数不设上限', () => {
-  // 生产路径传入的是 normalizeUsage 后的结构
-  const usage = { inputTokens: 100, outputTokens: 30, cacheReadTokens: 800, cacheCreationTokens: 100 };
-  let record = null;
-  for (let i = 0; i < 505; i++) {
-    record = accumulateSessionUsage(record, usage, i === 0 ? 55 : null, i + 1);
-  }
-  assert.equal(record.input, 505_000);
-  assert.equal(record.output, 15_150);
-  assert.equal(record.cacheRead, 404_000);
-  assert.equal(record.cacheCreation, 50_500);
-  assert.equal(record.maxSeq, 505);
-  assert.equal(record.steps.length, 505);
-  // 每条样本含缓存命中率；速度仅在有值时记录
-  assert.equal(record.steps[0].cachePct, 80);
-  assert.equal(record.steps.at(-1).speed, null);
-  const first = accumulateSessionUsage(null, usage, 55, 1);
-  assert.equal(first.steps[0].speed, 55);
-  assert.ok(Date.parse(record.updatedAt) > 0);
-});
-
-test('会话累计：轮次耗时追加，条数不设上限', () => {
-  let record = null;
-  for (let i = 0; i < 205; i++) {
-    record = appendTurnDuration(record, 1000 + i, i + 1);
-  }
-  assert.equal(record.durations.length, 205);
-  assert.equal(record.durations.at(-1), 1204);
-  assert.equal(record.lastDuration, 1204);
-  assert.equal(record.maxTurnSeq, 205);
-});
-
-test('会话剪枝：索引总量超预算按最旧逐出', () => {
-  const meta = (updatedAt, bytes) => ({ updatedAt, bytes });
-  const index = {
-    s_old: meta('2026-01-01T00:00:00.000Z', 4_000_000),
-    s_mid: meta('2026-06-01T00:00:00.000Z', 1_500_000),
-    s_new: meta('2026-08-01T00:00:00.000Z', 800_000)
-  };
-  // 总 6.3MB > 默认 6MB：逐出最旧的 s_old 后回落到 2.3MB
-  assert.deepEqual(sessionIdsToDrop(index), ['s_old']);
-  // 预算更紧时连续逐出；预算充足时不动作
-  assert.deepEqual(sessionIdsToDrop(index, 2_000_000), ['s_old', 's_mid']);
-  assert.deepEqual(sessionIdsToDrop(index, 10_000_000), []);
-  // sessionIndexMeta 字节数口径：键长 + 序列化长度
-  const record = { updatedAt: '2026-08-01T00:00:00.000Z', steps: [] };
-  const m = sessionIndexMeta(record, 'usageSession:abc');
-  assert.equal(m.updatedAt, '2026-08-01T00:00:00.000Z');
-  assert.equal(m.bytes, 'usageSession:abc'.length + JSON.stringify(record).length);
 });
 
 test('Widget 配置：v2→v3 迁移把宠物改为全宽，且只迁移一次', () => {

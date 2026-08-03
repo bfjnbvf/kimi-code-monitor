@@ -1,4 +1,4 @@
-importScripts('metrics.js');
+importScripts('metrics.js', 'cli-usage.js', 'providers.js');
 
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
 // 订阅页月额度（方案 A：复用设备 OAuth token，401 时静默降级，见 requestMonthlyStats）
@@ -11,18 +11,12 @@ const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
 const TOKEN_STORAGE_KEY = 'kimiOAuthToken';
 const DEVICE_ID_STORAGE_KEY = 'kimiDeviceId';
 const PENDING_AUTH_STORAGE_KEY = 'kimiPendingAuthorization';
-const USAGE_DAILY_STORAGE_KEY = KimiMetrics.USAGE_DAILY_STORAGE_KEY;
-const USAGE_SEQ_STORAGE_KEY = 'usageSeq';
-// 会话级用量（导出与面板归零恢复）：分键存储 usageSession:<id> + 索引 usageSessionsIndex
-// 旧版单表键，仅用于一次性迁移
-const USAGE_SESSIONS_STORAGE_KEY = 'usageSessions';
 // 月额度最后一次成功值（web token 断供时回退显示，不再横杠）
 const QUOTA_MONTHLY_STORAGE_KEY = 'quotaMonthlyLast';
 // 三档额度每日快照（导出用），复用额度拉取，零额外请求
 const QUOTA_SNAPSHOT_STORAGE_KEY = 'quotaSnapshots';
 const QUOTA_SNAPSHOT_INTERVAL_MS = 6 * 3_600_000;
 const QUOTA_SNAPSHOT_KEEP_DAYS = 90;
-const USAGE_SEQ_MAX_SESSIONS = 50;
 const QUOTA_ALERT_STORAGE_KEY = 'quotaAlertState';
 const REFRESH_MARGIN_SECONDS = 300;
 const DEVICE_POLL_ALARM = 'kimi-device-auth-poll';
@@ -85,11 +79,9 @@ async function evaluateQuotaAlerts(data) {
 }
 
 function extractQuotaPercentages(data) {
-  // 与面板同一份推导逻辑（metrics.js quotaPercentage），此处取整用于阈值预警
-  const percentageOf = (detail) => {
-    const pct = KimiMetrics.quotaPercentage(detail);
-    return pct != null ? Math.round(pct) : null;
-  };
+  // 与面板同一份推导逻辑（metrics.js quotaPercentage）。阈值判断使用原始值，
+  // 避免 79.5% / 94.5% 因四舍五入而提前触发 80% / 95% 预警。
+  const percentageOf = (detail) => KimiMetrics.quotaPercentage(detail);
   // duration 宽容解析为数字，API 返回字符串时不至于静默失效（与面板侧 toNumber 一致）
   const fiveHour = (data?.limits || []).find((entry) => Number(entry?.window?.duration) === 300);
   return { '5h': percentageOf(fiveHour?.detail), week: percentageOf(data?.usage) };
@@ -97,11 +89,12 @@ function extractQuotaPercentages(data) {
 
 function notifyQuotaThreshold(key, level, pct) {
   const label = key === '5h' ? '5 小时额度' : '本周额度';
+  const displayPct = KimiMetrics.formatPercentage(pct);
   chrome.notifications
     .create(`quota-${key}-${level}`, {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
-      title: `Kimi ${label}已用 ${pct}%`,
+      title: `Kimi ${label}已用 ${displayPct}%`,
       message:
         level >= 95
           ? '即将耗尽，点击打开控制台加油或调整用量'
@@ -209,10 +202,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'oauth.reset': resetAndStartOAuth,
     'auth.status': authStatus,
     'auth.clear': clearAuth,
-    'usage.record': enqueueRecordUsage,
-    'usage.turn': enqueueRecordTurn,
-    'session.usage.get': getSessionUsage,
-    'webtoken.report': reportWebToken
+    'cli.usage.status': getCliUsageStatus,
+    'cli.usage.refresh': refreshCliUsage,
+    'cli.usage.disconnect': disconnectCliUsage,
+    'cli.usage.open_settings': openCliUsageSettings,
+    'webtoken.report': reportWebToken,
+    'external.status': getExternalProvidersStatus,
+    'external.add': addExternalAccount,
+    'external.remove': removeExternalAccount
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -222,6 +219,334 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .catch((error) => sendResponse(failure(error)));
   return true;
 });
+
+/* ---------- 外部 provider 余额/额度（DeepSeek / Kimi API / 智谱 / MiniMax） ----------
+ * 账户模型：同一 provider 可添加多个 key。key 由 popup 在用户手势下保存并申请
+ * 对应域名权限（optional_host_permissions）；只存本机，不上传。
+ * key 加密落盘：AES-GCM 密钥以不可导出（non-extractable）形式存 IndexedDB，
+ * chrome.storage.local 里只有密文；直接拷走存储文件无法还原。 */
+const EXTERNAL_ACCOUNTS_STORAGE_KEY = 'externalAccounts';
+const EXTERNAL_LEGACY_KEYS_STORAGE_KEY = 'externalProviderKeys';
+const EXTERNAL_CACHE_TTL_MS = 60_000;
+const externalProviderCache = new Map();
+
+const VAULT_DB_NAME = 'kimi-code-monitor-vault';
+const VAULT_STORE = 'keys';
+const VAULT_KEY_ID = 'external-accounts-aes-gcm';
+
+function openVaultDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(VAULT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(VAULT_STORE)) db.createObjectStore(VAULT_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('无法打开密钥库'));
+  });
+}
+
+// 读取或首次生成 AES-GCM 密钥；extractable=false，JS 无法导出原始密钥材料
+async function getVaultKey() {
+  const db = await openVaultDb();
+  try {
+    const existing = await new Promise((resolve, reject) => {
+      const request = db.transaction(VAULT_STORE, 'readonly').objectStore(VAULT_STORE).get(VAULT_KEY_ID);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (existing) return existing;
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+      'encrypt',
+      'decrypt'
+    ]);
+    await new Promise((resolve, reject) => {
+      const request = db.transaction(VAULT_STORE, 'readwrite').objectStore(VAULT_STORE).put(key, VAULT_KEY_ID);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    return key;
+  } finally {
+    db.close();
+  }
+}
+
+function bytesToBase64(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+function base64ToBytes(text) {
+  return Uint8Array.from(atob(text), (ch) => ch.charCodeAt(0));
+}
+
+async function encryptSecret(plaintext) {
+  const key = await getVaultKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    new TextEncoder().encode(plaintext)
+  );
+  return { v: 1, iv: bytesToBase64(iv), data: bytesToBase64(data) };
+}
+
+async function decryptSecret(record) {
+  const key = await getVaultKey();
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToBytes(record.iv) },
+    key,
+    base64ToBytes(record.data)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+function sanitizeExternalKey(value) {
+  // header 只接受可见 ASCII；粘贴混入的全角/不可见字符直接剔除
+  return String(value || '').replace(/[^\x21-\x7E]/g, '');
+}
+
+async function readExternalAccounts() {
+  const stored = await chrome.storage.local.get([
+    EXTERNAL_ACCOUNTS_STORAGE_KEY,
+    EXTERNAL_LEGACY_KEYS_STORAGE_KEY
+  ]);
+  const accounts = Array.isArray(stored[EXTERNAL_ACCOUNTS_STORAGE_KEY])
+    ? [...stored[EXTERNAL_ACCOUNTS_STORAGE_KEY]]
+    : [];
+  let dirty = false;
+  // 旧版按 provider 单 key 存储，迁移为账户列表
+  const legacy = stored[EXTERNAL_LEGACY_KEYS_STORAGE_KEY] || {};
+  for (const providerId of Object.keys(legacy).filter((id) => legacy[id])) {
+    if (!accounts.some((a) => a.provider === providerId)) {
+      accounts.push({
+        id: `ext-${Date.now()}-${providerId}`,
+        provider: providerId,
+        key: sanitizeExternalKey(legacy[providerId])
+      });
+      dirty = true;
+    }
+  }
+  if (dirty) await chrome.storage.local.remove(EXTERNAL_LEGACY_KEYS_STORAGE_KEY);
+  // 明文 key 一律加密改写为密文（含旧版迁移过来的）
+  for (const account of accounts) {
+    if (account.key && !account.keyEnc) {
+      const plain = sanitizeExternalKey(account.key);
+      account.keyTail = plain.slice(-4);
+      account.keyEnc = await encryptSecret(plain);
+      delete account.key;
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
+  }
+  return accounts;
+}
+
+async function fetchExternalAccount(account) {
+  const provider = KimiExternalProviders.PROVIDERS[account.provider];
+  if (!provider) return { id: account.id, name: account.provider, error: '未知 provider' };
+  const base = {
+    id: account.id,
+    provider: account.provider,
+    name: provider.name,
+    keyTail: account.keyTail || ''
+  };
+  const hasPermission = await chrome.permissions.contains({ origins: [`${provider.origin}/*`] });
+  if (!hasPermission) return { ...base, error: '未授予域名权限' };
+  let key;
+  try {
+    key = await decryptSecret(account.keyEnc);
+  } catch (error) {
+    return { ...base, error: '本机密钥不可用，请删除后重新添加' };
+  }
+  try {
+    const result = await provider.fetch(key);
+    return { ...base, ...result, error: '' };
+  } catch (error) {
+    return { ...base, error: error?.message || String(error) };
+  }
+}
+
+async function getExternalProvidersStatus() {
+  const accounts = await readExternalAccounts();
+  const now = Date.now();
+  const results = [];
+  for (const account of accounts) {
+    const cached = externalProviderCache.get(account.id);
+    if (cached && now - cached.at < EXTERNAL_CACHE_TTL_MS) {
+      results.push(cached.value);
+      continue;
+    }
+    const value = await fetchExternalAccount(account);
+    externalProviderCache.set(account.id, { at: now, value });
+    results.push(value);
+  }
+  return { ok: true, providers: results };
+}
+
+async function addExternalAccount(payload) {
+  const providerId = payload?.provider;
+  const key = sanitizeExternalKey(payload?.key);
+  const provider = KimiExternalProviders.PROVIDERS[providerId];
+  if (!provider) return failure(new Error('未知 provider'));
+  if (!key) return failure(new Error('API Key 为空或含非法字符'));
+  const account = {
+    id: `ext-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    provider: providerId,
+    keyTail: key.slice(-4),
+    keyEnc: await encryptSecret(key)
+  };
+  const accounts = await readExternalAccounts();
+  accounts.push(account);
+  await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
+  // 保存后立即试拉一次，让 popup 能即时反馈 key 是否有效
+  const result = await fetchExternalAccount(account);
+  externalProviderCache.set(account.id, { at: Date.now(), value: result });
+  return { ok: true, provider: result };
+}
+
+async function removeExternalAccount(payload) {
+  const id = payload?.id;
+  const accounts = await readExternalAccounts();
+  const next = accounts.filter((account) => account.id !== id);
+  await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: next });
+  externalProviderCache.delete(id);
+  return { ok: true };
+}
+
+/* ---------- 本地 Kimi CLI 长期用量 ----------
+ * 目录选择必须在 popup/options 的用户点击中完成；后台只读取已存入 IndexedDB
+ * 的 sessions 目录句柄。CLI 文件是长期统计的权威来源，WebSocket 不与它相加。 */
+let cliUsageScanPromise = null;
+let cliUsageScanProgress = 0;
+const CLI_AUTO_REFRESH_COOLDOWN_MS = 15_000;
+
+async function getCliUsageStatus() {
+  const handle = await KimiCliUsage.getDirectoryHandle().catch(() => null);
+  const permission = await KimiCliUsage.permissionState(handle);
+  const stored = await chrome.storage.local.get(KimiCliUsage.STATE_STORAGE_KEY);
+  const state = stored[KimiCliUsage.STATE_STORAGE_KEY] || {};
+  return {
+    ok: true,
+    connected: Boolean(handle) && permission === 'granted',
+    permission,
+    directoryName: handle?.name || state.directoryName || '',
+    // service worker 若在扫描中途被回收，内存 promise 会消失；不能让旧的
+    // scanning 持久值把授权操作永久锁死。
+    scanning: cliUsageScanPromise != null,
+    progress: cliUsageScanPromise != null ? cliUsageScanProgress : null,
+    lastScannedAt: state.lastScannedAt || null,
+    fileCount: Number(state.fileCount) || 0,
+    error: state.error || ''
+  };
+}
+
+async function refreshCliUsage(options = {}) {
+  if (cliUsageScanPromise) return cliUsageScanPromise;
+  if (options?.force !== true) {
+    const stored = await chrome.storage.local.get(KimiCliUsage.STATE_STORAGE_KEY);
+    const lastScannedAt = Date.parse(stored[KimiCliUsage.STATE_STORAGE_KEY]?.lastScannedAt || '');
+    if (Number.isFinite(lastScannedAt) && Date.now() - lastScannedAt < CLI_AUTO_REFRESH_COOLDOWN_MS) {
+      return { ok: true, skipped: true, reason: 'cooldown' };
+    }
+  }
+  cliUsageScanProgress = 0;
+  cliUsageScanPromise = (async () => {
+    const handle = await KimiCliUsage.getDirectoryHandle().catch(() => null);
+    if (!handle) return failure(new Error('尚未连接本地 Kimi CLI'), 'CLI_NOT_CONNECTED');
+    const permission = await KimiCliUsage.permissionState(handle);
+    if (permission !== 'granted') {
+      return failure(new Error('需要重新授权本地 sessions 目录'), 'CLI_PERMISSION_REQUIRED');
+    }
+
+    const startedState = {
+      connected: true,
+      scanning: true,
+      directoryName: handle.name,
+      lastScannedAt: null,
+      error: ''
+    };
+    const before = await chrome.storage.local.get([
+      KimiCliUsage.INDEX_STORAGE_KEY,
+      KimiCliUsage.STATE_STORAGE_KEY
+    ]);
+    startedState.lastScannedAt = before[KimiCliUsage.STATE_STORAGE_KEY]?.lastScannedAt || null;
+    await chrome.storage.local.set({ [KimiCliUsage.STATE_STORAGE_KEY]: startedState });
+
+    try {
+      const result = await KimiCliUsage.scanSessionsDirectory(
+        handle,
+        before[KimiCliUsage.INDEX_STORAGE_KEY],
+        (progress) => {
+          cliUsageScanProgress = progress;
+        }
+      );
+      const state = {
+        connected: true,
+        scanning: false,
+        directoryName: handle.name,
+        lastScannedAt: result.scannedAt,
+        fileCount: result.fileCount,
+        changedFiles: result.changedFiles,
+        error: ''
+      };
+      await chrome.storage.local.set({
+        [KimiCliUsage.DAILY_STORAGE_KEY]: result.daily,
+        [KimiCliUsage.INDEX_STORAGE_KEY]: result.index,
+        [KimiCliUsage.SESSIONS_STORAGE_KEY]: result.sessions,
+        [KimiCliUsage.STATE_STORAGE_KEY]: state
+      });
+      broadcastCliUsageState('cli.usage.updated');
+      return { ok: true, ...state };
+    } catch (error) {
+      // 失败时保留前次成功扫描的 fileCount，避免 UI 显示归零造成数据清空的错觉
+      const previous = before[KimiCliUsage.STATE_STORAGE_KEY] || {};
+      const state = {
+        connected: true,
+        scanning: false,
+        directoryName: handle.name,
+        lastScannedAt: startedState.lastScannedAt,
+        fileCount: Number(previous.fileCount) || 0,
+        changedFiles: 0,
+        error: error?.message || String(error)
+      };
+      await chrome.storage.local.set({ [KimiCliUsage.STATE_STORAGE_KEY]: state });
+      return failure(error, 'CLI_SCAN_FAILED');
+    }
+  })().finally(() => {
+    cliUsageScanPromise = null;
+  });
+  return cliUsageScanPromise;
+}
+
+async function disconnectCliUsage() {
+  // 先等待进行中的扫描写完，避免断开后被扫描结果“复活”为已连接
+  if (cliUsageScanPromise) await cliUsageScanPromise.catch(() => {});
+  await KimiCliUsage.clearDirectoryHandle().catch(() => {});
+  await chrome.storage.local.remove([
+    KimiCliUsage.DAILY_STORAGE_KEY,
+    KimiCliUsage.INDEX_STORAGE_KEY,
+    KimiCliUsage.SESSIONS_STORAGE_KEY,
+    KimiCliUsage.STATE_STORAGE_KEY
+  ]);
+  broadcastCliUsageState('cli.usage.disconnected');
+  return { ok: true };
+}
+
+async function openCliUsageSettings() {
+  await chrome.runtime.openOptionsPage();
+  return { ok: true };
+}
+
+function broadcastCliUsageState(type) {
+  chrome.tabs
+    .query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] })
+    .then((tabs) => {
+      for (const tab of tabs) chrome.tabs.sendMessage(tab.id, { type }).catch(() => {});
+    })
+    .catch(() => {});
+}
 
 /* ---------- kimi.com 网页端 token 中转（月额度接口方案 B） ----------
  * web-token.js 在 www.kimi.com 页面读取网页端 access_token 上报至此缓存；
@@ -258,162 +583,6 @@ async function getStoredWebToken() {
     return null;
   }
 }
-
-/* ---------- 按天消耗量累计 ----------
- * content.js 在每个 turn.step.completed 事件上报一次该 step 的 usage。
- * 同一会话可能在多个标签页打开，这里按 sessionId 记录已累计的最大 seq 去重；
- * 桶结构见 metrics.js accumulateDailyUsage。 */
-let usageWriteQueue = Promise.resolve();
-
-// 读-改-写不是原子的，多个标签页同时上报会互相覆盖；串行化所有写入
-function enqueueRecordUsage(payload) {
-  usageWriteQueue = usageWriteQueue
-    .catch(() => {})
-    .then(() => recordUsage(payload));
-  return usageWriteQueue;
-}
-
-function enqueueRecordTurn(payload) {
-  usageWriteQueue = usageWriteQueue
-    .catch(() => {})
-    .then(() => recordTurnDuration(payload));
-  return usageWriteQueue;
-}
-
-async function recordUsage(payload) {
-  const sessionId = String(payload?.sessionId || '');
-  const seq = Number(payload?.seq);
-  const usage = payload?.usage;
-  const dayKey = String(payload?.dayKey || '');
-  if (
-    !sessionId ||
-    !Number.isFinite(seq) ||
-    !usage ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(dayKey)
-  ) {
-    return failure(new Error('用量记录参数无效'), 'INVALID_USAGE_RECORD');
-  }
-
-  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
-  const stored = await chrome.storage.local.get([
-    USAGE_DAILY_STORAGE_KEY,
-    USAGE_SEQ_STORAGE_KEY,
-    KimiMetrics.SESSION_INDEX_KEY,
-    sessionKey
-  ]);
-  const seqMap =
-    stored[USAGE_SEQ_STORAGE_KEY] && typeof stored[USAGE_SEQ_STORAGE_KEY] === 'object'
-      ? { ...stored[USAGE_SEQ_STORAGE_KEY] }
-      : {};
-  if ((seqMap[sessionId] ?? -1) >= seq) return { ok: true, deduped: true };
-
-  let daily = KimiMetrics.accumulateDailyUsage(
-    stored[USAGE_DAILY_STORAGE_KEY],
-    dayKey,
-    usage,
-    payload.subagent === true
-  );
-  daily = KimiMetrics.pruneDailyUsage(daily);
-  seqMap[sessionId] = seq;
-  // 会话键只增不减，超出上限时按插入顺序裁掉最旧的
-  const sessionKeys = Object.keys(seqMap);
-  if (sessionKeys.length > USAGE_SEQ_MAX_SESSIONS) {
-    for (const key of sessionKeys.slice(0, sessionKeys.length - USAGE_SEQ_MAX_SESSIONS)) {
-      delete seqMap[key];
-    }
-  }
-  // 会话级持久化（分键）：只读写当前会话的键，成本与存档总量解耦
-  const record = KimiMetrics.accumulateSessionUsage(stored[sessionKey], usage, Number(payload.speed), seq);
-  const index =
-    stored[KimiMetrics.SESSION_INDEX_KEY] && typeof stored[KimiMetrics.SESSION_INDEX_KEY] === 'object'
-      ? { ...stored[KimiMetrics.SESSION_INDEX_KEY] }
-      : {};
-  index[sessionId] = KimiMetrics.sessionIndexMeta(record, sessionKey);
-  await chrome.storage.local.set({
-    [USAGE_DAILY_STORAGE_KEY]: daily,
-    [USAGE_SEQ_STORAGE_KEY]: seqMap,
-    [KimiMetrics.SESSION_INDEX_KEY]: index,
-    [sessionKey]: record
-  });
-  // 剪枝必须 await 在写入队列内完成，不能与后续读写并发（否则已逐出条目被旧索引写回）
-  await pruneSessionStorage(index);
-  return { ok: true };
-}
-
-// 每轮结束记录耗时（面板「上轮耗时」与折线图）；按 maxTurnSeq 去重
-async function recordTurnDuration(payload) {
-  const sessionId = String(payload?.sessionId || '');
-  const durationMs = Number(payload?.durationMs);
-  const seq = Number(payload?.seq);
-  if (!sessionId || !Number.isFinite(durationMs) || durationMs <= 0) {
-    return failure(new Error('轮次耗时记录参数无效'), 'INVALID_TURN_RECORD');
-  }
-  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
-  const stored = await chrome.storage.local.get([sessionKey, KimiMetrics.SESSION_INDEX_KEY]);
-  const existing = stored[sessionKey];
-  if (Number.isFinite(seq) && (existing?.maxTurnSeq ?? -1) >= seq) {
-    return { ok: true, deduped: true };
-  }
-  const record = KimiMetrics.appendTurnDuration(existing, durationMs, seq);
-  const index =
-    stored[KimiMetrics.SESSION_INDEX_KEY] && typeof stored[KimiMetrics.SESSION_INDEX_KEY] === 'object'
-      ? { ...stored[KimiMetrics.SESSION_INDEX_KEY] }
-      : {};
-  index[sessionId] = KimiMetrics.sessionIndexMeta(record, sessionKey);
-  await chrome.storage.local.set({
-    [sessionKey]: record,
-    [KimiMetrics.SESSION_INDEX_KEY]: index
-  });
-  // 剪枝必须 await 在写入队列内完成
-  await pruneSessionStorage(index);
-  return { ok: true };
-}
-
-// 容量剪枝：索引总量超预算时按最旧会话逐出（只动索引与过期键，开销与活跃量无关）
-async function pruneSessionStorage(index) {
-  try {
-    const dropIds = KimiMetrics.sessionIdsToDrop(index);
-    if (!dropIds.length) return;
-    const next = { ...(index || {}) };
-    for (const id of dropIds) delete next[id];
-    await chrome.storage.local.set({ [KimiMetrics.SESSION_INDEX_KEY]: next });
-    await chrome.storage.local.remove(dropIds.map((id) => KimiMetrics.sessionStorageKey(id)));
-  } catch (error) {
-    // 剪枝失败不影响主链路
-  }
-}
-
-// 面板会话重建时恢复用：快照缺失 usage 时回退到本地持久化记录
-async function getSessionUsage(payload) {
-  const sessionId = String(payload?.sessionId || '');
-  if (!sessionId) return failure(new Error('缺少 sessionId'), 'INVALID_SESSION_QUERY');
-  const sessionKey = KimiMetrics.sessionStorageKey(sessionId);
-  const stored = await chrome.storage.local.get(sessionKey);
-  return { ok: true, record: stored[sessionKey] || null };
-}
-
-// 旧版单表 usageSessions 迁移为分键存储（一次性）：
-// 挂进写入队列，保证先于任何 usage.record 读写执行，避免启动窗口的索引覆盖竞态
-usageWriteQueue = usageWriteQueue.then(async () => {
-  try {
-    const stored = await chrome.storage.local.get(USAGE_SESSIONS_STORAGE_KEY);
-    const legacy = stored[USAGE_SESSIONS_STORAGE_KEY];
-    if (!legacy || typeof legacy !== 'object') return;
-    const writes = {};
-    const index = {};
-    for (const [id, record] of Object.entries(legacy)) {
-      const key = KimiMetrics.sessionStorageKey(id);
-      writes[key] = record;
-      index[id] = KimiMetrics.sessionIndexMeta(record, key);
-    }
-    if (Object.keys(writes).length) {
-      await chrome.storage.local.set({ ...writes, [KimiMetrics.SESSION_INDEX_KEY]: index });
-    }
-    await chrome.storage.local.remove(USAGE_SESSIONS_STORAGE_KEY);
-  } catch (error) {
-    console.warn('[Kimi Status] 会话存档迁移失败', error);
-  }
-});
 
 function failure(error, code = 'REQUEST_FAILED') {
   return { ok: false, code, error: error?.message || String(error) };
@@ -455,9 +624,12 @@ async function fetchQuotaFresh() {
   if (requestRevision !== authRevision) {
     return failure(new Error('授权状态已改变'), 'AUTH_REQUIRED');
   }
-  // 额度预警评估不阻塞响应
-  evaluateQuotaAlerts(data);
-  recordQuotaSnapshot(data);
+  // MV3 service worker 在消息响应结束后可能立即休眠；必须把预警状态与每日快照
+  // 纳入当前消息任务生命周期，否则这两次 storage 写入会偶发丢失。
+  await Promise.allSettled([
+    evaluateQuotaAlerts(data),
+    recordQuotaSnapshot(data)
+  ]);
   const result = { ok: true, data };
   quotaCache = { fetchedAt: Date.now(), response: result };
   return result;
@@ -500,7 +672,7 @@ async function recordQuotaSnapshot(data) {
       month: Number.isFinite(monthRatio) ? Math.round(monthRatio * 1000) / 10 : null,
       at: Date.now()
     };
-    // 与 usageDaily 同口径保留 90 天
+    // 与 CLI 长期用量同口径保留 90 天
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - (QUOTA_SNAPSHOT_KEEP_DAYS - 1));
     const cutoffKey = KimiMetrics.usageDayKey(cutoff);
@@ -670,9 +842,9 @@ async function authStatus() {
   if (pendingAuthorization && Date.now() >= pendingAuthorization.expiresAt) {
     await clearPendingAuthorization({ closeTab: true });
   }
-  const stored = await chrome.storage.local.get(TOKEN_STORAGE_KEY);
-  const token = stored[TOKEN_STORAGE_KEY];
-  if (!isTokenShapeValid(token)) {
+  // 与额度请求走同一有效性检查：必要时刷新过期 token；刷新失败则不能继续显示“已授权”。
+  const token = await getValidToken();
+  if (!token) {
     return {
       ok: true,
       authorized: false,

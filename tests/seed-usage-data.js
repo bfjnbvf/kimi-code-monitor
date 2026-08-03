@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 生成多日的 usageDaily 测试数据，输出可直接粘贴到浏览器控制台执行的代码。
+ * 生成多日的 CLI 用量缓存测试数据，输出可直接粘贴到浏览器控制台执行的代码。
  *
  * 用法：
  *   node tests/seed-usage-data.js [天数]        # 默认 45 天
@@ -35,14 +35,8 @@ for (let i = days - 1; i >= 0; i--) {
   usageDaily[key] = {
     input,
     output,
-    cacheRead,
-    // 约三成消耗来自子代理，便于测试堆叠双色柱状图
-    sub: {
-      input: Math.round(input * 0.3),
-      output: Math.round(output * 0.3),
-      cacheRead: Math.round(cacheRead * 0.3)
-    }
+    cacheRead
   };
 }
 
-console.log(`chrome.storage.local.set({ usageDaily: ${JSON.stringify(usageDaily, null, 2)} });`);
+console.log(`chrome.storage.local.set({ kimiCliUsageDaily: ${JSON.stringify(usageDaily, null, 2)} });`);

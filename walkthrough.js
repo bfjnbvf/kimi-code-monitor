@@ -134,5 +134,5 @@
     state = null;
   }
 
-  window.KsbWalkthrough = { start };
+  window.KsbWalkthrough = { start, stop: cleanup };
 })();

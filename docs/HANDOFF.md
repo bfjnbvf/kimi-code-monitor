@@ -4,13 +4,13 @@
 
 ## 一、项目是什么
 
-Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi Code Web 页面侧栏注入一个**模块化状态面板**：额度/token/缓存/速度/消耗量统计 + Kimi 官方小蓝球宠物（Rive 动画）。当前版本 **2.0.0**（打包文件 `kimi-code-monitor-v2.0.0.zip` 已生成）。GitHub 最新发布版仍是 v1.1.1，尚未发布 2.0.0。
+Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi Code Web 页面侧栏注入一个**模块化状态面板**：额度/token/缓存/速度/消耗量统计 + Kimi 官方小蓝球宠物（Rive 动画）。当前本地工作版本 **2.1.0**，尚未生成2.1.0发布包或上传 GitHub。
 
 ## 二、文件夹里有什么
 
 | 文件/目录 | 说明 |
 |---|---|
-| `manifest.json` | MV3 清单（v2.0.0）。content_scripts 注入 `rive/rive.js` + `metrics.js` + `content.js` + `content.css` 到 `127.0.0.1/localhost` |
+| `manifest.json` | MV3 清单（v2.1.0）。content_scripts 注入 `rive/rive.js` + `metrics.js` + `cli-usage.js` + `content.js` + `content.css` 到 `127.0.0.1/localhost` |
 | `content.js`（约 2000 行） | 面板全部逻辑：模块系统（三区域/拖拽/≡菜单/编辑模式）、Mini、额度/匀速参照线、消耗量柱图、会话折线图、宠物（Rive 驱动/状态动画/时钟计时/点击跳转/右侧数据选项）、新手引导卡片、侧栏改造开关、状态机（空闲/思考/执行/子代理/限流/重连/未连接/未授权） |
 | `content.css` | 面板样式 + 宿主页面微调（隐藏侧栏 logo、footer 分隔线，受 `html.ksb-sidebar-tidy` 开关控制） |
 | `background.js` | 设备 OAuth、额度 API（含 30s 缓存 + force 绕过）、按天/按会话分键持久化（写入队列串行化）、额度预警通知 |
@@ -20,7 +20,7 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 | `rive/` | Rive canvas-lite 运行时（rive.js + rive.wasm）+ 吉祥物 .riv 资产 ×2 |
 | `tests/` | `node tests/metrics.test.js`（23 个用例）、`tests/theme.test.js` |
 | `build.sh` | 打包 zip（19 个文件，不含 docs/tests） |
-| `CHANGELOG.md` | v1.1.1 → v2.0.0 完整更新说明（已按"客观详实"口径重写） |
+| `CHANGELOG.md` | v2.1.0 相比 v2.0.0 的完整更新说明，并保留此前版本历史 |
 | `README.md` | 新文案已定稿（卖点前置、模块化+宠物+统计、安装/数据/结构） |
 | `docs/` | `screenshots/`（六张成品图 + popup.png）、`screenshot-studio.html`（截图母版，假数据）、`head-image.html`（头图母版）、`window.png`（头图底图）、`guide-variants.html`（新手引导两版样式候选） |
 | `docs/HANDOFF.md` | 本文档 |
@@ -34,7 +34,7 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 - 归零修复（快照缺失回退本地记录）、隐藏暂停拉取、force 刷新
 - 代码审查 15 项修复（回声去重、剪枝入队、pointercancel、hello 看门狗等）
 - 侧栏改造（去 logo + 新建对话对齐伸缩按钮 + footer 线隐藏，html class 开关）
-- CHANGELOG v2.0.0、README 新文案、全部配图（hero 完整+Mini 对比图、pet、edit-mode、quota、modules、头图 2560×1280）
+- CHANGELOG v2.1.0、README 新文案、全部配图（hero 完整+Mini 对比图、pet、edit-mode、quota、modules、头图 2560×1280）
 
 ## 四、未完成事项（按此顺序做）
 
@@ -56,8 +56,8 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 
 ### 3. 打包上传 GitHub（最后）
 
-- `bash build.sh` 已生成 `kimi-code-monitor-v2.0.0.zip`（19 文件）
-- 需要：git 提交全部改动（**注意：不要代用户 commit/push，需用户确认后再操作**）、打 tag v2.0.0、GitHub Release 附 CHANGELOG 的 v2.0.0 段、确认 README 在线渲染效果
+- v2.1.0 发布包尚未生成
+- 需要：用户确认后再运行 `bash build.sh`、提交改动、打 tag v2.1.0，并以 CHANGELOG 的 v2.1.0 段创建 GitHub Release
 
 ## 五、用户偏好与雷区（重要）
 
