@@ -1016,7 +1016,9 @@
 
   function updateProgress(prefix, percentage) {
     const clamped = Math.max(0, Math.min(100, percentage));
-    const displayPercentage = formatPercentage(clamped);
+    // 额度 API 的 limit 恒为 100、used 是整数百分比（实测响应），
+    // 没有更细的精度，整数显示即可（一位小数只会恒为 .0）
+    const displayPercentage = formatPercentage(clamped, 0);
     lastQuotaPct[prefix] = clamped;
     const target = els?.quota[prefix];
     if (!target) return;
