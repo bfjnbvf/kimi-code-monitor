@@ -149,6 +149,8 @@
   // 子代理显示顺序：按本会话首次出现排序；模型名来自 CLI 扫描的按代理汇总
   let sessionAgentOrder = ['main'];
   let agentTopModels = {};
+  // CLI 配置里的次级模型真名（config.toml [secondary_model]，需授权 .kimi-code 根目录）
+  let secondaryModelName = '';
   // 正在工作中的子代理（subagent.* 生命周期事件维护）
   const activeSubagents = new Set();
 
@@ -167,9 +169,10 @@
   }
 
   function agentModelLabel(agentId) {
-    const model = agentTopModels[agentId];
+    let model = agentTopModels[agentId];
+    // 子代理的 usage 记录只有 __secondary__ 占位符：用 CLI 配置里的真实次级模型名
+    if (model === '__secondary__') model = secondaryModelName || '';
     if (!model) return '';
-    if (model === '__secondary__') return '次级模型';
     // 去掉 kimi-code/ 与 kimi- 前缀，窄面板里尽量多保留可辨识部分
     return String(model).replace(/^kimi-code\//, '').replace(/^kimi-/, '');
   }
@@ -1242,11 +1245,16 @@
     try {
       const status = await chrome.runtime.sendMessage({ type: 'cli.usage.status' });
       cliUsageConnected = status?.ok === true && status.connected === true;
-      const stored = await chrome.storage.local.get(KimiCliUsage.DAILY_STORAGE_KEY);
+      const stored = await chrome.storage.local.get([
+        KimiCliUsage.DAILY_STORAGE_KEY,
+        KimiCliUsage.SECONDARY_MODEL_STORAGE_KEY
+      ]);
+      secondaryModelName = stored[KimiCliUsage.SECONDARY_MODEL_STORAGE_KEY] || '';
       usageDailyCache = cliUsageConnected
         ? stored[KimiCliUsage.DAILY_STORAGE_KEY] || {}
         : {};
       renderChart();
+      renderAgents();
       renderPetStats();
       const lastScannedAt = Date.parse(status?.lastScannedAt || '');
       if (
@@ -1335,34 +1343,68 @@
     }
   }
 
-  // 子代理总览模块：无分隔线的表格——表头 入/出/命，每行一个代理
-  // （主代理淡蓝徽标置顶，子代理淡绿徽标 + 序号），模型列自适应截断
+  // 子代理总览模块：主代理一行置顶；子代理按模型分组（同模型合并为一行，
+  // 多实例标注 ×N）。徽标常态灰色，对应代理工作时点亮（主淡蓝、子淡绿）
   function renderAgents() {
     if (!els?.agentsList) return;
     const hiddenAgents = widgetConfig.modules.agents?.hiddenAgents || [];
     const mainWorking = petTurnActive || PET_ANSWER_STATUSES.includes(metrics.agentStatus);
-    const rows = [];
+
+    // 子代理按模型名分组汇总
+    const groups = new Map();
     for (const agentId of sessionAgentOrder) {
+      if (agentId === 'main' || hiddenAgents.includes(agentId)) continue;
       const totals = agentTotals[agentId];
-      if (!totals || hiddenAgents.includes(agentId)) continue;
-      const isMain = agentId === 'main';
+      if (!totals) continue;
+      const key = agentModelLabel(agentId);
+      let group = groups.get(key);
+      if (!group) {
+        group = { ...emptyAgentMetric(), working: false, count: 0 };
+        groups.set(key, group);
+      }
+      group.inputTokens += totals.inputTokens;
+      group.outputTokens += totals.outputTokens;
+      group.cacheReadTokens += totals.cacheReadTokens;
+      group.cacheCreationTokens += totals.cacheCreationTokens;
+      group.working = group.working || activeSubagents.has(agentId);
+      group.count += 1;
+    }
+
+    const rows = [];
+    const pushRow = ({ isMain, totals, working, name, title }) => {
       const hasUsage = totalInputTokens(totals) > 0 || totals.outputTokens > 0;
-      const working = isMain ? mainWorking : activeSubagents.has(agentId);
-      // 无用量的子代理只在「工作中」时占位；主代理始终显示
-      if (!hasUsage && !working && !isMain) continue;
+      // 无用量的子代理组只在「工作中」时占位；主代理始终显示
+      if (!hasUsage && !working && !isMain) return;
       const hit = cacheReadPercentage(totals);
-      const model = agentModelLabel(agentId);
       const badge = isMain
         ? `<span class="ksb-agent-badge main${working ? ' on' : ''}">主</span>`
         : `<span class="ksb-agent-badge sub${working ? ' on' : ''}">子</span>`;
       rows.push(`
-        <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${agentDisplayName(agentId)}${model ? ` · ${model}` : ''}">
+        <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${title}">
           <span class="ksb-agent-id">${badge}</span>
-          <span class="ksb-agent-model">${model}</span>
+          <span class="ksb-agent-model">${name}</span>
           <span class="ksb-agent-metric m-in">${formatTokenCount(totalInputTokens(totals))}</span>
           <span class="ksb-agent-metric m-out">${formatTokenCount(totals.outputTokens)}</span>
           <span class="ksb-agent-metric m-hit">${hit != null ? `${formatPercentage(hit)}%` : '--'}</span>
         </div>`);
+    };
+
+    const mainModel = agentModelLabel('main');
+    pushRow({
+      isMain: true,
+      totals: agentTotals.main || emptyAgentMetric(),
+      working: mainWorking,
+      name: mainModel,
+      title: `主代理${mainModel ? ` · ${mainModel}` : ''}`
+    });
+    for (const [model, group] of groups) {
+      pushRow({
+        isMain: false,
+        totals: group,
+        working: group.working,
+        name: `${model}${group.count > 1 ? ` ×${group.count}` : ''}`,
+        title: `子代理${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
+      });
     }
     els.agentsList.innerHTML = rows.join('');
   }

@@ -251,11 +251,11 @@
   function setCliPathHelp() {
     const platform = String(navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
     if (platform.includes('mac')) {
-      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code/sessions</code><br>目录选择器中按 <b>⌘⇧.</b> 显示隐藏目录。';
+      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>⌘⇧.</b> 显示隐藏目录。';
     } else if (platform.includes('win')) {
-      cliPathHelp.innerHTML = '建议路径：<code>%USERPROFILE%\\.kimi-code\\sessions</code><br>可按 <b>Ctrl+L</b> 后粘贴路径并回车。';
+      cliPathHelp.innerHTML = '建议路径：<code>%USERPROFILE%\\.kimi-code</code><br>可按 <b>Ctrl+L</b> 后粘贴路径并回车。';
     } else {
-      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code/sessions</code><br>目录选择器中按 <b>Ctrl+H</b> 显示隐藏目录。';
+      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>Ctrl+H</b> 显示隐藏目录。';
     }
   }
 
@@ -337,9 +337,11 @@
         }
         // 未获权限则继续走目录选择器
       }
-      cliConnectBtn.textContent = '请选择 sessions 文件夹…';
+      cliConnectBtn.textContent = '请选择 .kimi-code 文件夹…';
       const handle = await showDirectoryPicker({ id: 'kimi-cli-sessions', mode: 'read' });
-      if (handle.name !== 'sessions') throw new Error('目录选择错误：请选择 .kimi-code 里面的 sessions 文件夹。');
+      if (handle.name !== '.kimi-code') {
+        throw new Error('目录选择错误：请选择 .kimi-code 文件夹。');
+      }
       await KimiCliUsage.saveDirectoryHandle(handle);
       setCliUi(true, { scanning: true });
       const response = await send('cli.usage.refresh', { force: true });

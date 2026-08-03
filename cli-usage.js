@@ -15,6 +15,7 @@
   const INDEX_STORAGE_KEY = 'kimiCliUsageIndex';
   const STATE_STORAGE_KEY = 'kimiCliUsageState';
   const SESSIONS_STORAGE_KEY = 'kimiCliUsageSessions';
+  const SECONDARY_MODEL_STORAGE_KEY = 'kimiCliSecondaryModel';
   // 按会话汇总只保留最近有活动的若干条，避免长期无限增长
   const SESSIONS_SUMMARY_LIMIT = 200;
   // v4：meta 新增 modelAlias（config.update 里的真实模型名），旧缓存没有，必须全量重扫一次
@@ -315,12 +316,37 @@
     return sessions;
   }
 
+  // 授权目录兼容两种：~/.kimi-code（可顺带读 config.toml 解析次级模型真名）
+  // 或其 sessions 子目录（旧版授权方式）
+  async function resolveSessionsHandle(handle) {
+    if (handle?.name === '.kimi-code') {
+      return handle.getDirectoryHandle('sessions');
+    }
+    return handle;
+  }
+
+  // 从 ~/.kimi-code/config.toml 提取 [secondary_model] 的 model 字段；
+  // 仅在授权了 .kimi-code 根目录时可用，其余情况返回空串
+  async function readSecondaryModelAlias(handle) {
+    if (handle?.name !== '.kimi-code') return '';
+    try {
+      const fileHandle = await handle.getFileHandle('config.toml');
+      const text = await (await fileHandle.getFile()).text();
+      const match = text.match(/\[secondary_model\][\s\S]*?model\s*=\s*"([^"]+)"/);
+      return match ? match[1] : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
   async function scanSessionsDirectory(sessionsHandle, previousIndex, onProgress) {
+    const rootHandle = await resolveSessionsHandle(sessionsHandle);
+    const secondaryModel = await readSecondaryModelAlias(sessionsHandle);
     const previousFiles =
       previousIndex?.version === INDEX_VERSION && previousIndex.files
         ? previousIndex.files
         : {};
-    const wireFiles = await listWireFiles(sessionsHandle);
+    const wireFiles = await listWireFiles(rootHandle);
     const preparedFiles = [];
     let totalBytes = 0;
     for (const entry of wireFiles) {
@@ -367,6 +393,7 @@
       index,
       daily: combineFileDaily(files),
       sessions: summarizeSessions(files),
+      secondaryModel,
       scannedAt,
       fileCount: wireFiles.length,
       changedFiles
@@ -378,6 +405,7 @@
     INDEX_STORAGE_KEY,
     STATE_STORAGE_KEY,
     SESSIONS_STORAGE_KEY,
+    SECONDARY_MODEL_STORAGE_KEY,
     clearDirectoryHandle,
     combineFileDaily,
     getDirectoryHandle,

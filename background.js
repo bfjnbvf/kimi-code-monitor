@@ -495,6 +495,10 @@ async function refreshCliUsage(options = {}) {
         [KimiCliUsage.DAILY_STORAGE_KEY]: result.daily,
         [KimiCliUsage.INDEX_STORAGE_KEY]: result.index,
         [KimiCliUsage.SESSIONS_STORAGE_KEY]: result.sessions,
+        // 授权了 .kimi-code 根目录时才有：次级模型（子代理）的真实模型名
+        ...(result.secondaryModel
+          ? { [KimiCliUsage.SECONDARY_MODEL_STORAGE_KEY]: result.secondaryModel }
+          : {}),
         [KimiCliUsage.STATE_STORAGE_KEY]: state
       });
       broadcastCliUsageState('cli.usage.updated');

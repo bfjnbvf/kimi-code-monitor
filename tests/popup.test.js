@@ -11,7 +11,7 @@ test('本地记录授权提供路径提示、选错目录报错及重新授权�
   assert.match(html, /id="cli-error" role="alert"/);
   assert.match(html, /id="cli-reauth-btn">重新授权/);
   assert.match(html, /id="cli-disconnect-btn">取消/);
-  assert.match(source, /handle\.name !== 'sessions'/);
+  assert.match(source, /handle\.name !== '\.kimi-code'/);
   assert.match(source, /目录选择错误/);
   assert.match(source, /⌘⇧\./);
   assert.match(source, /%USERPROFILE%/);
