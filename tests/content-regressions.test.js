@@ -185,7 +185,9 @@ test('Stars 只由同一会话的真实 turn 生命周期触发', () => {
   assert.doesNotMatch(source, /PET_ANSWER_STATUSES\.includes\(previous\) && display === 'idle'/);
   assert.match(source, /petPlayMotion\(PET_DONE_ANIM, \{ returnToBase: true \}\)/);
   assert.match(source, /if \(display === petStatus\) \{[\s\S]*?petApplyAppearance\(\);[\s\S]*?return;/);
-  assert.doesNotMatch(source, /nostars/);
+  // 星星粒子由 nostars 退场链负责收回（自然结束与被打断两条路径都覆盖）
+  assert.match(source, /PET_DONE_OUTRO_ANIM = 'nostars'/);
+  assert.match(source, /petStarsVisible && petMotion !== PET_DONE_OUTRO_ANIM/);
 });
 
 test('销毁内容脚本时通过 walkthrough cleanup 移除引导及监听', () => {

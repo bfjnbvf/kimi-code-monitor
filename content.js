@@ -1519,6 +1519,8 @@
   const PET_IDLE_ANIM = 'paopao';
   const PET_LOADING_ANIM = 'loading';
   const PET_DONE_ANIM = 'stars';
+  // stars 只负责让星星出现，粒子退场由 nostars 负责（v2.0 的 stars→nostars 链）
+  const PET_DONE_OUTRO_ANIM = 'nostars';
   const PET_CLICK_ANIMS = [
     'yaoyiyao', 'angryface', 'wink', 'angryeye',
     'hover', 'hover100', 'wink_stop', 'paopao_stop'
@@ -1537,6 +1539,7 @@
   let petClickBoundCanvas = null;
   let petStatus = 'idle';
   let petMotion = '';
+  let petStarsVisible = false;
   let petSwitchingMotion = false;
   let petReturnToBase = false;
   let petIdleAmbientTimer = null;
@@ -1636,6 +1639,12 @@
   }
 
   function petPlayBase() {
+    // 星星粒子还挂着：先播 nostars 让它们退场，再回到基底。
+    // 覆盖 stars 自然结束与 stars 被打断两条路径（被打断时粒子停留中途帧）
+    if (petStarsVisible && petMotion !== PET_DONE_OUTRO_ANIM) {
+      petPlayMotion(PET_DONE_OUTRO_ANIM, { returnToBase: true });
+      return;
+    }
     const desired = petBaseMotion();
     if (petMotion === desired && petRive?.playingAnimationNames?.includes(desired)) return;
     petPlayMotion(desired);
@@ -1682,6 +1691,7 @@
   // Stars 只由真实 turn 生命周期触发，播放完回到当前基底动画。
   function petPlayDoneEffect() {
     if (!petRive || petMotion === PET_DONE_ANIM) return;
+    petStarsVisible = true;
     petPlayMotion(PET_DONE_ANIM, { returnToBase: true });
   }
 
@@ -1699,6 +1709,7 @@
       petRive = null;
       petCanvasEl = null;
       petMotion = '';
+      petStarsVisible = false;
       petSwitchingMotion = false;
       petReturnToBase = false;
       petClearIdleAmbient();
@@ -1728,6 +1739,8 @@
             petPlayMotion(PET_LOADING_ANIM);
             return;
           }
+          // nostars 自然播完才认定粒子已退场（中途被打断则保留标记，下次回基底时补播）
+          if (petMotion === PET_DONE_OUTRO_ANIM) petStarsVisible = false;
           if (petReturnToBase) {
             petReturnToBase = false;
             petPlayBase();
@@ -2839,6 +2852,7 @@
       petRive = null;
       petCanvasEl = null;
       petMotion = '';
+      petStarsVisible = false;
       petSwitchingMotion = false;
       petReturnToBase = false;
     }
