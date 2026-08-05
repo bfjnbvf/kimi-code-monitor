@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "content-security-policy", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "requestDomains": ["127.0.0.1", "localhost"],
+      "resourceTypes": ["main_frame", "sub_frame"]
+    }
+  }
+]

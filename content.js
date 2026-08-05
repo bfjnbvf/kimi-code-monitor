@@ -170,8 +170,12 @@
 
   function agentModelLabel(agentId) {
     let model = agentTopModels[agentId];
-    // 子代理的 usage 记录只有 __secondary__ 占位符：用 CLI 配置里的真实次级模型名
-    if (model === '__secondary__') model = secondaryModelName || '';
+    // 子代理的 usage 记录只有 __secondary__ 占位符；且 kimi 目前只支持一种子代理模型——
+    // 模型缺失（种子未覆盖、实时事件不带模型）时同样回退到 CLI 配置的次级模型名，
+    // 保证同会话子代理 label 一致，分组渲染合并为一行 ×N
+    if (model === '__secondary__' || (agentId !== 'main' && !model)) {
+      model = secondaryModelName || '';
+    }
     if (!model) return '';
     // 去掉 kimi-code/ 与 kimi- 前缀，窄面板里尽量多保留可辨识部分
     return String(model).replace(/^kimi-code\//, '').replace(/^kimi-/, '');
@@ -718,7 +722,8 @@
       ? `<div class="ksb-menu-label">统计范围</div>${menuOpts('chartRange', [['week', '7d'], ['month', '30d']], mod.chartRange)}`
       : '';
     const paceRow = id.startsWith('quota')
-      ? `<div class="ksb-menu-label">匀速参照线</div>${menuOpts('pace', [[true, '显示'], [false, '隐藏']], mod.pace)}`
+      ? `<div class="ksb-menu-label">匀速参照线</div>${menuOpts('pace', [[true, '显示'], [false, '隐藏']], mod.pace)}
+        <div class="ksb-menu-label">重置时间显示</div>${menuOpts('resetFormat', [['countdown', '倒计时'], ['absolute', '具体时间']], mod.resetFormat || 'countdown')}`
       : '';
     const statRow = id === 'pet'
       ? `<div class="ksb-menu-label">右侧数据</div>${menuOpts('stat', [['daily', '24h消耗'], ['input', '输入'], ['output', '输出'], ['cache', '缓存命中'], ['speed', '速度'], ['balance', '余额']], mod.stat)}
@@ -799,6 +804,8 @@
       next.modules[id].span = Number(value) === 2 ? 2 : 1;
     } else if (kind === 'pace') {
       next.modules[id].pace = value === 'true';
+    } else if (kind === 'resetFormat') {
+      next.modules[id].resetFormat = value === 'absolute' ? 'absolute' : 'countdown';
     } else if (kind === 'stat') {
       next.modules[id].stat = value;
     } else if (kind === 'ballLink') {
@@ -1061,7 +1068,7 @@
     if (!els) return;
     if (els.speedVal) {
       const speed = currentSpeed();
-      els.speedVal.textContent = speed > 0 ? `${speed} tok/s` : '--';
+      els.speedVal.textContent = speed > 0 ? `${speed}tok/s` : '--';
     }
     if (els.durationSub && els.durationVal) {
       if (metrics.lastDuration > 0) {
@@ -1139,7 +1146,7 @@
     input: { values: () => sessionSamples.map((s) => s.input), fmt: (v) => formatTokenCount(v), marks: () => sessionSamples.map((s) => s.turnEnd === true) },
     output: { values: () => sessionSamples.map((s) => s.output), fmt: (v) => formatTokenCount(v), marks: () => sessionSamples.map((s) => s.turnEnd === true) },
     cache: { values: () => sessionSamples.map((s) => s.cachePct), fmt: (v) => `${formatPercentage(v)}%`, marks: () => sessionSamples.map((s) => s.turnEnd === true) },
-    speed: { values: () => sessionSamples.map((s) => s.speed), fmt: (v) => `${v} tok/s`, marks: () => sessionSamples.map((s) => s.turnEnd === true) },
+    speed: { values: () => sessionSamples.map((s) => s.speed), fmt: (v) => `${v}tok/s`, marks: () => sessionSamples.map((s) => s.turnEnd === true) },
     duration: { values: () => turnDurations, fmt: (v) => fmtDuration(v) }
   };
 
@@ -1404,7 +1411,8 @@
         isMain: false,
         totals: group,
         working: group.working,
-        name: `${model}${group.count > 1 ? ` ×${group.count}` : ''}`,
+        // 模型名缺失（未授权 CLI 读不到次级模型名）时兜底为「子代理」，避免裸 ×N
+        name: `${model || '子代理'}${group.count > 1 ? ` ×${group.count}` : ''}`,
         title: `子代理${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
       });
     }
@@ -1535,7 +1543,7 @@
       label: '速度',
       value: () => {
         const speed = currentSpeed();
-        return speed > 0 ? `${speed} tok/s` : '--';
+        return speed > 0 ? `${speed}tok/s` : '--';
       }
     },
     balance: {
@@ -1899,6 +1907,22 @@
     return `${text}（${abs}）`;
   }
 
+  // 具体时间格式（≡ 菜单可选）：当天只显示 HH:mm；跨天显示「周三17:45」，
+  // 窄宽度降级为「周三」，更窄由 CSS 整体隐藏（container ≤155px）
+  const RESET_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  function fmtResetAbsolute(resetMs, { short = false } = {}) {
+    const date = new Date(resetMs);
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const sameDay = date.getFullYear() === now.getFullYear()
+      && date.getMonth() === now.getMonth()
+      && date.getDate() === now.getDate();
+    if (sameDay) return time;
+    const weekday = RESET_WEEKDAYS[date.getDay()];
+    return short ? weekday : `${weekday}${time}`;
+  }
+
   function updateResetText(prefix, resetMs) {
     quotaResetAt[prefix] = resetMs;
     updatePaceTick(prefix);
@@ -1906,6 +1930,10 @@
     if (!element) return;
     const full = element.querySelector('.ksb-reset-full');
     const short = element.querySelector('.ksb-reset-short');
+    // ≡ 菜单「重置时间显示」：倒计时（默认）或具体时间；tooltip 始终保留完整倒计时。
+    // 具体时间更宽，挂 ksb-abs 让 CSS 降级断点提前（见 content.css 命名容器 ksb-quota）
+    const useAbsolute = widgetConfig.modules[PACE_MODULE_IDS[prefix]]?.resetFormat === 'absolute';
+    element.classList.toggle('ksb-abs', useAbsolute);
     if (!Number.isFinite(resetMs)) {
       if (full) full.textContent = '';
       if (short) short.textContent = '';
@@ -1913,9 +1941,16 @@
       return;
     }
     const diff = resetMs - Date.now();
-    const text = diff > 0 ? fmtCountdown(diff) : '即将重置';
-    if (full) full.textContent = text;
-    if (short) short.textContent = diff > 0 ? fmtCountdownShort(diff) : '即将重置';
+    if (full) {
+      full.textContent = diff > 0
+        ? (useAbsolute ? fmtResetAbsolute(resetMs) : fmtCountdown(diff))
+        : '即将重置';
+    }
+    if (short) {
+      short.textContent = diff > 0
+        ? (useAbsolute ? fmtResetAbsolute(resetMs, { short: true }) : fmtCountdownShort(diff))
+        : '即将重置';
+    }
     setResetTooltip(prefix, fmtCountdownLong(Math.max(diff, 0), resetMs));
     // 到点重置后额度必然变化，提前补一次拉取
     if (diff <= 0 && !resetRefetchTimer) {

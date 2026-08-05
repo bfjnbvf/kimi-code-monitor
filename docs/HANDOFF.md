@@ -4,13 +4,13 @@
 
 ## 一、项目是什么
 
-Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi Code Web 页面侧栏注入一个**模块化状态面板**：额度/token/缓存/速度/消耗量统计 + Kimi 官方小蓝球宠物（Rive 动画）。当前本地工作版本 **2.1.0**，尚未生成2.1.0发布包或上传 GitHub。
+Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi Code Web 页面侧栏注入一个**模块化状态面板**：额度/token/缓存/速度/消耗量统计 + Kimi 官方小蓝球宠物（Rive 动画）。当前版本 **2.1.1**。
 
 ## 二、文件夹里有什么
 
 | 文件/目录 | 说明 |
 |---|---|
-| `manifest.json` | MV3 清单（v2.1.0）。content_scripts 注入 `rive/rive.js` + `metrics.js` + `cli-usage.js` + `content.js` + `content.css` 到 `127.0.0.1/localhost` |
+| `manifest.json` | MV3 清单（v2.1.1）。content_scripts 注入 `rive/rive.js` + `metrics.js` + `cli-usage.js` + `content.js` + `content.css` 到 `127.0.0.1/localhost` |
 | `content.js`（约 2000 行） | 面板全部逻辑：模块系统（三区域/拖拽/≡菜单/编辑模式）、Mini、额度/匀速参照线、消耗量柱图、会话折线图、宠物（Rive 驱动/状态动画/时钟计时/点击跳转/右侧数据选项）、新手引导卡片、侧栏改造开关、状态机（空闲/思考/执行/子代理/限流/重连/未连接/未授权） |
 | `content.css` | 面板样式 + 宿主页面微调（隐藏侧栏 logo、footer 分隔线，受 `html.ksb-sidebar-tidy` 开关控制） |
 | `background.js` | 设备 OAuth、额度 API（含 30s 缓存 + force 绕过）、按天/按会话分键持久化（写入队列串行化）、额度预警通知 |
@@ -18,9 +18,10 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 | `popup.html / popup.js` | 工具栏弹窗：授权管理、完整版消耗量（自定义日期范围）、导出 JSON、重置布局 |
 | `web-token.js` | 停用备用的 kimi.com token 中转（月额度通路，已下线，代码保留） |
 | `rive/` | Rive canvas-lite 运行时（rive.js + rive.wasm）+ 吉祥物 .riv 资产 ×2 |
+| `rules/csp_relax.json` | 静态 DNR 规则：移除 `127.0.0.1/localhost` 文档响应的 CSP 头。**背景**：kimi web 0.32.0 起下发 `default-src 'self'`，Chrome 按页面 CSP 拦截 content script 内 WASM 编译，吉祥物 Rive 无法初始化；manifest 键名是蛇形 `declarative_net_request`（驼峰是 API 命名空间，写错会被忽略） |
 | `tests/` | `node tests/metrics.test.js`（23 个用例）、`tests/theme.test.js` |
-| `build.sh` | 打包 zip（19 个文件，不含 docs/tests） |
-| `CHANGELOG.md` | v2.1.0 相比 v2.0.0 的完整更新说明，并保留此前版本历史 |
+| `build.sh` | 打包 zip（含 rive/ 与 rules/，不含 docs/tests） |
+| `CHANGELOG.md` | 完整更新说明（最新 v2.1.1），并保留此前版本历史 |
 | `README.md` | 新文案已定稿（卖点前置、模块化+宠物+统计、安装/数据/结构） |
 | `docs/` | `screenshots/`（六张成品图 + popup.png）、`screenshot-studio.html`（截图母版，假数据）、`head-image.html`（头图母版）、`window.png`（头图底图）、`guide-variants.html`（新手引导两版样式候选） |
 | `docs/HANDOFF.md` | 本文档 |
@@ -56,8 +57,7 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 
 ### 3. 打包上传 GitHub（最后）
 
-- v2.1.0 发布包尚未生成
-- 需要：用户确认后再运行 `bash build.sh`、提交改动、打 tag v2.1.0，并以 CHANGELOG 的 v2.1.0 段创建 GitHub Release
+- 需要：用户确认后再运行 `bash build.sh`、提交改动、打 tag v2.1.1，并以 CHANGELOG 的 v2.1.1 段创建 GitHub Release
 
 ## 五、用户偏好与雷区（重要）
 

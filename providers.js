@@ -30,6 +30,21 @@
     return Number.isFinite(number) ? number : 0;
   }
 
+  function clampPct(value) {
+    return Math.min(100, Math.max(0, value));
+  }
+
+  // 解析失败的报错带上响应截断片段：用户侧「获取失败：…」即可定位，无需抓包
+  function noInfoError(message, body) {
+    let snippet = '';
+    try {
+      snippet = JSON.stringify(body) || '';
+    } catch (error) {
+      snippet = '';
+    }
+    return new Error(snippet ? `${message}（响应：${snippet.slice(0, 150)}…）` : message);
+  }
+
   // 套餐窗口的语义标签：按时长映射为 5h/1w/1M，缺失时按类型兜底
   function windowLabel(limit) {
     const number = Number(limit?.number ?? limit?.windowSize ?? limit?.window);
@@ -50,7 +65,7 @@
   function parseDeepSeek(body) {
     const infos = Array.isArray(body?.balance_infos) ? body.balance_infos : [];
     const cny = infos.find((info) => info?.currency === 'CNY');
-    if (!cny) throw new Error('响应中没有人民币余额');
+    if (!cny) throw noInfoError('响应中没有人民币余额', body);
     return {
       kind: 'balance',
       total: toMoney(cny.total_balance),
@@ -63,7 +78,7 @@
   // Kimi API（Moonshot 开放平台国内站）：available / voucher / cash
   function parseKimiApi(body) {
     const data = body?.data;
-    if (!data || data.available_balance == null) throw new Error('响应中没有余额字段');
+    if (!data || data.available_balance == null) throw noInfoError('响应中没有余额字段', body);
     return {
       kind: 'balance',
       total: toMoney(data.available_balance),
@@ -92,7 +107,7 @@
         resetAt: Number(limit?.nextResetTime) || null
       });
     }
-    if (!windows.length && !data?.planName) throw new Error('响应中没有额度窗口');
+    if (!windows.length && !data?.planName) throw noInfoError('响应中没有额度窗口', body);
     return {
       kind: 'plan',
       plan: data?.planName || data?.plan || data?.plan_type || data?.packageName || '',
@@ -100,8 +115,38 @@
     };
   }
 
-  // MiniMax coding plan remains：响应字段未公开，宽容解析用量百分比与重置时间
+  // MiniMax coding plan remains：实际返回 model_remains 数组（2026-08 抓包确认），
+  // 扁平字段是早期口径的兜底。字段名未公开，均做宽容解析。
   function parseMiniMax(body) {
+    // Key 无效等情况 HTTP 仍为 200，错误在 base_resp 里
+    const statusCode = Number(body?.base_resp?.status_code);
+    if (Number.isFinite(statusCode) && statusCode !== 0) {
+      throw new Error(`接口返回错误：${body?.base_resp?.status_msg || `code ${statusCode}`}`);
+    }
+    // model_remains：优先 general 条目；*_remaining_percent 是剩余百分比，转成已用
+    const remainsList = Array.isArray(body?.model_remains) ? body.model_remains : [];
+    if (remainsList.length) {
+      const entry = remainsList.find((item) => item?.model_name === 'general') || remainsList[0];
+      const windows = [];
+      const intervalPct = Number(entry?.current_interval_remaining_percent);
+      if (Number.isFinite(intervalPct)) {
+        windows.push({
+          label: '5h',
+          pct: clampPct(100 - intervalPct),
+          resetAt: Number(entry?.end_time) || null
+        });
+      }
+      const weeklyPct = Number(entry?.current_weekly_remaining_percent);
+      if (Number.isFinite(weeklyPct)) {
+        windows.push({
+          label: '1w',
+          pct: clampPct(100 - weeklyPct),
+          resetAt: Number(entry?.weekly_end_time) || null
+        });
+      }
+      if (windows.length) return { kind: 'plan', plan: 'MiniMax Coding Plan', windows };
+    }
+    // 扁平字段兜底（早期口径）
     const data = body?.data ?? body;
     const windows = [];
     const used = Number(data?.used ?? data?.used_quota ?? data?.usedQuota);
@@ -122,7 +167,7 @@
       });
     }
     const plan = data?.plan ?? data?.plan_name ?? data?.planName ?? data?.tier ?? '';
-    if (!windows.length && !plan) throw new Error('响应中没有额度信息');
+    if (!windows.length && !plan) throw noInfoError('响应中没有额度信息', body);
     return { kind: 'plan', plan, windows };
   }
 

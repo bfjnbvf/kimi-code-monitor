@@ -196,12 +196,19 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   display: none;
 }
 
-@container (max-width: 179px) {
+/* 重置时间整段降级，断点按 quota 模块自身宽度（命名容器 ksb-quota，见 .ksb-quota-group）。
+   「周四17:45」比倒计时（3d5h）宽，挂 .ksb-abs 时更早降级 */
+@container ksb-quota (max-width: 88px) {
   .ksb-reset-full { display: none; }
   .ksb-reset-short { display: inline; }
 }
 
-@container (max-width: 155px) {
+@container ksb-quota (max-width: 106px) {
+  .ksb-reset.ksb-abs .ksb-reset-full { display: none; }
+  .ksb-reset.ksb-abs .ksb-reset-short { display: inline; }
+}
+
+@container ksb-quota (max-width: 70px) {
   .ksb-reset { display: none; }
 }
 
@@ -292,6 +299,8 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  /* 命名容器：重置时间的降级断点按模块自身宽度计算（widget 级断点对半宽模块过晚） */
+  container: ksb-quota / inline-size;
 }
 
 .ksb-quota-head {
@@ -306,9 +315,9 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   color: var(--ksb-text-quaternary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  flex-shrink: 1;
-  min-width: 0;
-  overflow: hidden;
+  /* 不可压缩：宽度不足时由容器查询整段切换（full→short→隐藏），
+     不做右侧逐渐裁切（与「上轮」字样的隐藏逻辑一致） */
+  flex-shrink: 0;
 }
 
 .ksb-quota-pct {
@@ -650,7 +659,8 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 /* 整宽统计模块：标签左、数字右，同一行（与消耗量整宽一致），顶部对齐 */
 .ksb-module.ksb-span-2 .ksb-stat {
   flex-direction: row;
-  align-items: flex-start;
+  /* 基线对齐：右侧数值字号大（14px vs 10px），flex-start 顶对齐会因大行高显得下沉 */
+  align-items: baseline;
   justify-content: space-between;
 }
 

@@ -348,9 +348,17 @@
         : {};
     const wireFiles = await listWireFiles(rootHandle);
     const preparedFiles = [];
+    // 单个文件失败（网络盘断连、文件锁、权限抖动）记录并跳过，不中断整次扫描
+    const failures = [];
     let totalBytes = 0;
     for (const entry of wireFiles) {
-      const file = await entry.handle.getFile();
+      let file;
+      try {
+        file = await entry.handle.getFile();
+      } catch (error) {
+        failures.push(`${entry.path}：${error?.message || error}`);
+        continue;
+      }
       const previous = previousFiles[entry.path];
       const unchanged = Boolean(
         previous &&
@@ -379,11 +387,17 @@
         files[entry.path] = entry.previous;
         continue;
       }
-      files[entry.path] = await scanFile(entry.file, entry.previous, (bytes) => {
-        processedBytes += bytes;
-        reportProgress();
-      }, entry.isSubagent === true);
-      changedFiles += 1;
+      try {
+        files[entry.path] = await scanFile(entry.file, entry.previous, (bytes) => {
+          processedBytes += bytes;
+          reportProgress();
+        }, entry.isSubagent === true);
+        changedFiles += 1;
+      } catch (error) {
+        // 读取中途失败：保留旧索引（如有），下次扫描从旧 offset 重试
+        if (entry.previous) files[entry.path] = entry.previous;
+        failures.push(`${entry.path}：${error?.message || error}`);
+      }
     }
     reportProgress(true);
 
@@ -396,7 +410,9 @@
       secondaryModel,
       scannedAt,
       fileCount: wireFiles.length,
-      changedFiles
+      changedFiles,
+      skippedFiles: failures.length,
+      firstError: failures[0] || ''
     };
   }
 

@@ -62,6 +62,40 @@ test('MiniMax remains 支持 used/total 与 remains/total 两种口径', () => {
   assert.throws(() => parseMiniMax({ data: {} }));
 });
 
+test('MiniMax model_remains：取 general 条目，剩余百分比转已用，带重置时间', () => {
+  const body = {
+    model_remains: [
+      {
+        model_name: 'general',
+        end_time: 1785772800000,
+        weekly_end_time: 1786291200000,
+        current_interval_remaining_percent: 80,
+        current_weekly_remaining_percent: 95
+      },
+      { model_name: 'video', current_interval_remaining_percent: 10, current_weekly_remaining_percent: 20 }
+    ],
+    base_resp: { status_code: 0, status_msg: 'success' }
+  };
+  const result = parseMiniMax(body);
+  assert.equal(result.kind, 'plan');
+  assert.deepEqual(result.windows, [
+    { label: '5h', pct: 20, resetAt: 1785772800000 },
+    { label: '1w', pct: 5, resetAt: 1786291200000 }
+  ]);
+});
+
+test('MiniMax model_remains：无 general 取第一条；base_resp 非零报接口错误', () => {
+  const only = parseMiniMax({
+    model_remains: [{ model_name: 'video', current_interval_remaining_percent: 60 }]
+  });
+  assert.equal(only.windows.length, 1);
+  assert.equal(only.windows[0].pct, 40);
+  assert.throws(
+    () => parseMiniMax({ base_resp: { status_code: 1002, status_msg: 'invalid api key' } }),
+    /invalid api key/
+  );
+});
+
 test('四家 provider 都有国内端点与凭据提示', () => {
   assert.deepEqual(Object.keys(PROVIDERS), ['deepseek', 'kimiapi', 'zhipu', 'minimax']);
   for (const provider of Object.values(PROVIDERS)) {

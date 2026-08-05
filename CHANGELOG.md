@@ -1,5 +1,46 @@
 # 更新说明
 
+## v2.1.1（2026-08-05）
+
+> 相比 v2.1.0，本版本修复 kimi web 0.32.0 CSP 导致的宠物小球空白、MiniMax 解析、同模型子代理拆行、Windows 弹窗配置 CLI 失效、网络盘扫描中止等问题，新增额度重置时间的「具体时间」显示与若干视觉修正。
+
+### 修复：宠物小球空白（kimi web 0.32.0 CSP 拦截 WASM）
+
+- **根因**：kimi web 0.32.0 起页面下发 `Content-Security-Policy: default-src 'self'`，Chrome 按页面 CSP 拦截 content script 内的 WebAssembly 编译，吉祥物 Rive 运行时（rive.wasm）无法初始化，画布全空白
+- 新增 `rules/csp_relax.json` 静态 DNR 规则（`declarativeNetRequestWithHostAccess` 权限）：移除 `127.0.0.1` / `localhost` 文档响应的 CSP 头。回环地址在任何机器上相同，Windows / Linux / macOS 用户均生效，无需配置
+
+### 新增：额度重置时间可切换为具体时间
+
+- 「5h 额度 / 本周额度」模块 ≡ 菜单新增「重置时间显示」选项：倒计时（默认，`3d5h`）或具体时间（当天 `17:45`，跨天 `周四17:45`；窄宽度降级为「周四」，更窄整体隐藏）；tooltip 始终保留完整倒计时
+
+### 修复：MiniMax Coding Plan 显示「获取失败：响应中没有额度信息」
+
+- **根因**：`parseMiniMax` 只识别扁平字段（used/total 等），而 `/v1/token_plan/remains` 实际返回 `model_remains` 数组，字段名完全不同
+- 优先解析 `model_remains`：取 `general` 条目（缺失取第一条），`*_remaining_percent` 剩余百分比转已用，`end_time` / `weekly_end_time` 作为重置时间；扁平字段保留为兜底
+- `base_resp.status_code` 非零时报接口错误（Key 无效不再误报"没有额度信息"）
+- 四家 provider 解析失败的报错统一附带响应体截断片段（150 字符），用户侧即可定位，无需抓包
+
+### 修复：多个同模型子代理被拆成两行（一行裸 ×N 无模型名）
+
+- **根因**：子代理分组按各自模型名合并，但模型名只来自 CLI 扫描种子；扫描时序未覆盖到的子代理实例模型为空，与已有名字的实例拆成两组，空名组显示为裸 `×2`
+- kimi 目前只支持一种子代理模型：子代理模型缺失时统一回退到 CLI 配置的次级模型名（`agentModelLabel`），同会话子代理合并为一行 `模型名 ×N`；空名组显示名兜底为「子代理 ×N」
+
+### 修复：工具栏弹窗里配置本地 CLI 选完目录没反应（Windows）
+
+- **根因**：工具栏弹窗中调原生目录选择器，Windows 上弹窗因失焦被系统关闭，选择后的流程（存句柄、触发扫描）无声中断
+- 弹窗内点「连接本地 CLI」改为跳转选项页（完整标签页）完成授权，与 kimi web 面板入口同路径
+
+### 修复：网络盘（Samba 挂载等）单个文件读取失败导致整次扫描中止
+
+- `scanSessionsDirectory` 逐文件容错：`getFile()` / 读取中途失败时跳过该文件并记录（保留旧索引，下次重试），不再全盘失败；结果带 `skippedFiles` 与首个错误
+- popup 状态行显示真实错误（截断 80 字符），替代泛化的「本地记录读取失败」
+
+### 修复：重置时间「具体时间」格式被逐渐裁切
+
+- `.ksb-reset` 取消 `flex-shrink` 压缩，不再从右侧逐字裁切或把百分比挤出边框；降级断点改为按 quota 模块自身宽度的命名容器查询（`ksb-quota`），具体时间格式挂 `ksb-abs` 类更早降级（原断点按整个 widget 宽度计，对半宽模块过晚）
+- 整宽统计模块的数值与小标题改为基线对齐（原 flex-start 顶对齐下大字号数值视觉下沉）
+- 速度显示去掉数字与 tok/s 之间的空格（`57tok/s`）
+
 ## v2.1.0（2026-08-03）
 
 > 相比 v2.0.0，本版本新增外部账户余额/额度监控（DeepSeek、Kimi API、智谱、MiniMax）与子代理统计模块，调整长期统计的数据来源，并修复宠物动画、状态显示和 popup 交互问题。

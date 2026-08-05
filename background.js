@@ -489,7 +489,9 @@ async function refreshCliUsage(options = {}) {
         lastScannedAt: result.scannedAt,
         fileCount: result.fileCount,
         changedFiles: result.changedFiles,
-        error: ''
+        skippedFiles: result.skippedFiles || 0,
+        // 部分文件读取失败（网络盘断连等）时透出首个错误，不再显示泛化文案
+        error: result.firstError || ''
       };
       await chrome.storage.local.set({
         [KimiCliUsage.DAILY_STORAGE_KEY]: result.daily,

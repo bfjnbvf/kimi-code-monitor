@@ -166,6 +166,8 @@
   const PET_STATS = ['daily', 'input', 'output', 'cache', 'speed', 'balance'];
   const BALL_LINKS = ['none', 'console', 'subscription'];
   const BALANCE_LINKS = ['subscription', 'console'];
+  // 额度重置时间：countdown 倒计时（3d5h）/ absolute 具体时间（08-05 15:00）
+  const QUOTA_RESET_FORMATS = ['countdown', 'absolute'];
 
   function defaultWidgetConfig() {
     return {
@@ -177,8 +179,8 @@
         output: { show: 'full', span: 1 },
         speed: { show: 'full', span: 1 },
         duration: { show: 'hidden', span: 2 },
-        quota5h: { show: 'mini', span: 1, pace: true },
-        quotaWeek: { show: 'mini', span: 1, pace: true },
+        quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
+        quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
         usageChart: { show: 'full', span: 2, chartRange: 'week' },
         pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
         agents: { show: 'hidden', span: 2, hiddenAgents: [] },
@@ -244,6 +246,9 @@
       }
       if (id.startsWith('quota')) {
         normalized.pace = typeof entry.pace === 'boolean' ? entry.pace : fallback.pace;
+        normalized.resetFormat = QUOTA_RESET_FORMATS.includes(entry.resetFormat)
+          ? entry.resetFormat
+          : fallback.resetFormat;
       }
       if (id === 'agents') {
         // 子代理列表需要多行高度，只允许整宽

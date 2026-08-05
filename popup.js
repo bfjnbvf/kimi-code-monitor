@@ -290,8 +290,9 @@
     }
     const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
     cliStatusDot.className = `dot ${state.error ? 'bad' : 'ok'}`;
+    // 显示真实错误（截断），不再是泛化文案——网络盘断连等原因用户可直接定位
     cliStatusText.textContent = state.error
-      ? '本地记录读取失败'
+      ? `读取失败：${String(state.error).slice(0, 80)}`
       : state.scanning
       ? `正在读取本地记录 ${progress}%`
       : '本地记录已授权';
@@ -314,6 +315,15 @@
   }
 
   async function connectCliUsage() {
+    // 工具栏弹窗里调原生目录选择器：Windows 上弹窗会因失焦被系统关闭，
+    // 选择后的流程（存句柄、触发扫描）无声中断。转到选项页（完整标签页）完成授权。
+    // chrome.tabs.getCurrent() 只在标签页中返回标签，工具栏弹窗里为 undefined
+    const hostedTab = await chrome.tabs.getCurrent().catch(() => null);
+    if (!hostedTab) {
+      await chrome.runtime.openOptionsPage().catch(() => {});
+      window.close();
+      return;
+    }
     if (typeof showDirectoryPicker !== 'function') {
       cliConnectBtn.textContent = '当前 Chrome 不支持目录授权';
       return;

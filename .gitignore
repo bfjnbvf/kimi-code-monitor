@@ -13,3 +13,6 @@ kimi-web-status-bar-v*.zip
 
 # 打包产物（新命名）
 kimi-code-monitor-v*.zip
+
+# Chrome 加载解包扩展时生成
+_metadata/

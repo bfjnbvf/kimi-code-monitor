@@ -273,6 +273,21 @@ test('Widget 配置：额度模块 pace 开关与消耗量统计范围', () => {
   );
 });
 
+test('Widget 配置：额度模块重置时间显示格式（倒计时/具体时间）', () => {
+  const defaults = defaultWidgetConfig();
+  assert.equal(defaults.modules.quota5h.resetFormat, 'countdown');
+  assert.equal(defaults.modules.quotaWeek.resetFormat, 'countdown');
+
+  const config = normalizeWidgetConfig({
+    modules: {
+      quota5h: { resetFormat: 'absolute' },
+      quotaWeek: { resetFormat: 'timestamp' }
+    }
+  });
+  assert.equal(config.modules.quota5h.resetFormat, 'absolute');
+  assert.equal(config.modules.quotaWeek.resetFormat, 'countdown'); // 非法值回落默认
+});
+
 test('Widget 配置：v2→v3 迁移把宠物改为全宽，且只迁移一次', () => {
   // 老配置（v2，pet 半宽）→ 迁移为全宽
   const migrated = normalizeWidgetConfig({

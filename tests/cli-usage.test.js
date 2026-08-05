@@ -151,3 +151,37 @@ test('目录扫描按实际读取量报告百分比，并以 100 结束', async 
   assert.equal(result.fileCount, 1);
   assert.deepEqual(result.daily['2026-08-03'], { input: 40, output: 0, cacheRead: 30 });
 });
+
+test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）', async () => {
+  const good = new File([
+    `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
+  ], 'wire.jsonl', { lastModified: 1000 });
+  const goodWire = { async getFile() { return good; } };
+  const badWire = { async getFile() { throw new Error('NotReadableError'); } };
+  const mainAgent = { kind: 'directory', async getFileHandle() { return goodWire; } };
+  const subAgent = { kind: 'directory', async getFileHandle() { return badWire; } };
+  const agentsHandle = {
+    async *entries() { yield ['main', mainAgent]; yield ['agent-1', subAgent]; }
+  };
+  const sessionHandle = {
+    kind: 'directory',
+    async getDirectoryHandle(name) {
+      if (name !== 'agents') throw new Error('not found');
+      return agentsHandle;
+    }
+  };
+  const workspaceHandle = {
+    kind: 'directory',
+    async *entries() { yield ['session_1', sessionHandle]; }
+  };
+  const sessionsHandle = {
+    async *entries() { yield ['workspace', workspaceHandle]; }
+  };
+
+  const result = await KimiCliUsage.scanSessionsDirectory(sessionsHandle, null, () => {});
+  assert.equal(result.fileCount, 2);
+  assert.equal(result.skippedFiles, 1);
+  assert.match(result.firstError, /NotReadableError/);
+  // 好文件的数据不受影响
+  assert.deepEqual(result.daily['2026-08-03'], { input: 10, output: 0, cacheRead: 0 });
+});
