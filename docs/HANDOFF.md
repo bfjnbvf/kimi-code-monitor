@@ -23,7 +23,7 @@ Chrome MV3 扩展（未上架，本地解压加载），在 localhost 的 Kimi C
 | `build.sh` | 打包 zip（含 rive/ 与 rules/，不含 docs/tests） |
 | `CHANGELOG.md` | 完整更新说明（最新 v2.1.1），并保留此前版本历史 |
 | `README.md` | 新文案已定稿（卖点前置、模块化+宠物+统计、安装/数据/结构） |
-| `docs/` | `screenshots/`（六张成品图 + popup.png）、`screenshot-studio.html`（截图母版，假数据）、`head-image.html`（头图母版）、`window.png`（头图底图）、`guide-variants.html`（新手引导两版样式候选） |
+| `docs/` | `screenshots/`（六张成品图 + popup.png）、`screenshot-studio.html`（截图母版，假数据）、`head-image.html`（头图母版）、`window.png`（头图底图）、`guide-variants.html`（新手引导两版样式候选）、`rive-gallery.html`（吉祥物动画画廊/调试页） |
 | `docs/HANDOFF.md` | 本文档 |
 
 ## 三、已完成的（不要重做）
