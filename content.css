@@ -29,7 +29,9 @@ html.ksb-sidebar-tidy aside.side .ch-collapse {
   z-index: 2;
 }
 
-html.ksb-sidebar-tidy aside.side .btn-wrap {
+/* .btn-wrap 为旧版新建对话容器；现版本为 .sidebar-actions（新建会话 + 搜索），两者都保留兼容 */
+html.ksb-sidebar-tidy aside.side .btn-wrap,
+html.ksb-sidebar-tidy aside.side .sidebar-actions {
   margin-top: 8px;
 }
 
