@@ -33,6 +33,8 @@
         "metrics.js",
         "cli-usage.js",
         "walkthrough.js",
+        "session-rename/rename-shared.js",
+        "session-rename/rename-content.js",
         "content.js"
       ],
       "css": [

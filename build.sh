@@ -10,6 +10,7 @@ rm -f "$OUT"
 zip -r "$OUT" \
   manifest.json \
   metrics.js cli-usage.js providers.js content.js content.css background.js web-token.js walkthrough.js \
+  session-rename \
   rive \
   rules \
   popup.html popup.js \

@@ -433,6 +433,7 @@
   function renderAuthStatus(response) {
     kimiAccounts = Array.isArray(response?.accounts) ? response.accounts : [];
     renderKimiAccounts();
+    buildRenameModelOptions();
   }
 
   function renderKimiAccounts() {
@@ -786,6 +787,7 @@
       if (!response?.ok) return;
       externalAccountsCache = response.providers || [];
       renderExternalAccounts();
+      buildRenameModelOptions();
     } catch (error) {
       // 状态拉取失败不阻塞其他区块
     }
@@ -842,9 +844,324 @@
     });
   }
 
+  /* ---------- AI 会话标题：模型选择、开关持久化、批量发起与进度 ---------- */
+
+  const RENAME_SETTINGS_STORAGE_KEY = 'sessionRenameSettings';
+  const RENAME_MODELS_STORAGE_KEY = 'sessionRenameModels';
+  const renameShared = globalThis.KimiSessionRename;
+  const renameModelSelect = document.getElementById('rename-model-select');
+  const renameEmojiToggle = document.getElementById('rename-emoji-toggle');
+  const renameAutoToggle = document.getElementById('rename-auto-toggle');
+  const renameDaysSelect = document.getElementById('rename-days');
+  const renameStartBtn = document.getElementById('rename-start-btn');
+  const renameStatus = document.getElementById('rename-status');
+  const renameUsage = document.getElementById('rename-usage');
+  // 批量任务在 content 脚本里跑，popup 关掉不中断；重开时按状态恢复按钮与进度
+  let renameBatchRunning = false;
+  let renameSettings = {
+    autoEnabled: false,
+    emojiEnabled: true,
+    modelSource: renameShared.defaultModelSource()
+  };
+  // Kimi Code 模型清单：先渲染缓存/硬编码兜底，弹窗打开时后台刷新
+  let renameModelsCache = renameShared.KIMI_CODE_FALLBACK_MODELS;
+
+  function showRenameStatus(message = '', isError = false) {
+    renameStatus.textContent = message;
+    renameStatus.classList.toggle('err', isError);
+  }
+
+  // 批量进行中：按钮切换为「中断」（会话粒度停止，不半路打断单个请求）
+  function setRenameStartMode(running) {
+    renameBatchRunning = running;
+    renameStartBtn.textContent = running ? '中断' : '开始命名';
+    renameStartBtn.classList.toggle('primary', !running);
+    renameStartBtn.disabled = false;
+  }
+
+  // 命名 token 用量累计（每次模型调用的响应 usage 由 background 累加）
+  async function refreshRenameUsage() {
+    try {
+      const response = await send('rename.usage.get');
+      const usage = response?.usage;
+      renameUsage.textContent = usage?.calls > 0
+        ? `累计命名 ${usage.calls} 次 · 输入 ${formatTokenCount(usage.input)} · 输出 ${formatTokenCount(usage.output)} tokens`
+        : '';
+    } catch (error) {
+      renameUsage.textContent = '';
+    }
+  }
+
+  function saveRenameSettings() {
+    chrome.storage.local.set({ [RENAME_SETTINGS_STORAGE_KEY]: renameSettings }).catch(() => {});
+  }
+
+  // <select> 的字符串 value 与 modelSource 对象互转
+  function modelSourceToValue(source) {
+    return source.kind === 'external' ? `ext:${source.accountId}` : `kimi-code:${source.model}`;
+  }
+
+  function valueToModelSource(value) {
+    if (typeof value === 'string' && value.startsWith('kimi-code:')) {
+      return { kind: 'kimi-code', model: value.slice('kimi-code:'.length) };
+    }
+    return renameShared.normalizeModelSource(value);
+  }
+
+  // 扁平下拉：Kimi Code 各模型（display_name）在前，已配置的外部账户在后，不按账户分组
+  function buildRenameModelOptions() {
+    const previousValue = modelSourceToValue(renameSettings.modelSource);
+    renameModelSelect.replaceChildren();
+    for (const entry of renameModelsCache) {
+      const option = document.createElement('option');
+      option.value = `kimi-code:${entry.model}`;
+      option.textContent = `${entry.display_name}（Kimi Code）`;
+      renameModelSelect.append(option);
+    }
+    const supported = globalThis.KimiSessionRenameModel?.RENAME_MODEL_PROVIDERS || {};
+    for (const account of externalAccountsCache) {
+      if (!supported[account.provider]) continue;
+      const providerName =
+        globalThis.KimiExternalProviders?.PROVIDERS?.[account.provider]?.name || account.provider;
+      const option = document.createElement('option');
+      option.value = `ext:${account.id}`;
+      // 「DeepSeek · 备注名」：未改名时只显示 provider 名
+      option.textContent =
+        account.name && account.name !== providerName
+          ? `${providerName} · ${account.name}`
+          : providerName;
+      renameModelSelect.append(option);
+    }
+    const values = [...renameModelSelect.options].map((option) => option.value);
+    const nextValue = values.includes(previousValue) ? previousValue : values[0];
+    if (nextValue) {
+      renameModelSelect.value = nextValue;
+      renameSettings.modelSource = valueToModelSource(nextValue);
+    }
+  }
+
+  async function loadRenameSettings() {
+    try {
+      const stored = await chrome.storage.local.get(RENAME_SETTINGS_STORAGE_KEY);
+      const raw = stored[RENAME_SETTINGS_STORAGE_KEY];
+      renameSettings = { ...renameSettings, ...(raw || {}) };
+      renameSettings.modelSource = renameShared.normalizeModelSource(renameSettings.modelSource);
+      // 旧默认 Highspeed 一次性迁移到 K2.7 Coding（单价更低）；用户之后手选 Highspeed 不回退
+      const migration = await chrome.storage.local.get('sessionRenameModelV2').catch(() => ({}));
+      if (!migration.sessionRenameModelV2) {
+        if (renameSettings.modelSource?.model === 'kimi-code/kimi-for-coding-highspeed') {
+          renameSettings.modelSource = { kind: 'kimi-code', model: 'kimi-code/kimi-for-coding' };
+          saveRenameSettings();
+        }
+        chrome.storage.local.set({ sessionRenameModelV2: true }).catch(() => {});
+      }
+      renameEmojiToggle.checked = renameSettings.emojiEnabled !== false;
+      renameAutoToggle.checked = renameSettings.autoEnabled === true;
+      // 旧版字符串 modelSource（'kimi' / 'ext:<id>'）迁移为新结构后回写一次
+      if (raw && JSON.stringify(raw.modelSource) !== JSON.stringify(renameSettings.modelSource)) {
+        saveRenameSettings();
+      }
+    } catch (error) {
+      // 读取失败用默认设置
+    }
+  }
+
+  // 模型清单：先用缓存渲染，再经 background 中继向 Kimi Code Web 页面拉最新值
+  async function loadRenameModels() {
+    try {
+      const stored = await chrome.storage.local.get(RENAME_MODELS_STORAGE_KEY);
+      const cached = stored[RENAME_MODELS_STORAGE_KEY];
+      if (Array.isArray(cached) && cached.length) renameModelsCache = cached;
+    } catch (error) {
+      // 读缓存失败用兜底
+    }
+    buildRenameModelOptions();
+    try {
+      const response = await send('rename.models.list');
+      if (response?.ok && Array.isArray(response.models) && response.models.length) {
+        renameModelsCache = response.models;
+        chrome.storage.local.set({ [RENAME_MODELS_STORAGE_KEY]: response.models }).catch(() => {});
+        buildRenameModelOptions();
+      }
+    } catch (error) {
+      // 页面未打开/拉取失败：保持缓存或兜底
+    }
+  }
+
+  renameModelSelect.addEventListener('change', () => {
+    renameSettings.modelSource = valueToModelSource(renameModelSelect.value);
+    saveRenameSettings();
+  });
+  renameEmojiToggle.addEventListener('change', () => {
+    renameSettings.emojiEnabled = renameEmojiToggle.checked;
+    saveRenameSettings();
+  });
+  renameAutoToggle.addEventListener('change', () => {
+    renameSettings.autoEnabled = renameAutoToggle.checked;
+    saveRenameSettings();
+  });
+
+  /* 手动标题保护的权威依据：已连接 CLI 目录时读各会话 state.json 的 isCustomTitle。
+   * 目录句柄在扩展域 IndexedDB，popup 可读而 content 脚本读不到，故在批量启动时
+   * 由这里收集后随消息带过去；未连接/读取失败一律回退为内容脚本的启发式判断。 */
+  async function collectCustomTitleSessionIds() {
+    const ids = [];
+    try {
+      const handle = await KimiCliUsage.getDirectoryHandle();
+      if (!handle || (await KimiCliUsage.permissionState(handle)) !== 'granted') return ids;
+      const root = handle.name === '.kimi-code' ? await handle.getDirectoryHandle('sessions') : handle;
+      for await (const [, workspaceHandle] of root.entries()) {
+        if (workspaceHandle.kind !== 'directory') continue;
+        try {
+          for await (const [sessionName, sessionHandle] of workspaceHandle.entries()) {
+            if (sessionHandle.kind !== 'directory' || !sessionName.startsWith('session_')) continue;
+            try {
+              const fileHandle = await sessionHandle.getFileHandle('state.json');
+              const file = await fileHandle.getFile();
+              if (file.size > 1024 * 1024) continue;
+              const state = JSON.parse(await file.text());
+              if (state?.isCustomTitle === true) ids.push(sessionName);
+            } catch (error) {
+              // 单个会话读取失败跳过
+            }
+          }
+        } catch (error) {
+          // 单个 workspace 不可读跳过
+        }
+      }
+    } catch (error) {
+      // 未连接 CLI 或句柄失效：返回空，走启发式
+    }
+    return ids;
+  }
+
+  renameStartBtn.addEventListener('click', async () => {
+    // 批量进行中：此按钮为「中断」，请求在会话粒度上停止
+    if (renameBatchRunning) {
+      renameStartBtn.disabled = true;
+      showRenameStatus('正在中断…（当前会话处理完后停止）');
+      try {
+        const response = await send('rename.batch.abort');
+        // 竞态：请求到达时批量已完成，直接复位按钮
+        if (response?.ok && response.running === false) setRenameStartMode(false);
+      } catch (error) {
+        // 中断请求失败不阻塞；下一轮进度/结果广播会纠正状态
+      }
+      return;
+    }
+    renameStartBtn.disabled = true;
+    showRenameStatus('正在准备…');
+    try {
+      const modelSource = renameSettings.modelSource;
+      // 外部账户的域名权限必须在用户手势里申请（通常添加账户时已授予）
+      if (modelSource.kind === 'external') {
+        const account = externalAccountsCache.find((item) => item.id === modelSource.accountId);
+        const provider = globalThis.KimiExternalProviders?.PROVIDERS?.[account?.provider];
+        if (provider) {
+          const granted = await chrome.permissions
+            .request({ origins: [`${provider.origin}/*`] })
+            .catch(() => false);
+          if (!granted) throw new Error('未授予该外部账户的域名权限');
+        }
+      }
+      const customTitleIds = await collectCustomTitleSessionIds();
+      showRenameStatus('正在统计会话…');
+      // 响应在整批完成后才返回；过程进度由 rename.batch.progress 广播驱动
+      const response = await send('rename.batch.start', {
+        days: Number(renameDaysSelect.value) || 7,
+        modelSource,
+        withEmoji: renameSettings.emojiEnabled !== false,
+        customTitleIds
+      });
+      if (!response?.ok) throw new Error(response?.error || '批量命名失败');
+    } catch (error) {
+      showRenameStatus(error?.message || String(error), true);
+      setRenameStartMode(false);
+    }
+  });
+
+  // popup 重开时恢复批量状态：进行中则显示进度并切换到「中断」模式
+  async function restoreRenameBatchState() {
+    try {
+      const response = await send('rename.batch.status');
+      if (response?.ok && response.running) {
+        setRenameStartMode(true);
+        const counts = response.counts || {};
+        showRenameStatus(`处理中 ${counts.done || 0}/${counts.total || 0}`);
+      }
+    } catch (error) {
+      // 页面未打开/查询失败：保持未运行状态
+    }
+  }
+
+  // content 脚本广播的批量进度/结果（不经 background 转发，runtime 消息直达 popup）
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === 'rename.batch.progress') {
+      const progress = message.payload || {};
+      if (!renameBatchRunning) setRenameStartMode(true);
+      showRenameStatus(`处理中 ${progress.done || 0}/${progress.total || 0}`);
+      return;
+    }
+    if (message?.type === 'rename.batch.done') {
+      const result = message.payload || {};
+      if (result.error) {
+        showRenameStatus(result.error, true);
+      } else {
+        let text = `${result.aborted ? '已中断' : '完成'}：成功 ${result.succeeded || 0} · 跳过 ${result.skipped || 0} · 失败 ${result.failed || 0}`;
+        const SKIP_REASON_LABELS = {
+          busy: '进行中',
+          archived: '已归档',
+          empty: '空对话',
+          'already-renamed': '已命名过',
+          'custom-title': '可能手动改过',
+          'no-id': '无 id',
+          unknown: '未知'
+        };
+        const reasons = [];
+        if (result.skipReasonCounts && typeof result.skipReasonCounts === 'object') {
+          const parts = Object.entries(result.skipReasonCounts)
+            .map(([reason, count]) => `${SKIP_REASON_LABELS[reason] || reason} ${count}`);
+          if (parts.length) reasons.push(`跳过：${parts.join(' · ')}`);
+        }
+        if (result.failed > 0 && Array.isArray(result.failureReasons) && result.failureReasons.length) {
+          reasons.push(result.failureReasons[0]);
+        }
+        if (reasons.length) text += `（${reasons.join('；')}）`;
+        showRenameStatus(text, result.failed > 0 && result.succeeded === 0);
+      }
+      setRenameStartMode(false);
+      refreshRenameUsage();
+    }
+  });
+
   refreshStatus();
   setCliPathHelp();
   refreshCliStatus();
   buildExternalSection();
   refreshExternalStatus();
+  loadRenameSettings().then(loadRenameModels);
+  restoreRenameBatchState();
+  refreshRenameUsage();
+
+  // [临时·发版前移除] 导出命名诊断日志（环形缓冲 JSON 下载，供人工分析）
+  document.getElementById('rename-debug-link').addEventListener('click', async (event) => {
+    event.preventDefault();
+    try {
+      const stored = await chrome.storage.local.get(['sessionRenameDebug', 'sessionRenameUsage']);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        usage: stored.sessionRenameUsage || null,
+        entries: Array.isArray(stored.sessionRenameDebug) ? stored.sessionRenameDebug : []
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `session-rename-debug-${Date.now()}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (error) {
+      showRenameStatus(`导出日志失败：${error?.message || error}`, true);
+    }
+  });
 })();

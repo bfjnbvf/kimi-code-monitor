@@ -453,7 +453,7 @@
       }
     });
     widget.innerHTML = `
-      <div class="ksb-auth-banner" id="ksb-auth-banner" hidden><span class="ksb-auth-banner-text" id="ksb-auth-banner-text">点击完成 Kimi 授权</span><small>授权后显示 5h / 本周额度、余额与超额预警</small></div>
+      <div class="ksb-auth-banner" id="ksb-auth-banner" hidden><span class="ksb-auth-banner-text" id="ksb-auth-banner-text">点击完成 Kimi 授权</span><small>授权后显示额度与预警</small></div>
       <div class="ksb-region ksb-region-full"></div>
       <div class="ksb-region ksb-region-mini"></div>
       <div class="ksb-edit-menu" id="ksb-edit-menu" hidden></div>
@@ -2602,6 +2602,8 @@
           const lastSample = sessionSamples[sessionSamples.length - 1];
           if (lastSample) lastSample.turnEnd = true;
           petCompleteTurn();
+          // 会话智能命名（session-rename/rename-content.js）：开关关闭时内部直接返回
+          globalThis.KimiSessionRename?.onTurnEnded?.(sessionId);
         }
         renderAll();
         scheduleCliUsageRefresh();

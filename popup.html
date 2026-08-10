@@ -14,6 +14,7 @@
     --accent-hover: rgba(22, 127, 247, 1);
     --green: #16c456;
     --danger: #ff3849;
+    --tooltip-bg: #ffffff;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
 
@@ -29,6 +30,7 @@
       --accent-hover: rgba(37, 142, 255, 1);
       --green: #16c456;
       --danger: #ff4756;
+      --tooltip-bg: #2a2a2a;
     }
     body { background: #1f1f1f; }
   }
@@ -165,6 +167,61 @@
     margin-bottom: 2px;
   }
 
+  /* --- 卡片标题行：标题 + 右侧 ⓘ 说明（hover 弹出，不占行） --- */
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .info-icon {
+    position: relative;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    border: 1px solid var(--text-tertiary);
+    border-radius: 50%;
+    color: var(--text-tertiary);
+    font-size: 9px;
+    font-style: italic;
+    cursor: help;
+    user-select: none;
+  }
+
+  .info-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .info-tip {
+    display: none;
+    position: absolute;
+    top: 17px;
+    right: -1px;
+    z-index: 50;
+    width: 220px;
+    padding: 8px 10px;
+    border: 1px solid var(--fill-2);
+    border-radius: 8px;
+    background: var(--tooltip-bg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-style: normal;
+    line-height: 1.6;
+    white-space: normal;
+    text-align: left;
+    cursor: default;
+  }
+
+  .info-icon:hover .info-tip {
+    display: block;
+  }
+
   /* --- 外部账户区块 --- */
   #external-section,
   #account-section {
@@ -191,13 +248,6 @@
 
   #account-add {
     margin-top: 8px;
-  }
-
-  .ext-desc {
-    color: var(--text-tertiary);
-    font-size: 10px;
-    line-height: 1.5;
-    margin-bottom: 6px;
   }
 
   .ext-row {
@@ -430,6 +480,68 @@
 
   .hidden { display: none; }
 
+  /* --- AI 会话标题区块 --- */
+  #rename-section {
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--fill-1);
+    margin-bottom: 10px;
+  }
+
+  /* 行距收紧，与 Kimi 账户/外部账户卡片密度一致 */
+  #rename-section .ext-row {
+    margin-top: 4px;
+  }
+
+  #rename-section select {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 4px;
+    border: 1px solid var(--fill-2);
+    border-radius: 6px;
+    background: var(--fill-1);
+    color: inherit;
+    font-size: 11px;
+  }
+
+  /* 次要设置：10px 灰字，视觉上从主控件降级 */
+  .rename-minor {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .rename-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+
+  .rename-toggle input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  #rename-start-btn {
+    flex-shrink: 0;
+  }
+
+  #rename-status {
+    margin: 4px 0 0;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+    min-height: 12px;
+    word-break: break-all;
+  }
+
+  #rename-status.err {
+    color: var(--danger);
+  }
+
   #status-text {
     flex: 1;
     min-width: 0;
@@ -527,8 +639,10 @@
     <div class="cli-error hidden" id="cli-error" role="alert"></div>
   </div>
   <div id="account-section">
-    <div class="usage-title">Kimi 账户</div>
-    <div class="ext-desc">面板额度条显示当前账户的 5 小时与本周额度。</div>
+    <div class="section-head">
+      <div class="usage-title">Kimi 账户</div>
+      <span class="info-icon">i<span class="info-tip">面板额度条显示当前账户的 5 小时与本周额度。</span></span>
+    </div>
     <div id="account-list"></div>
     <div id="account-empty" class="hidden">
       <button type="button" class="action primary" id="account-auth-btn">去授权</button>
@@ -543,8 +657,10 @@
     <div id="auth-hint" class="hidden"></div>
   </div>
   <div id="external-section">
-    <div class="usage-title">外部账户</div>
-    <div class="ext-desc">添加后，面板「外部账户」模块会显示对应余额/额度，Key只保存在本机扩展存储中。</div>
+    <div class="section-head">
+      <div class="usage-title">外部账户</div>
+      <span class="info-icon">i<span class="info-tip">添加后，面板「外部账户」模块会显示对应余额/额度，Key 只保存在本机扩展存储中。</span></span>
+    </div>
     <div id="external-list"></div>
     <div id="external-add" class="hidden">
       <div class="ext-row">
@@ -556,13 +672,39 @@
     </div>
     <button type="button" class="action" id="ext-add-btn">+ 添加账户</button>
   </div>
+  <div id="rename-section">
+    <div class="section-head">
+      <div class="usage-title">AI 会话标题</div>
+      <span class="info-icon">i<span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百tokens。下方计数器显示累计消耗。</span></span>
+    </div>
+    <div class="ext-row">
+      <select id="rename-model-select" aria-label="命名模型"></select>
+    </div>
+    <div class="ext-row">
+      <select id="rename-days" aria-label="命名范围">
+        <option value="1">近 1 天</option>
+        <option value="3">近 3 天</option>
+        <option value="7" selected>近 7 天</option>
+        <option value="30">近 30 天</option>
+      </select>
+      <button type="button" class="action primary" id="rename-start-btn">开始命名</button>
+    </div>
+    <div class="rename-minor">
+      <label class="rename-toggle"><input type="checkbox" id="rename-emoji-toggle"> 标题带 emoji</label>
+      <label class="rename-toggle"><input type="checkbox" id="rename-auto-toggle"> 新会话自动命名</label>
+    </div>
+    <div id="rename-usage" class="rename-minor"></div>
+    <div id="rename-status"></div>
+  </div>
   <div class="footer">
-    <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
+    <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="rename-debug-link">命名日志</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
     <span>v<span id="version"></span> · <a href="https://github.com/bfjnbvf/kimi-code-monitor/releases" target="_blank" rel="noopener">检查更新</a></span>
   </div>
   <script src="metrics.js"></script>
   <script src="cli-usage.js"></script>
   <script src="providers.js"></script>
+  <script src="session-rename/rename-shared.js"></script>
+  <script src="session-rename/rename-model.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

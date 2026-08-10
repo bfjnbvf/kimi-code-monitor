@@ -1,4 +1,10 @@
-importScripts('metrics.js', 'cli-usage.js', 'providers.js');
+importScripts(
+  'metrics.js',
+  'cli-usage.js',
+  'providers.js',
+  'session-rename/rename-shared.js',
+  'session-rename/rename-model.js'
+);
 
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
 // 订阅页月额度（方案 A：复用设备 OAuth token，401 时静默降级，见 requestMonthlyStats）
@@ -225,7 +231,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'external.status': getExternalProvidersStatus,
     'external.add': addExternalAccount,
     'external.remove': removeExternalAccount,
-    'external.rename': renameExternalAccount
+    'external.rename': renameExternalAccount,
+    'rename.model': renameModelCall,
+    'rename.batch.start': startRenameBatch,
+    'rename.batch.status': getRenameBatchStatus,
+    'rename.batch.abort': abortRenameBatch,
+    'rename.usage.get': getRenameUsage,
+    'rename.models.list': listRenameModels
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -445,6 +457,99 @@ async function renameExternalAccount(payload) {
   const cached = externalProviderCache.get(id);
   if (cached) cached.value = { ...cached.value, name: label };
   return { ok: true };
+}
+
+/* ---------- 会话智能命名 ----------
+ * content.js（127.0.0.1/localhost 页面）负责拉对话与取样，模型调用统一走这里。
+ * modelSource：{ kind:'kimi-code', model } 用激活账户设备 token 调 api.kimi.com
+ * （端点未实测，鉴权类失败返回 KIMI_MODEL_UNAVAILABLE，由 UI 引导改用外部账户）；
+ * { kind:'external', accountId } 用已配置的外部账户（kimiapi/deepseek）。
+ * 手动批量与模型清单都由 popup 发起，这里中转给活动 Kimi Code Web 标签页。
+ * 每次成功的模型调用按响应 usage 累计到 sessionRenameUsage，供 popup 展示。 */
+const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage';
+
+async function recordRenameUsage(usage) {
+  if (!usage || typeof usage !== 'object') return;
+  try {
+    const stored = await chrome.storage.local.get(RENAME_USAGE_STORAGE_KEY);
+    const totals = stored[RENAME_USAGE_STORAGE_KEY] || { calls: 0, input: 0, output: 0 };
+    totals.calls += 1;
+    totals.input += Number(usage.input) || 0;
+    totals.output += Number(usage.output) || 0;
+    totals.updatedAt = Date.now();
+    await chrome.storage.local.set({ [RENAME_USAGE_STORAGE_KEY]: totals });
+  } catch (error) {
+    // 用量记录失败不影响命名主流程
+  }
+}
+
+async function getRenameUsage() {
+  const stored = await chrome.storage.local.get(RENAME_USAGE_STORAGE_KEY);
+  return { ok: true, usage: stored[RENAME_USAGE_STORAGE_KEY] || { calls: 0, input: 0, output: 0 } };
+}
+
+async function renameModelCall(payload) {
+  const prompt = String(payload?.prompt || '');
+  if (!prompt) return failure(new Error('命名上下文为空'), 'EMPTY_PROMPT');
+  const modelSource = KimiSessionRename.normalizeModelSource(payload?.modelSource);
+
+  let result;
+  if (modelSource.kind === 'kimi-code') {
+    const store = await readAccountStore();
+    const token = await getValidTokenForAccount(activeAccountOf(store));
+    if (!token) return failure(new Error('Kimi Code 账户未授权'), 'AUTH_REQUIRED');
+    result = await KimiSessionRenameModel.callKimiCode(token.access_token, prompt, modelSource.model);
+  } else {
+    const accounts = await readExternalAccounts();
+    const account = accounts.find((item) => item.id === modelSource.accountId);
+    if (!account) return failure(new Error('外部账户不存在'), 'ACCOUNT_NOT_FOUND');
+    const provider = KimiExternalProviders.PROVIDERS[account.provider];
+    if (!provider) return failure(new Error('未知 provider'), 'PROVIDER_UNSUPPORTED');
+    const hasPermission = await chrome.permissions.contains({ origins: [`${provider.origin}/*`] });
+    if (!hasPermission) return failure(new Error('未授予该外部账户的域名权限'), 'PERMISSION_REQUIRED');
+    let key;
+    try {
+      key = await decryptSecret(account.keyEnc);
+    } catch (error) {
+      return failure(new Error('本机密钥不可用，请删除后重新添加'), 'KEY_UNAVAILABLE');
+    }
+    result = await KimiSessionRenameModel.callExternal(account.provider, key, prompt);
+  }
+  if (result?.ok && result.usage) await recordRenameUsage(result.usage);
+  return result;
+}
+
+// 找活动 Kimi Code Web 标签页并转发消息；无页面/内容脚本未就绪时结构化报错
+async function relayToKimiWebTab(type, payload) {
+  const tabs = await chrome.tabs
+    .query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] })
+    .catch(() => []);
+  if (!tabs.length) return failure(new Error('没有打开的 Kimi Code Web 页面'), 'NO_WEB_TAB');
+  const target = tabs.find((tab) => tab.active) || tabs[0];
+  try {
+    return await chrome.tabs.sendMessage(target.id, { type, payload });
+  } catch (error) {
+    return failure(new Error('命名面板未就绪，请刷新 Kimi Code Web 页面后重试'), 'CONTENT_UNAVAILABLE');
+  }
+}
+
+// popup → 活动 Kimi Code Web 标签页的 content 脚本；进度由 content 直接广播回 popup
+function startRenameBatch(payload) {
+  return relayToKimiWebTab('rename.batch.run', payload);
+}
+
+// popup 查询批量状态（popup 重开时恢复进度显示）与请求中断
+function getRenameBatchStatus() {
+  return relayToKimiWebTab('rename.batch.status');
+}
+
+function abortRenameBatch() {
+  return relayToKimiWebTab('rename.batch.abort');
+}
+
+// popup 拉命名模型清单：content 同源请求 /api/v1/models；失败时 popup 用硬编码兜底
+function listRenameModels() {
+  return relayToKimiWebTab('rename.models.fetch');
 }
 
 /* ---------- 本地 Kimi CLI 长期用量 ----------
