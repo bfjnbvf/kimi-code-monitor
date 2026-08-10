@@ -480,7 +480,7 @@
 
   .hidden { display: none; }
 
-  /* --- AI 会话标题区块 --- */
+  /* --- 新会话 AI 自动命名区块 --- */
   #rename-section {
     padding: 10px;
     border-radius: 8px;
@@ -657,7 +657,7 @@
   </div>
   <div id="rename-section">
     <div class="section-head">
-      <div class="usage-title">AI 会话标题</div>
+      <div class="usage-title">新会话 AI 自动命名</div>
       <span class="info-icon">i<span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。</span></span>
     </div>
     <div class="ext-row">
@@ -665,7 +665,7 @@
     </div>
     <div class="rename-minor">
       <label class="rename-toggle"><input type="checkbox" id="rename-emoji-toggle"> 标题带 emoji</label>
-      <label class="rename-toggle"><input type="checkbox" id="rename-auto-toggle"> 新会话自动命名</label>
+      <label class="rename-toggle"><input type="checkbox" id="rename-auto-toggle"> 开启此功能</label>
     </div>
     <div id="rename-usage" class="rename-minor"></div>
   </div>

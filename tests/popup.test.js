@@ -105,9 +105,10 @@ test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => 
   assert.match(source, /badge\.textContent = '当前'/);
 });
 
-test('AI 会话标题区块：模型下拉、开关与用量计数（仅自动命名，无批量入口）', () => {
+test('新会话 AI 自动命名区块：模型下拉、开关与用量计数（仅自动命名，无批量入口）', () => {
   assert.match(html, /id="rename-section"/);
-  assert.match(html, /AI 会话标题/);
+  assert.match(html, /新会话 AI 自动命名/);
+  assert.match(html, /<input type="checkbox" id="rename-auto-toggle"> 开启此功能/);
   // 卡片说明不占行：标题右侧 ⓘ hover 气泡，含命名时机与 token 消耗说明
   assert.match(html, /class="info-icon"/);
   assert.match(html, /输入约 1500~2500 tokens/);

@@ -844,7 +844,7 @@
     });
   }
 
-  /* ---------- AI 会话标题：模型选择、开关持久化、批量发起与进度 ---------- */
+  /* ---------- 新会话 AI 自动命名：模型选择、开关持久化、用量显示 ---------- */
 
   const RENAME_SETTINGS_STORAGE_KEY = 'sessionRenameSettings';
   const RENAME_MODELS_STORAGE_KEY = 'sessionRenameModels';
