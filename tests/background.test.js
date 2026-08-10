@@ -164,3 +164,49 @@ test('额度响应会等待预警状态与每日快照落盘后再结束', async
   assert.equal(state.alertDone, true);
   assert.equal(state.snapshotDone, true);
 });
+
+test('resetAndStartOAuth 会等待 pending 的旧授权流程结束后再发起新流程', async () => {
+  let deviceAuthCalls = 0;
+  let releaseStalledFlow;
+  const stalled = new Promise((resolve) => { releaseStalledFlow = resolve; });
+  const app = loadBackground({
+    fetchImpl: async (url) => {
+      if (String(url).includes('device_authorization')) {
+        deviceAuthCalls += 1;
+        // 第一次设备授权请求挂起，让旧流程停在 pending
+        if (deviceAuthCalls === 1) await stalled;
+        const seq = deviceAuthCalls;
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              device_code: `device-${seq}`,
+              user_code: `CODE-${seq}`,
+              expires_in: 900,
+              interval: 5,
+              verification_uri_complete: 'https://auth.kimi.com/activate'
+            };
+          }
+        };
+      }
+      // token 轮询返回致命错误：清场即止，不会留下待执行的轮询定时器
+      return { ok: false, status: 400, async json() { return { error: 'expired_token' }; } };
+    }
+  });
+
+  const oldFlow = app.run('startOAuth()');
+  let oldFlowError = null;
+  oldFlow.catch((error) => { oldFlowError = error; });
+
+  const resetPromise = app.run('resetAndStartOAuth()');
+  // 等 clearAuth 完成（authRevision 已递增）后再放行挂起的旧流程
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  releaseStalledFlow();
+  const result = await resetPromise;
+
+  assert.equal(deviceAuthCalls, 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.userCode, 'CODE-2');
+  assert.equal(oldFlowError?.message, '授权已被取消');
+});

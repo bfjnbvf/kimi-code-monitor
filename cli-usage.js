@@ -165,19 +165,18 @@
   }
 
   function scanStartOffset(file, previous) {
-    const sameKnownFile =
-      previous &&
-      Number(previous.size) === file.size &&
-      Number(previous.lastModified) === file.lastModified;
-    const canAppend =
-      previous &&
-      Number(previous.offset) >= 0 &&
-      Number(previous.offset) <= file.size &&
-      (
-        Number(previous.size) < file.size ||
-        (sameKnownFile && Number(previous.offset) < file.size)
-      );
-    return canAppend ? Number(previous.offset) : 0;
+    // 仅「纯追加」才从上次偏移续扫：上次必须已扫到旧文件尾（offset === size），
+    // 且新文件比该偏移更大。追加必然保持该特征；截断重写/原子替换即使新文件
+    // 更大也不满足——旧偏移之后的内容已整体换新，复用旧偏移会永久漏计新文件
+    // 头部。lastModified 在正常追加时同样会变，无法区分追加与替换，故不作为
+    // 判据。其余情况（含 offset 未扫到旧文件尾、同尺寸但 lastModified 变化的
+    // 疑似同尺寸重写）一律回退 0 全量重扫，此时 scanFile 的 canAppend 为假，
+    // daily/meta 从空重建而非克隆旧值。真正未变的文件由 scanSessionsDirectory
+    // 的 unchanged 短路跳过，不依赖这里。
+    const offset = Number(previous?.offset);
+    const scannedToOldEnd =
+      Number.isFinite(offset) && offset >= 0 && offset === Number(previous.size);
+    return scannedToOldEnd && offset < file.size ? offset : 0;
   }
 
   async function scanFile(file, previous, onBytesProcessed, isSubagent = false) {

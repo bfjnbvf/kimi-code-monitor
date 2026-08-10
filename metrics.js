@@ -111,6 +111,44 @@
     return keys;
   }
 
+  // 活跃热力图数据：固定窗口（默认最近 90 天，含 endKey 当天），按周一起头分列。
+  // 只依赖按天桶的 input/output，旧格式桶缺失字段按 0 处理。
+  function buildHeatmapData(daily, endKey, dayCount = 90) {
+    const source = daily && typeof daily === 'object' ? daily : {};
+    const count = Math.max(1, Math.floor(Number(dayCount)) || 90);
+    const [y, m, d] = String(endKey).split('-').map(Number);
+    const end = new Date(y, (m || 1) - 1, d || 1);
+    const cells = [];
+    let maxTotal = 0;
+    for (let i = count - 1; i >= 0; i -= 1) {
+      const date = new Date(end);
+      date.setDate(date.getDate() - i);
+      const key = usageDayKey(date);
+      const bucket = source[key];
+      const total = toNonNegativeInteger(bucket?.input) + toNonNegativeInteger(bucket?.output);
+      if (total > maxTotal) maxTotal = total;
+      // getDay()：0=周日 … 6=周六；换算成周一起头的列内序号（周一=0）
+      cells.push({ key, total, weekIndex: (date.getDay() + 6) % 7 });
+    }
+    const thresholds = maxTotal > 0
+      ? [0.2, 0.4, 0.6, 0.8].map((fraction) => maxTotal * fraction)
+      : [0, 0, 0, 0];
+    const levelOf = (total) => {
+      if (total <= 0 || maxTotal <= 0) return 0;
+      if (total <= thresholds[0]) return 1;
+      if (total <= thresholds[1]) return 2;
+      if (total <= thresholds[2]) return 3;
+      return 4;
+    };
+    const weeks = [];
+    for (const cell of cells) {
+      // 周一（或首格）开新列；首尾列因窗口边界自然截断，不足 7 格
+      if (weeks.length === 0 || cell.weekIndex === 0) weeks.push([]);
+      weeks[weeks.length - 1].push({ key: cell.key, total: cell.total, level: levelOf(cell.total) });
+    }
+    return { weeks, maxTotal, thresholds };
+  }
+
   // 与 widget 的 fmtNum 同款缩写：k / M
   function formatTokenCount(value) {
     const number = toNonNegativeInteger(value);
@@ -267,7 +305,10 @@
 
     const reconcile = (order, region, regionDefaults) => {
       const wanted = WIDGET_MODULE_IDS.filter((id) => modules[id].show === region);
-      const stored = Array.isArray(order) ? order.filter((id) => wanted.includes(id)) : [];
+      // 手动改坏 storage 可能留下重复 id，先去重，避免同一模块在面板上出现两次
+      const stored = Array.isArray(order)
+        ? [...new Set(order.filter((id) => wanted.includes(id)))]
+        : [];
       // 存储顺序优先；缺漏的先按该区域默认顺序、再按模块默认顺序补在末尾
       for (const id of [...regionDefaults, ...WIDGET_MODULE_IDS]) {
         if (wanted.includes(id) && !stored.includes(id)) stored.push(id);
@@ -297,6 +338,7 @@
 
   return {
     boosterBalanceYuan,
+    buildHeatmapData,
     cacheReadPercentage,
     CHART_RANGES,
     aggregateSpeed,

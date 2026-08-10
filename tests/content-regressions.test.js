@@ -194,3 +194,24 @@ test('销毁内容脚本时通过 walkthrough cleanup 移除引导及监听', ()
   assert.match(source, /window\.KsbWalkthrough\?\.stop\?\.\(\)/);
   assert.doesNotMatch(source, /getElementById\('ksb-guide'\)/);
 });
+
+test('WS 重连重放：ack 后已实时处理的 step/turn 重放不再双算', () => {
+  // 先捕获推进前的水位，再做 Math.max 推进
+  assert.match(source, /const prevUsageSeq = lastUsageSeq;[\s\S]*?const prevTurnSeq = lastTurnSeq;[\s\S]*?lastUsageSeq = Math\.max\(lastUsageSeq, replaySeq\)/);
+  // 重放的 step/turn 只在游标大于旧水位时才累计
+  assert.match(source, /replaySeq > prevUsageSeq\)[\s\S]*?handleStepCompleted\(replayPayload, replayAgent\)/);
+  assert.match(source, /replaySeq > prevTurnSeq\)[\s\S]*?pushReplayedTurnDuration\(replayPayload\)/);
+  // 重复的 turn.ended 不清工具状态、不复位工作状态
+  assert.match(source, /if \(!alreadyRecorded\) \{\s*clearToolStatus\(\);\s*setAgentStatus\('idle'\);/);
+});
+
+test('本地汇总 seed 恢复期间切换会话时丢弃旧会话结果', () => {
+  assert.match(source, /const sid = sessionId;[\s\S]*?await readSessionSeed\(sid\)[\s\S]*?if \(!seed \|\| sid !== sessionId\) return;/);
+});
+
+test('切换账户后面板先显示该账户缓存额度，再强制刷新', () => {
+  assert.match(source, /message\?\.type === 'auth\.switched'/);
+  assert.match(source, /fetchQuota\(false, \{ allowStale: true \}\)/);
+  assert.match(source, /fetchQuota\(true\)/);
+  assert.match(source, /payload: \{ force, allowStale \}/);
+});

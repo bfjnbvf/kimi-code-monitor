@@ -69,7 +69,7 @@
     offline: '未连接',
     unauthorized: '未授权',
     ratelimit: '限流中',
-    subagent: '子代理工作中'
+    subagent: '子代理'
   };
 
   // 超过 4 字的状态在宠物模块按语义切两行（不超 6 字），避免挤压右侧时钟
@@ -193,6 +193,17 @@
   function toNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) ? number : 0;
+  }
+
+  // 外部 API / CLI 扫描来源的字符串进 innerHTML 前统一转义（title 属性插值单层即可）
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[ch]);
   }
 
   function progressClass(percentage) {
@@ -749,8 +760,10 @@
     const opts = externalProviders
       .map((account) => {
         const visible = !hidden.includes(account.id);
-        const label = `${account.name} ·${account.keyTail || ''}`;
-        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="accountToggle" data-value="${account.id}">${label}</span>`;
+        const label = account.keyTail
+          ? `${escapeHtml(account.name)} · ${escapeHtml(account.keyTail)}`
+          : escapeHtml(account.name);
+        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="accountToggle" data-value="${escapeHtml(account.id)}">${label}</span>`;
       })
       .join('');
     return `<div class="ksb-menu-opts">${opts}</div>`;
@@ -763,8 +776,8 @@
       .map((agentId) => {
         const visible = !hidden.includes(agentId);
         const model = agentModelLabel(agentId);
-        const label = `${agentDisplayName(agentId)}${model ? ` · ${model}` : ''}`;
-        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="agentToggle" data-value="${agentId}">${label}</span>`;
+        const label = `${agentDisplayName(agentId)}${model ? ` · ${escapeHtml(model)}` : ''}`;
+        return `<span class="ksb-menu-opt ${visible ? 'ksb-on' : ''}" data-kind="agentToggle" data-value="${escapeHtml(agentId)}">${label}</span>`;
       })
       .join('');
     return `<div class="ksb-menu-opts">${opts}</div>`;
@@ -1389,9 +1402,9 @@
         ? `<span class="ksb-agent-badge main${working ? ' on' : ''}">主</span>`
         : `<span class="ksb-agent-badge sub${working ? ' on' : ''}">子</span>`;
       rows.push(`
-        <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${title}">
+        <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${escapeHtml(title)}">
           <span class="ksb-agent-id">${badge}</span>
-          <span class="ksb-agent-model">${name}</span>
+          <span class="ksb-agent-model">${escapeHtml(name)}</span>
           <span class="ksb-agent-metric m-in">${formatTokenCount(totalInputTokens(totals))}</span>
           <span class="ksb-agent-metric m-out">${formatTokenCount(totals.outputTokens)}</span>
           <span class="ksb-agent-metric m-hit">${hit != null ? `${formatPercentage(hit)}%` : '--'}</span>
@@ -1403,7 +1416,7 @@
       isMain: true,
       totals: agentTotals.main || emptyAgentMetric(),
       working: mainWorking,
-      name: mainModel,
+      name: escapeHtml(mainModel),
       title: `主代理${mainModel ? ` · ${mainModel}` : ''}`
     });
     for (const [model, group] of groups) {
@@ -1412,7 +1425,7 @@
         totals: group,
         working: group.working,
         // 模型名缺失（未授权 CLI 读不到次级模型名）时兜底为「子代理」，避免裸 ×N
-        name: `${model || '子代理'}${group.count > 1 ? ` ×${group.count}` : ''}`,
+        name: escapeHtml(`${model || '子代理'}${group.count > 1 ? ` ×${group.count}` : ''}`),
         title: `子代理${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
       });
     }
@@ -1482,23 +1495,23 @@
     const valueHtml = (provider) => {
       if (provider.error) return '获取失败';
       if (provider.kind === 'balance') {
-        return `<span class="ksb-external-kind">API 余额</span> ${provider.currency}${provider.total.toFixed(2)}`;
+        return `<span class="ksb-external-kind">API 余额</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
       }
       if (provider.windows?.length) {
         return provider.windows
-          .map((w) => `<span class="ksb-external-kind">${w.label}</span> ${formatPercentage(w.pct)}%`)
+          .map((w) => `<span class="ksb-external-kind">${escapeHtml(w.label)}</span> ${formatPercentage(w.pct)}%`)
           .join(' · ');
       }
-      return provider.plan || '已启用';
+      return provider.plan ? escapeHtml(provider.plan) : '已启用';
     };
     els.externalList.innerHTML = visible
       .map((provider) => {
         const label = nameCounts[provider.name] > 1
-          ? `${provider.name} ·${provider.keyTail}`
-          : provider.name;
+          ? `${escapeHtml(provider.name)} ·${escapeHtml(provider.keyTail)}`
+          : escapeHtml(provider.name);
         const formatted = formatExternalValue(provider);
         return `
-          <div class="ksb-external-row" title="${label}${formatted.note ? ` · ${formatted.note}` : ''}">
+          <div class="ksb-external-row" title="${label}${formatted.note ? ` · ${escapeHtml(formatted.note)}` : ''}">
             <span class="ksb-external-name">${label}</span>
             <span class="ksb-external-value${provider.error ? ' err' : ''}">${valueHtml(provider)}</span>
           </div>`;
@@ -2000,14 +2013,14 @@
     return quotaVisible || balanceVisible || petBalanceVisible;
   }
 
-  async function fetchQuota(force = false) {
+  async function fetchQuota(force = false, { allowStale = false } = {}) {
     if (!els?.widget || !chrome?.runtime?.sendMessage) return;
     // 手动强制刷新（点标题）跳过 wanted 检查：全隐藏时也要真的拉
     if (!force && !quotaPollingWanted()) return;
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'quota.fetch',
-        payload: { force }
+        payload: { force, allowStale }
       });
       if (!response?.ok) {
         if (response?.code === 'AUTH_REQUIRED') {
@@ -2194,9 +2207,11 @@
   async function refreshSessionSeedFromScan() {
     if (!sessionId || petTurnActive) return;
     if (PET_ANSWER_STATUSES.includes(metrics.agentStatus)) return;
+    // await 期间可能已切换会话，旧会话的 seed 不能覆盖新会话面板
+    const sid = sessionId;
     try {
-      const seed = await readSessionSeed(sessionId);
-      if (!seed) return;
+      const seed = await readSessionSeed(sid);
+      if (!seed || sid !== sessionId) return;
       applySessionSeed(seed);
       renderAll();
     } catch (error) {
@@ -2467,6 +2482,11 @@
     // 断线补发（游标非 0）是页面加载后的新事件，汇总未含，照常计数。
     if (awaitingAck) {
       const replaySeq = Number(message.seq);
+      // 重连重放去重：ack 之后 subscriptionCursor 不随实时事件推进，重连时服务端
+      // 会按陈旧游标重放已被实时处理过的事件。先捕获推进前的游标用于判定
+      // （下面 Math.max 才推进水位），重放过的 step/turn 不再计入。
+      const prevUsageSeq = lastUsageSeq;
+      const prevTurnSeq = lastTurnSeq;
       if (Number.isFinite(replaySeq)) {
         lastSeq = Math.max(lastSeq, replaySeq);
         lastUsageSeq = Math.max(lastUsageSeq, replaySeq);
@@ -2479,12 +2499,17 @@
           // 历史重放：只进折线样本并登记代理顺序，不进任何计数器
           registerSessionAgent(replayAgent);
           if (replaySamplesExpected) pushStepSample(replayPayload);
-        } else {
+        } else if (!Number.isFinite(replaySeq) || replaySeq > prevUsageSeq) {
+          // 断线补发只累计游标之后的新 step，重放已实时处理的 step 会双算 token
           handleStepCompleted(replayPayload, replayAgent);
         }
       } else if (message.type === 'turn.ended' || message.type === 'turn.completed') {
-        pushReplayedTurnDuration(replayPayload);
-        if (!replayIsHistory) scheduleCliUsageRefresh();
+        // 轮次结束同理按 lastTurnSeq 去重：重放已处理的轮次不重复记耗时样本、
+        // 不再触发用量重扫
+        if (!Number.isFinite(replaySeq) || replaySeq > prevTurnSeq) {
+          pushReplayedTurnDuration(replayPayload);
+          if (!replayIsHistory) scheduleCliUsageRefresh();
+        }
       }
       return;
     }
@@ -2518,11 +2543,11 @@
           if (Number.isFinite(Number(message.seq))) lastUsageSeq = Number(message.seq);
         }
         // step 之间的间隙通常在执行工具或等待模型，主代理统一显示「思考中」；
-        // 子代理的 step 单独显示「子代理工作中」
+        // 子代理的 step 单独显示「子代理」
         setAgentWorkStatus(isSubagentEvent(message, payload) ? 'subagent' : 'thinking');
         break;
       case 'thinking.delta':
-        // 主代理的推理流；子代理的 delta 不改变「子代理工作中」显示
+        // 主代理的推理流；子代理的 delta 不改变「子代理」显示
         if (!isSubagentEvent(message, payload) && deferredWorkStatus !== 'thinking') {
           setAgentWorkStatus('thinking');
         }
@@ -2570,9 +2595,9 @@
           if (turnDurations.length > SESSION_SAMPLE_LIMIT) turnDurations.shift();
         }
         if (Number.isFinite(turnSequence)) lastTurnSeq = Math.max(lastTurnSeq, turnSequence);
-        clearToolStatus();
-        setAgentStatus('idle');
         if (!alreadyRecorded) {
+          clearToolStatus();
+          setAgentStatus('idle');
           // 折线图：本轮最后一个 step 样本加常驻大节点，区分轮内调用与整轮结束
           const lastSample = sessionSamples[sessionSamples.length - 1];
           if (lastSample) lastSample.turnEnd = true;
@@ -2718,8 +2743,9 @@
     metrics.cacheCreationTokens = cached.cacheCreationTokens;
     metrics.lastDuration = cached.lastDuration;
     metrics.agentStatus = cached.agentStatus;
-    sessionSamples = cached.sessionSamples;
-    turnDurations = cached.turnDurations;
+    // 复制再挂到 live 数组：后续 push/shift 不能回写缓存条目
+    sessionSamples = cached.sessionSamples.slice();
+    turnDurations = cached.turnDurations.slice();
     agentTotals = cached.agentTotals;
     sessionAgentOrder = cached.sessionAgentOrder;
     agentTopModels = cached.agentTopModels;
@@ -2885,6 +2911,11 @@
 
   function handleRuntimeMessage(message) {
     if (message?.type === 'auth.completed') fetchQuota();
+    if (message?.type === 'auth.switched') {
+      // 切换账户：先展示该账户的缓存额度（若有），再强制刷新为最新值
+      fetchQuota(false, { allowStale: true });
+      fetchQuota(true);
+    }
     if (message?.type === 'auth.cleared') {
       setQuotaAuthRequired(true);
       updateBalance(null);
@@ -2908,7 +2939,12 @@
   }
 
   function handlePageShow(event) {
-    if (event.persisted && !disposed) checkPageState();
+    if (event.persisted && !disposed) {
+      checkPageState();
+      // bfcache 恢复期间额度与本地汇总可能已过期，补一次拉取并按需触发重扫
+      fetchQuota();
+      loadUsageDaily({ refreshIfStale: true });
+    }
   }
 
   function dispose() {

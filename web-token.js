@@ -1,6 +1,10 @@
 /**
  * Kimi Web Token Relay
  *
+ * 已停用：本文件未在 manifest.json 注册，当前不会注入任何页面；
+ * 月额度通路保留备用，重新启用需在 manifest 补本文件的 content_scripts
+ * 与 https://www.kimi.com/* 的 host_permissions。
+ *
  * 月额度（GetSubscriptionStats）只认 kimi.com 网页端的 access_token，
  * 扩展的设备 OAuth token 调它会 401。本脚本注入 www.kimi.com 页面，
  * 读取网页端 localStorage 的 access_token 并上报 background 缓存。

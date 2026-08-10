@@ -8,7 +8,9 @@ const DEVICE_AUTH_API = `${AUTH_HOST}/api/oauth/device_authorization`;
 const TOKEN_API = `${AUTH_HOST}/api/oauth/token`;
 const CLIENT_ID = '17e5f671-d194-4dfb-9706-5516cb48c098';
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code';
-const TOKEN_STORAGE_KEY = 'kimiOAuthToken';
+const TOKEN_STORAGE_KEY = 'kimiOAuthToken'; // 旧版单 token 键，仅用于迁移
+// 多账户额度授权：{ accounts: [{ id, label, token, needsReauth, addedAt }], activeId }
+const ACCOUNTS_STORAGE_KEY = 'kimiOAuthAccounts';
 const DEVICE_ID_STORAGE_KEY = 'kimiDeviceId';
 const PENDING_AUTH_STORAGE_KEY = 'kimiPendingAuthorization';
 // 月额度最后一次成功值（web token 断供时回退显示，不再横杠）
@@ -27,9 +29,10 @@ let pendingAuthorization = null;
 let devicePollTimer = null;
 let devicePollPromise = null;
 let oauthStartPromise = null;
-let refreshPromise = null;
+// token 刷新单飞与额度缓存都按账户 id 隔离：多账户切换互不影响
+const refreshPromises = new Map();
 let quotaFetchPromise = null;
-let quotaCache = null;
+const quotaCacheByAccount = new Map();
 let authRevision = 0;
 
 // worker 活着时用短定时器保持授权响应速度，alarm 负责休眠后的可靠恢复。
@@ -52,8 +55,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 /* ---------- 额度预警 ----------
  * widget 每次拿到新鲜额度数据后顺带评估 5h / 本周两个窗口的占用百分比；
  * 越过 80% / 95% 各通知一次，窗口重置（百分比回落）后重新武装。
+ * 预警状态按账户隔离，且本函数只由激活账户的额度拉取触发，
+ * 非激活账户不会触发桌面通知。
  * 不做后台定时拉取，保持低功耗：没有 Kimi 标签页活动时不触发。 */
-async function evaluateQuotaAlerts(data) {
+async function evaluateQuotaAlerts(data, accountKey = 'default') {
   try {
     const percentages = extractQuotaPercentages(data);
     const stored = await chrome.storage.local.get(QUOTA_ALERT_STORAGE_KEY);
@@ -61,18 +66,23 @@ async function evaluateQuotaAlerts(data) {
       stored[QUOTA_ALERT_STORAGE_KEY] && typeof stored[QUOTA_ALERT_STORAGE_KEY] === 'object'
         ? { ...stored[QUOTA_ALERT_STORAGE_KEY] }
         : {};
+    const accountState =
+      state[accountKey] && typeof state[accountKey] === 'object' ? { ...state[accountKey] } : {};
     let changed = false;
     for (const [key, pct] of Object.entries(percentages)) {
       if (pct == null) continue;
-      const previousLevel = state[key]?.level || 0;
+      const previousLevel = accountState[key]?.level || 0;
       const level = pct >= 95 ? 95 : pct >= 80 ? 80 : 0;
       if (level > previousLevel) notifyQuotaThreshold(key, level, pct);
       if (level !== previousLevel) {
-        state[key] = { level };
+        accountState[key] = { level };
         changed = true;
       }
     }
-    if (changed) await chrome.storage.local.set({ [QUOTA_ALERT_STORAGE_KEY]: state });
+    if (changed) {
+      state[accountKey] = accountState;
+      await chrome.storage.local.set({ [QUOTA_ALERT_STORAGE_KEY]: state });
+    }
   } catch (error) {
     console.warn('[Kimi Status] 额度预警评估失败', error);
   }
@@ -173,8 +183,8 @@ async function pollDeviceAuthorization() {
   }
 
   const token = normalizeToken(data);
-  await chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: token });
-  quotaCache = null;
+  const account = await completeAccountAuthorization(authorization, token);
+  quotaCacheByAccount.delete(account.id);
   const authTabId = await clearPendingAuthorization();
   // 授权成功后自动关掉我们打开的授权页
   if (authTabId != null) {
@@ -199,7 +209,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const handlers = {
     'quota.fetch': fetchQuota,
     'oauth.start': startOAuth,
+    'oauth.add': addAccountOAuth,
+    'oauth.reauth': reauthAccountOAuth,
     'oauth.reset': resetAndStartOAuth,
+    'accounts.switch': switchAccount,
+    'accounts.remove': removeAccount,
+    'accounts.rename': renameAccount,
     'auth.status': authStatus,
     'auth.clear': clearAuth,
     'cli.usage.status': getCliUsageStatus,
@@ -209,7 +224,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'webtoken.report': reportWebToken,
     'external.status': getExternalProvidersStatus,
     'external.add': addExternalAccount,
-    'external.remove': removeExternalAccount
+    'external.remove': removeExternalAccount,
+    'external.rename': renameExternalAccount
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -349,7 +365,8 @@ async function fetchExternalAccount(account) {
   const base = {
     id: account.id,
     provider: account.provider,
-    name: provider.name,
+    // 用户改名后优先显示备注名，缺省回退 provider 默认名
+    name: account.label || provider.name,
     keyTail: account.keyTail || ''
   };
   const hasPermission = await chrome.permissions.contains({ origins: [`${provider.origin}/*`] });
@@ -412,6 +429,21 @@ async function removeExternalAccount(payload) {
   const next = accounts.filter((account) => account.id !== id);
   await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: next });
   externalProviderCache.delete(id);
+  return { ok: true };
+}
+
+async function renameExternalAccount(payload) {
+  const id = payload?.id;
+  const label = String(payload?.label || '').trim().slice(0, 30);
+  if (!label) return failure(new Error('备注名为空'));
+  const accounts = await readExternalAccounts();
+  const account = accounts.find((item) => item.id === id);
+  if (!account) return failure(new Error('账户不存在'));
+  account.label = label;
+  await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
+  // 缓存里带着旧名称，就地改掉，避免改名后还要等一次网络刷新
+  const cached = externalProviderCache.get(id);
+  if (cached) cached.value = { ...cached.value, name: label };
   return { ok: true };
 }
 
@@ -595,8 +627,16 @@ function failure(error, code = 'REQUEST_FAILED') {
 }
 
 async function fetchQuota(payload) {
-  if (!payload?.force && quotaCache && Date.now() - quotaCache.fetchedAt < QUOTA_CACHE_TTL_MS) {
-    return quotaCache.response;
+  const store = await readAccountStore();
+  const accountId = store.activeId || '';
+  if (!payload?.force) {
+    const cached = quotaCacheByAccount.get(accountId);
+    if (cached) {
+      // allowStale：切换账户后先展示该账户的旧缓存，调用方随后会强制刷新
+      if (Date.now() - cached.fetchedAt < QUOTA_CACHE_TTL_MS || payload?.allowStale) {
+        return cached.response;
+      }
+    }
   }
   if (quotaFetchPromise) return quotaFetchPromise;
 
@@ -608,21 +648,30 @@ async function fetchQuota(payload) {
 
 async function fetchQuotaFresh() {
   const requestRevision = authRevision;
-  let token = await getValidToken();
+  const store = await readAccountStore();
+  const account = activeAccountOf(store);
+  let token = await getValidTokenForAccount(account);
   if (!token) return failure(new Error('需要授权 Kimi 额度查询'), 'AUTH_REQUIRED');
 
   let response = await requestQuota(token.access_token);
   if (response.status === 401 || response.status === 403) {
     const rejectedAccessToken = token.access_token;
-    token = await refreshTokenSingleFlight(token).catch(() => null);
+    token = await refreshTokenSingleFlight(account.id, token).catch(() => null);
     if (!token) {
-      await clearStoredTokenIfMatches(rejectedAccessToken);
+      await markAccountNeedsReauth(account.id, rejectedAccessToken);
       return failure(new Error('Kimi 授权已失效'), 'AUTH_REQUIRED');
     }
     response = await requestQuota(token.access_token);
   }
 
-  if (!response.ok) throw await httpError('额度 API', response);
+  if (!response.ok) {
+    // 刷新后仍 401/403：只标记该账户需重新授权，不拖垮其他账户
+    if (response.status === 401 || response.status === 403) {
+      await markAccountNeedsReauth(account.id, token.access_token);
+      return failure(new Error('Kimi 授权已失效'), 'AUTH_REQUIRED');
+    }
+    throw await httpError('额度 API', response);
+  }
   const data = await response.json();
   // 月额度暂时下线：web token 寿命仅约 18 分钟，中转/轮询方案体验不佳，
   // 找到更干净的通路前不再拉取（resolveMonthlyStats/requestMonthlyStats 保留备用）
@@ -633,11 +682,11 @@ async function fetchQuotaFresh() {
   // MV3 service worker 在消息响应结束后可能立即休眠；必须把预警状态与每日快照
   // 纳入当前消息任务生命周期，否则这两次 storage 写入会偶发丢失。
   await Promise.allSettled([
-    evaluateQuotaAlerts(data),
+    evaluateQuotaAlerts(data, account.id),
     recordQuotaSnapshot(data)
   ]);
   const result = { ok: true, data };
-  quotaCache = { fetchedAt: Date.now(), response: result };
+  quotaCacheByAccount.set(account.id, { fetchedAt: Date.now(), response: result });
   return result;
 }
 
@@ -742,14 +791,14 @@ async function callSubscriptionStats(accessToken) {
   }
 }
 
-async function getValidToken() {
-  const stored = await chrome.storage.local.get(TOKEN_STORAGE_KEY);
-  const token = stored[TOKEN_STORAGE_KEY];
+async function getValidTokenForAccount(account) {
+  if (!account || account.needsReauth) return null;
+  const token = account.token;
   if (!isTokenShapeValid(token)) return null;
 
   const now = Math.floor(Date.now() / 1_000);
   if (token.expires_at > now + REFRESH_MARGIN_SECONDS) return token;
-  return refreshTokenSingleFlight(token).catch(() => null);
+  return refreshTokenSingleFlight(account.id, token).catch(() => null);
 }
 
 function isTokenShapeValid(token) {
@@ -761,15 +810,120 @@ function isTokenShapeValid(token) {
   );
 }
 
-function startOAuth() {
+/* ---------- 多账户存储 ----------
+ * chrome.storage.local 的 kimiOAuthAccounts：
+ * { accounts: [{ id, label, token, needsReauth, addedAt }], activeId }
+ * token 结构与旧版单账户一致；needsReauth 标记刷新后仍 401 的失效账户，
+ * 失效账户保留在列表里等重新授权，不影响其他账户。 */
+function newAccountId() {
+  return `kimi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function nextDefaultLabel(accounts) {
+  const used = new Set(accounts.map((account) => account.label));
+  let index = 1;
+  while (used.has(`账户 ${index}`)) index += 1;
+  return `账户 ${index}`;
+}
+
+function activeAccountOf(store) {
+  return store.accounts.find((account) => account.id === store.activeId) || null;
+}
+
+// 读取账户表；检测到旧版单 token 存储时迁移为首个账户（默认「账户 1」）并删除旧键
+async function readAccountStore() {
+  const stored = await chrome.storage.local.get([ACCOUNTS_STORAGE_KEY, TOKEN_STORAGE_KEY]);
+  const raw = stored[ACCOUNTS_STORAGE_KEY];
+  let store;
+  let dirty = false;
+  if (raw && typeof raw === 'object' && Array.isArray(raw.accounts)) {
+    const accounts = raw.accounts.filter((account) => account && typeof account.id === 'string');
+    dirty = accounts.length !== raw.accounts.length;
+    store = { accounts, activeId: typeof raw.activeId === 'string' ? raw.activeId : null };
+  } else {
+    store = { accounts: [], activeId: null };
+    dirty = raw != null;
+  }
+  const legacy = stored[TOKEN_STORAGE_KEY];
+  if (legacy) {
+    if (isTokenShapeValid(legacy)) {
+      const account = {
+        id: newAccountId(),
+        label: nextDefaultLabel(store.accounts),
+        token: legacy,
+        needsReauth: false,
+        addedAt: Date.now()
+      };
+      store.accounts.push(account);
+      if (!store.activeId) store.activeId = account.id;
+    }
+    await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
+    dirty = true;
+  }
+  // activeId 失效（账户被移除等）时回落到剩余第一个，无剩余则为 null
+  if (!store.accounts.some((account) => account.id === store.activeId)) {
+    const fallback = store.accounts[0]?.id || null;
+    if (store.activeId !== fallback) {
+      store.activeId = fallback;
+      dirty = true;
+    }
+  }
+  if (dirty) await writeAccountStore(store);
+  return store;
+}
+
+async function writeAccountStore(store) {
+  await chrome.storage.local.set({ [ACCOUNTS_STORAGE_KEY]: store });
+}
+
+// 授权完成：accountId 命中的为重新授权（保留备注名），否则新建账户；
+// 最新完成授权的账户一律成为当前激活账户
+async function completeAccountAuthorization(authorization, token) {
+  const store = await readAccountStore();
+  const target = store.accounts.find((account) => account.id === authorization.accountId);
+  if (target) {
+    target.token = token;
+    target.needsReauth = false;
+    store.activeId = target.id;
+    await writeAccountStore(store);
+    return target;
+  }
+  const account = {
+    id: newAccountId(),
+    label: authorization.label || nextDefaultLabel(store.accounts),
+    token,
+    needsReauth: false,
+    addedAt: Date.now()
+  };
+  store.accounts.push(account);
+  store.activeId = account.id;
+  await writeAccountStore(store);
+  return account;
+}
+
+// token 失效（刷新后仍 401）：清空该账户 token 并标记需重新授权；
+// accessToken 不匹配说明已被并发流程换新，不动它
+async function markAccountNeedsReauth(accountId, accessToken) {
+  const store = await readAccountStore();
+  const account = store.accounts.find((item) => item.id === accountId);
+  if (!account) return;
+  if (accessToken && account.token && account.token.access_token !== accessToken) return;
+  account.token = null;
+  account.needsReauth = true;
+  await writeAccountStore(store);
+  quotaCacheByAccount.delete(accountId);
+}
+
+// options：accountId 重新授权指定账户；forceNew 强制新建账户；label 新账户备注名
+function startOAuth(options = {}) {
   if (oauthStartPromise) return oauthStartPromise;
-  oauthStartPromise = startOAuthInternal().finally(() => {
+  oauthStartPromise = startOAuthInternal(options || {}).finally(() => {
     oauthStartPromise = null;
   });
   return oauthStartPromise;
 }
 
-async function startOAuthInternal() {
+async function startOAuthInternal(options = {}) {
   const startRevision = authRevision;
   const existing = await loadPendingAuthorization();
   if (existing && Date.now() < existing.expiresAt) {
@@ -786,6 +940,18 @@ async function startOAuthInternal() {
   }
   if (existing) await clearPendingAuthorization({ closeTab: true });
 
+  // 授权目标：显式 accountId 为重新授权该账户；否则激活账户缺有效 token 时
+  // 视为重新授权它（面板授权横幅的场景）；其余情况授权成功即新建账户
+  let targetAccountId = typeof options.accountId === 'string' ? options.accountId : null;
+  if (!targetAccountId && !options.forceNew) {
+    const store = await readAccountStore();
+    const active = activeAccountOf(store);
+    if (active && (active.needsReauth || !isTokenShapeValid(active.token))) {
+      targetAccountId = active.id;
+    }
+  }
+  const label = String(options.label || '').trim().slice(0, 30);
+
   const response = await postForm(DEVICE_AUTH_API, { client_id: CLIENT_ID });
   if (!response.ok) throw await httpError('设备授权', response);
   const data = await response.json();
@@ -799,7 +965,9 @@ async function startOAuthInternal() {
     expiresAt: Date.now() + expiresIn * 1_000,
     intervalMs: Math.max(2_000, (Number(data.interval) || 5) * 1_000),
     tabId: null,
-    authorizationUrl: data.verification_uri_complete || data.verification_uri || ''
+    authorizationUrl: data.verification_uri_complete || data.verification_uri || '',
+    accountId: targetAccountId,
+    label
   };
   const userCode = pendingAuthorization.userCode;
   const intervalMs = pendingAuthorization.intervalMs;
@@ -842,41 +1010,138 @@ async function ensureAuthorizationTab(authorization, expectedRevision) {
   await chrome.storage.session.set({ [PENDING_AUTH_STORAGE_KEY]: authorization });
 }
 
-// 供扩展弹窗查询当前授权状态
+// 供扩展弹窗查询当前授权状态与账户列表
 async function authStatus() {
   await loadPendingAuthorization();
   if (pendingAuthorization && Date.now() >= pendingAuthorization.expiresAt) {
     await clearPendingAuthorization({ closeTab: true });
   }
+  const store = await readAccountStore();
+  const accounts = store.accounts.map((account) => ({
+    id: account.id,
+    label: account.label,
+    active: account.id === store.activeId,
+    needsReauth: Boolean(account.needsReauth || !isTokenShapeValid(account.token))
+  }));
   // 与额度请求走同一有效性检查：必要时刷新过期 token；刷新失败则不能继续显示“已授权”。
-  const token = await getValidToken();
+  const token = await getValidTokenForAccount(activeAccountOf(store));
   if (!token) {
     return {
       ok: true,
       authorized: false,
       pending: Boolean(pendingAuthorization),
-      userCode: pendingAuthorization?.userCode || ''
+      userCode: pendingAuthorization?.userCode || '',
+      accounts,
+      activeId: store.activeId
     };
   }
   return {
     ok: true,
     authorized: true,
-    expiresAt: token.expires_at * 1_000
+    expiresAt: token.expires_at * 1_000,
+    pending: Boolean(pendingAuthorization),
+    accounts,
+    activeId: store.activeId
   };
 }
 
-// 重新授权 / 切换账户：清掉现有 token 后走完整设备授权流程
-async function resetAndStartOAuth() {
-  await clearAuth();
-  return startOAuth();
+// 添加新账户：强制走新建分支的设备授权流程，可携带备注名
+function addAccountOAuth(payload) {
+  return startOAuth({ forceNew: true, label: payload?.label });
 }
 
-// 仅清除授权（测试或换账户前的重置）
+// 重新授权指定账户（保留备注名，完成后成为激活账户）
+function reauthAccountOAuth(payload) {
+  return startOAuth({ accountId: payload?.id });
+}
+
+// 切换激活账户；额度缓存按账户隔离，面板先显示该账户缓存再强制刷新
+async function switchAccount(payload) {
+  const id = payload?.id;
+  const store = await readAccountStore();
+  if (!store.accounts.some((account) => account.id === id)) {
+    return failure(new Error('账户不存在'));
+  }
+  if (store.activeId !== id) {
+    store.activeId = id;
+    await writeAccountStore(store);
+    broadcastAuthState('auth.switched');
+  }
+  return { ok: true, activeId: store.activeId };
+}
+
+// 移除账户；移除激活账户时自动切到剩余第一个，无剩余则回到未授权状态
+async function removeAccount(payload) {
+  const id = payload?.id;
+  const store = await readAccountStore();
+  const next = store.accounts.filter((account) => account.id !== id);
+  if (next.length === store.accounts.length) return failure(new Error('账户不存在'));
+  const wasActive = store.activeId === id;
+  store.accounts = next;
+  if (wasActive) store.activeId = next[0]?.id || null;
+  await writeAccountStore(store);
+  quotaCacheByAccount.delete(id);
+  refreshPromises.delete(id);
+  await clearAccountAlertState(id);
+  if (wasActive) broadcastAuthState(next.length ? 'auth.switched' : 'auth.cleared');
+  return { ok: true, activeId: store.activeId };
+}
+
+async function renameAccount(payload) {
+  const id = payload?.id;
+  const label = String(payload?.label || '').trim().slice(0, 30);
+  if (!label) return failure(new Error('备注名不能为空'));
+  const store = await readAccountStore();
+  const account = store.accounts.find((item) => item.id === id);
+  if (!account) return failure(new Error('账户不存在'));
+  account.label = label;
+  await writeAccountStore(store);
+  return { ok: true };
+}
+
+async function clearAccountAlertState(accountId) {
+  try {
+    const stored = await chrome.storage.local.get(QUOTA_ALERT_STORAGE_KEY);
+    const state = stored[QUOTA_ALERT_STORAGE_KEY];
+    if (state && typeof state === 'object' && accountId in state) {
+      delete state[accountId];
+      await chrome.storage.local.set({ [QUOTA_ALERT_STORAGE_KEY]: state });
+    }
+  } catch (error) {
+    // 预警状态清理失败不影响账户移除
+  }
+}
+
+// 重新授权当前激活账户：清掉该账户 token 后走完整设备授权流程
+async function resetAndStartOAuth() {
+  authRevision += 1;
+  const store = await readAccountStore();
+  const active = activeAccountOf(store);
+  if (active) {
+    active.token = null;
+    active.needsReauth = true;
+    await writeAccountStore(store);
+    quotaCacheByAccount.delete(active.id);
+    refreshPromises.delete(active.id);
+  }
+  await clearPendingAuthorization({ closeTab: true });
+  // 通知内容脚本重新显示新手引导
+  await chrome.storage.local.set({ kimiOnboardingResetAt: Date.now() });
+  broadcastAuthState('auth.cleared');
+  // authRevision 已递增，进行中的旧授权流程注定在 revision 检查处失败。
+  // 先等旧流程结束（同 disconnectCliUsage 等待进行中扫描的模式），否则 startOAuth
+  // 的单飞会把这个必败的旧 promise 直接返回给调用方，新流程不会启动。
+  if (oauthStartPromise) await oauthStartPromise.catch(() => {});
+  return startOAuth(active ? { accountId: active.id } : {});
+}
+
+// 仅清除授权（测试或换账户前的重置）：清空全部账户
 async function clearAuth() {
   authRevision += 1;
-  await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
+  await chrome.storage.local.remove([ACCOUNTS_STORAGE_KEY, TOKEN_STORAGE_KEY]);
   await clearPendingAuthorization({ closeTab: true });
-  quotaCache = null;
+  quotaCacheByAccount.clear();
+  refreshPromises.clear();
   // 通知内容脚本重新显示新手引导
   await chrome.storage.local.set({ kimiOnboardingResetAt: Date.now() });
   broadcastAuthState('auth.cleared');
@@ -897,15 +1162,18 @@ async function clearPendingAuthorization({ closeTab = false } = {}) {
   return tabId;
 }
 
-function refreshTokenSingleFlight(token) {
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = refreshToken(token).finally(() => {
-    refreshPromise = null;
+// token 刷新按账户 id 单飞：同一账户共享进行中的刷新，不同账户互不阻塞
+function refreshTokenSingleFlight(accountId, token) {
+  const existing = refreshPromises.get(accountId);
+  if (existing) return existing;
+  const promise = refreshToken(accountId, token).finally(() => {
+    if (refreshPromises.get(accountId) === promise) refreshPromises.delete(accountId);
   });
-  return refreshPromise;
+  refreshPromises.set(accountId, promise);
+  return promise;
 }
 
-async function refreshToken(token) {
+async function refreshToken(accountId, token) {
   const refreshRevision = authRevision;
   const response = await postForm(TOKEN_API, {
     client_id: CLIENT_ID,
@@ -917,16 +1185,17 @@ async function refreshToken(token) {
   if (refreshRevision !== authRevision) throw new Error('授权状态已改变');
 
   const refreshed = normalizeToken(data, token.refresh_token);
-  await chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: refreshed });
-  return refreshed;
-}
-
-async function clearStoredTokenIfMatches(accessToken) {
-  const stored = await chrome.storage.local.get(TOKEN_STORAGE_KEY);
-  if (stored[TOKEN_STORAGE_KEY]?.access_token === accessToken) {
-    await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
-    quotaCache = null;
+  const store = await readAccountStore();
+  const account = store.accounts.find((item) => item.id === accountId);
+  // 刷新期间账户被移除或已重新授权换新 token：旧结果直接作废
+  if (!account) throw new Error('授权状态已改变');
+  if (account.token && account.token.refresh_token !== token.refresh_token) {
+    throw new Error('授权状态已改变');
   }
+  account.token = refreshed;
+  account.needsReauth = false;
+  await writeAccountStore(store);
+  return refreshed;
 }
 
 function normalizeToken(data, fallbackRefreshToken = '') {

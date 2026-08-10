@@ -185,3 +185,41 @@ test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）',
   // 好文件的数据不受影响
   assert.deepEqual(result.daily['2026-08-03'], { input: 10, output: 0, cacheRead: 0 });
 });
+
+test('纯追加（上次已扫到旧文件尾且文件变大）从旧偏移续扫并沿用旧统计', async () => {
+  const first = `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`;
+  const initialFile = new File([first], 'wire.jsonl', { lastModified: 1000 });
+  const initial = await KimiCliUsage.scanFile(initialFile, null);
+  assert.equal(initial.offset, initialFile.size);
+
+  const appendedFile = new File([
+    first + `${usageLine({ cacheRead: 20, output: 4, time: 1785686401000 })}\n`
+  ], 'wire.jsonl', { lastModified: 2000 });
+  const appended = await KimiCliUsage.scanFile(appendedFile, initial);
+  assert.equal(appended.usageRecords, 2);
+  assert.deepEqual(appended.daily['2026-08-03'], { input: 30, output: 4, cacheRead: 20 });
+});
+
+test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，daily 从空重建', async () => {
+  // 首次扫描末尾留有半行：offset 停在完整行之后，小于文件 size
+  const first = usageLine({ inputOther: 1, time: 1785686400000 });
+  const initialFile = new File([`${first}\npartial`], 'wire.jsonl', { lastModified: 1000 });
+  const initial = await KimiCliUsage.scanFile(initialFile, null);
+  assert.equal(initial.usageRecords, 1);
+  assert.ok(initial.offset < initial.size);
+
+  // 文件随后被截断重写为更大的新内容（原子替换）：若沿用旧偏移续扫，
+  // 新文件头部会永久漏计。offset !== size 不满足纯追加特征，必须全量重扫
+  const replacedText = [
+    `${usageLine({ inputOther: 5, time: 1785686401000 })}\n`,
+    `${usageLine({ inputOther: 7, cacheRead: 2, time: 1785686402000 })}\n`
+  ].join('');
+  const replacedFile = new File([replacedText], 'wire.jsonl', { lastModified: 2000 });
+  assert.ok(replacedFile.size > initial.offset);
+
+  const after = await KimiCliUsage.scanFile(replacedFile, initial);
+  assert.equal(after.offset, replacedFile.size);
+  assert.equal(after.usageRecords, 2);
+  // daily 从空重建：只含新文件内容，不与旧结果叠加
+  assert.deepEqual(after.daily['2026-08-03'], { input: 14, output: 0, cacheRead: 2 });
+});

@@ -67,10 +67,10 @@
   .dot.bad { background: var(--danger); }
 
   #auth-hint {
-    padding: 8px 10px;
-    border-radius: 8px;
-    background: var(--fill-1);
-    margin-bottom: 10px;
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
     word-break: break-all;
   }
 
@@ -131,8 +131,7 @@
 
   .cli-auth-row {
     margin: 8px 0 0;
-    padding: 7px 0 0;
-    border-top: 1px solid var(--fill-2);
+    padding: 0;
     border-radius: 0;
     background: none;
   }
@@ -167,11 +166,31 @@
   }
 
   /* --- 外部账户区块 --- */
-  #external-section {
+  #external-section,
+  #account-section {
     padding: 10px;
     border-radius: 8px;
     background: var(--fill-1);
     margin-bottom: 10px;
+  }
+
+  /* 激活账户的标记 */
+  .account-badge {
+    flex-shrink: 0;
+    color: var(--accent);
+    font-size: 11px;
+  }
+
+  #account-add-btn {
+    margin-top: 8px;
+  }
+
+  #account-empty {
+    margin-top: 8px;
+  }
+
+  #account-add {
+    margin-top: 8px;
   }
 
   .ext-desc {
@@ -356,6 +375,42 @@
     flex-shrink: 0;
   }
 
+  /* 活跃热力图模式：隐藏大数字、单日标签与日期范围选择器，图表区高度自适应 */
+  .usage-data.heatmap-mode .usage-big-tokens,
+  .usage-data.heatmap-mode #usage-day,
+  .usage-data.heatmap-mode .usage-dates {
+    display: none;
+  }
+
+  .usage-data.heatmap-mode .usage-chart {
+    height: auto;
+  }
+
+  /* 活跃热力图：GitHub 风格 90 天日历，按周分列，灰→蓝五档 */
+  .usage-heatmap {
+    display: flex;
+    gap: 3px;
+    padding: 2px 0;
+  }
+
+  .usage-heat-week {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .usage-heat-cell {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    background: var(--fill-2);
+  }
+
+  .usage-heat-cell[data-level="1"] { background: var(--accent); opacity: 0.25; }
+  .usage-heat-cell[data-level="2"] { background: var(--accent); opacity: 0.45; }
+  .usage-heat-cell[data-level="3"] { background: var(--accent); opacity: 0.65; }
+  .usage-heat-cell[data-level="4"] { background: var(--accent); }
+
   .usage-dates input[type="date"] {
     flex: 1;
     min-width: 0;
@@ -441,6 +496,7 @@
               <option value="input">输入</option>
               <option value="output">输出</option>
               <option value="cache">缓存命中</option>
+              <option value="heatmap">活跃热力图</option>
             </select>
             <span id="usage-day"></span>
           </div>
@@ -470,15 +526,22 @@
     </div>
     <div class="cli-error hidden" id="cli-error" role="alert"></div>
   </div>
-  <div class="status-row">
-    <span class="dot" id="status-dot"></span>
-    <span id="status-text">正在查询授权状态…</span>
-    <span class="status-actions">
-      <button type="button" class="action primary" id="reauth-btn">去授权</button>
-      <button type="button" class="action" id="clear-btn">清除</button>
-    </span>
+  <div id="account-section">
+    <div class="usage-title">Kimi 账户</div>
+    <div class="ext-desc">面板额度条显示当前账户的 5 小时与本周额度。</div>
+    <div id="account-list"></div>
+    <div id="account-empty" class="hidden">
+      <button type="button" class="action primary" id="account-auth-btn">去授权</button>
+    </div>
+    <div id="account-add" class="hidden">
+      <div class="ext-row">
+        <input type="text" id="account-label-input" placeholder="备注名（可留空，授权后可改）" autocomplete="off" spellcheck="false" maxlength="30">
+        <button type="button" class="action primary" id="account-add-save">去授权</button>
+      </div>
+    </div>
+    <button type="button" class="action" id="account-add-btn">+ 添加账户</button>
+    <div id="auth-hint" class="hidden"></div>
   </div>
-  <div id="auth-hint" class="hidden"></div>
   <div id="external-section">
     <div class="usage-title">外部账户</div>
     <div class="ext-desc">添加后，面板「外部账户」模块会显示对应余额/额度，Key只保存在本机扩展存储中。</div>

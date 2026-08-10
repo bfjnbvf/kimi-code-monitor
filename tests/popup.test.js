@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'popup.html'), 'utf8');
 const source = fs.readFileSync(path.join(__dirname, '..', 'popup.js'), 'utf8');
+const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
 
 test('本地记录授权提供路径提示、选错目录报错及重新授权和取消入口', () => {
   assert.match(html, /id="cli-path-help"/);
@@ -22,11 +23,13 @@ test('扫描中只轮询内存进度，并显示整数百分比', () => {
   assert.match(source, /正在读取本地记录 \$\{progress\}%/);
 });
 
-test('额度和本地记录使用彼此明确的授权名称', () => {
-  assert.match(source, /额度接口已授权/);
+test('额度授权状态并入 Kimi 账户区块，本地记录保持独立状态行', () => {
   assert.match(source, /本地记录已授权/);
-  assert.match(source, /authorized \? '重新授权' : '去授权'/);
-  assert.doesNotMatch(html, /status-detail/);
+  // 独立「额度接口已授权」状态行已移除：零账户空态提供「去授权」，提示并入账户区块
+  assert.match(html, /id="account-empty"/);
+  assert.match(html, /id="account-auth-btn">去授权/);
+  assert.doesNotMatch(html, /id="status-text"/);
+  assert.doesNotMatch(html, /id="clear-btn"/);
   assert.doesNotMatch(source, /formatExpiry|有效期至/);
 });
 
@@ -51,5 +54,53 @@ test('导出统计包含 CLI 按日汇总与额度快照，不含对话原文', 
   assert.match(html, /id="export-link">导出统计/);
   assert.match(source, /KimiCliUsage\.DAILY_STORAGE_KEY/);
   assert.match(source, /quotaSnapshots/);
+  assert.match(source, /quotaMonthlyLast/);
   assert.match(source, /导出不包含 CLI 对话原文/);
+});
+
+test('外部账户行：textContent 渲染无注入面，改名/移除统一及失败保留列表', () => {
+  // 动态值用 textContent 渲染，不经过 innerHTML（仅静态路径帮助文案例外）
+  assert.match(source, /name\.textContent = account\.keyTail/);
+  assert.doesNotMatch(source, /innerHTML\s*=\s*`/);
+  assert.doesNotMatch(source, /innerHTML\s*=\s*[^\s'"]/);
+  // 操作与 Kimi 账户统一：改名 + 移除，无「删除」字样
+  assert.match(source, /renameBtn\.textContent = '改名'/);
+  assert.match(source, /removeBtn\.textContent = '移除'/);
+  assert.match(source, /send\('external\.rename', \{ id: account\.id, label \}\)/);
+  assert.doesNotMatch(source, /删除/);
+  assert.match(backgroundSource, /'external\.rename': renameExternalAccount/);
+  // 移除失败时保留列表与本地缓存，并在列表区域提示
+  assert.match(source, /if \(!response\?\.ok\) throw new Error\(response\?\.error \|\| '移除失败'\)/);
+  assert.match(source, /renderExternalAccounts\(`移除失败：\$\{error\?\.message \|\| error\}`\)/);
+  assert.match(source, /catch \(error\) \{[^}]*renderExternalAccounts/s);
+});
+
+test('活跃热力图作为指标选项：固定 90 天窗口，隐藏大数字与日期选择器', () => {
+  assert.match(html, /<option value="heatmap">活跃热力图<\/option>/);
+  // 热力图模式隐藏大数字、单日标签与日期范围选择器
+  assert.match(html, /\.usage-data\.heatmap-mode \.usage-big-tokens[\s\S]*?\.usage-data\.heatmap-mode \.usage-dates[\s\S]*?display: none/);
+  // 固定最近 90 天窗口，不读日期范围选择器
+  assert.match(source, /buildHeatmapData\(usageDaily, usageDayKey\(new Date\(\)\)\)/);
+  assert.match(source, /if \(usageMetric === 'heatmap'\) \{\s*usageDataEl\.classList\.add\('heatmap-mode'\);/);
+  // heatmap 是合法的可持久化选项，但不是数值指标
+  assert.match(source, /id === 'heatmap' \|\| Boolean\(USAGE_METRICS\[id\]\)/);
+  assert.doesNotMatch(source, /heatmap: \{/);
+});
+
+test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => {
+  assert.match(html, /id="account-section"/);
+  assert.match(html, /id="account-list"/);
+  assert.match(html, /id="account-add-btn">\+ 添加账户/);
+  assert.match(html, /id="account-label-input"/);
+  assert.match(html, /id="account-add-save">去授权/);
+  assert.match(html, /\.account-badge \{/);
+  // 切换/移除/改名/添加/重新授权各自独立消息
+  assert.match(source, /send\('accounts\.switch', \{ id: account\.id \}\)/);
+  assert.match(source, /send\('accounts\.remove', \{ id: account\.id \}\)/);
+  assert.match(source, /send\('accounts\.rename', \{ id: account\.id, label \}\)/);
+  assert.match(source, /send\('oauth\.add', \{ label \}\)/);
+  assert.match(source, /send\('oauth\.reauth', \{ id: account\.id \}\)/);
+  // 失效账户标注「需重新授权」，激活账户显示「当前」标记
+  assert.match(source, /需重新授权/);
+  assert.match(source, /badge\.textContent = '当前'/);
 });

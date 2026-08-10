@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   aggregateSpeed,
   boosterBalanceYuan,
+  buildHeatmapData,
   cacheReadPercentage,
   formatPercentage,
   decodeSpeed,
@@ -316,4 +317,52 @@ test('Widget 配置：宠物右侧数据选项与侧栏改造开关归一化', (
   // 小球跳转：非法值回落 none
   assert.equal(normalizeWidgetConfig({ modules: { pet: { ballLink: 'console' } } }).modules.pet.ballLink, 'console');
   assert.equal(normalizeWidgetConfig({ modules: { pet: { ballLink: 'xxx' } } }).modules.pet.ballLink, 'none');
+});
+
+test('Widget 配置：order 数组含重复 id 时去重，缺漏仍补在末尾', () => {
+  // 用户手动改坏 storage 可能留下重复 id，归一化后每个模块只出现一次
+  const config = normalizeWidgetConfig({
+    orderFull: ['speed', 'speed', 'output', 'cache', 'input', 'input'],
+    orderMini: ['pet', 'pet', 'quota5h']
+  });
+  assert.deepEqual(config.orderFull, ['speed', 'output', 'cache', 'input', 'usageChart']);
+  assert.deepEqual(config.orderMini, ['pet', 'quota5h', 'quotaWeek']);
+});
+
+
+test('buildHeatmapData：周列周一起头、首尾截断，level 按 maxTotal 比例分档', () => {
+  // 2026-08-03 是周一；14 天窗口：2026-07-21（周二）.. 2026-08-03（周一）
+  const daily = {
+    '2026-08-03': { input: 80, output: 20, cacheRead: 0 },
+    '2026-08-02': { input: 10, output: 10, cacheRead: 0 },
+    '2026-08-01': { input: 40, output: 0, cacheRead: 0 },
+    '2026-07-31': { input: 60, output: 0, cacheRead: 0 },
+    '2026-07-30': { input: 90, output: 0, cacheRead: 0 }
+  };
+  const { weeks, maxTotal, thresholds } = buildHeatmapData(daily, '2026-08-03', 14);
+  assert.equal(maxTotal, 100);
+  assert.deepEqual(thresholds, [20, 40, 60, 80]);
+  // 首列周二起（6 格）、中间整周（7 格）、末列只有周一（1 格）
+  assert.deepEqual(weeks.map((w) => w.length), [6, 7, 1]);
+  assert.equal(weeks[0][0].key, '2026-07-21');
+  assert.equal(weeks[1][0].key, '2026-07-27');
+  assert.equal(weeks[2][0].key, '2026-08-03');
+  const byKey = Object.fromEntries(weeks.flat().map((c) => [c.key, c]));
+  assert.equal(byKey['2026-07-21'].total, 0);
+  assert.equal(byKey['2026-07-21'].level, 0);
+  assert.equal(byKey['2026-08-02'].level, 1); // 20 <= t1
+  assert.equal(byKey['2026-08-01'].level, 2); // 40 <= t2
+  assert.equal(byKey['2026-07-31'].level, 3); // 60 <= t3
+  assert.equal(byKey['2026-07-30'].level, 4); // 90 > t3
+  assert.equal(byKey['2026-08-03'].level, 4); // 100 > t3
+});
+
+test('buildHeatmapData：空数据阈值全 0、level 恒 0；默认窗口 90 天', () => {
+  const empty = buildHeatmapData({}, '2026-08-03', 7);
+  assert.equal(empty.maxTotal, 0);
+  assert.deepEqual(empty.thresholds, [0, 0, 0, 0]);
+  assert.equal(empty.weeks.flat().length, 7);
+  assert.ok(empty.weeks.flat().every((c) => c.total === 0 && c.level === 0));
+  // dayCount 缺省对齐 90 天保留期
+  assert.equal(buildHeatmapData({}, '2026-08-03').weeks.flat().length, 90);
 });

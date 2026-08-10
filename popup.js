@@ -1,14 +1,12 @@
 /**
  * Kimi Web Status Bar — 扩展弹窗
- * 显示授权状态，提供重新授权入口（设备码 OAuth 流程）。
+ * Kimi 账户（多账户授权/切换）与本地 CLI 长期统计的管理入口。
  */
 (function () {
   'use strict';
 
-  const statusDot = document.getElementById('status-dot');
-  const statusText = document.getElementById('status-text');
   const authHint = document.getElementById('auth-hint');
-  const reauthBtn = document.getElementById('reauth-btn');
+  const accountAuthBtn = document.getElementById('account-auth-btn');
   const usageSection = document.getElementById('usage-section');
   const cliLock = document.getElementById('cli-lock');
   const cliConnectBtn = document.getElementById('cli-connect-btn');
@@ -28,10 +26,13 @@
   const {
     sumUsageBetween,
     listDayKeysBetween,
+    buildHeatmapData,
     formatTokenCount,
     formatPercentage,
     usageDayKey
   } = globalThis.KimiMetrics;
+
+  const usageDataEl = document.querySelector('.usage-data');
 
   const usageTokensEl = document.getElementById('usage-tokens');
   const usageDayEl = document.getElementById('usage-day');
@@ -59,6 +60,34 @@
   let cliConnected = false;
   let usageMetric = 'total';
 
+  // 活跃热力图是展示模式而非数值指标，不参与 USAGE_METRICS 的取值/格式化
+  function isValidUsageMetric(id) {
+    return id === 'heatmap' || Boolean(USAGE_METRICS[id]);
+  }
+
+  // 活跃热力图：固定最近 90 天窗口，格子自带悬浮提示，不占用大数字与日期区
+  function renderHeatmap() {
+    const { weeks } = buildHeatmapData(usageDaily, usageDayKey(new Date()));
+    usageChartEl.replaceChildren();
+    const grid = document.createElement('div');
+    grid.className = 'usage-heatmap';
+    for (const week of weeks) {
+      const weekEl = document.createElement('span');
+      weekEl.className = 'usage-heat-week';
+      for (const cell of week) {
+        const cellEl = document.createElement('span');
+        cellEl.className = 'usage-heat-cell';
+        cellEl.dataset.level = cell.level;
+        cellEl.title = cell.total > 0
+          ? `${cell.key.slice(5)} · ${formatTokenCount(cell.total)} tokens`
+          : `${cell.key.slice(5)} · 无记录`;
+        weekEl.append(cellEl);
+      }
+      grid.append(weekEl);
+    }
+    usageChartEl.append(grid);
+  }
+
   // 大数字与柱图使用同一个按日期可聚合指标；不混入只属于当前会话的速度。
   function renderSummary(bucket, emptyValue = '--') {
     const definition = USAGE_METRICS[usageMetric] || USAGE_METRICS.total;
@@ -80,6 +109,14 @@
   }
 
   function renderUsage() {
+    // 活跃热力图：固定 90 天窗口，忽略日期范围选择器（该模式下选择器已隐藏）
+    if (usageMetric === 'heatmap') {
+      usageDataEl.classList.add('heatmap-mode');
+      renderHeatmap();
+      return;
+    }
+    usageDataEl.classList.remove('heatmap-mode');
+
     const startKey = usageStartEl.value;
     const endKey = usageEndEl.value;
     if (!startKey || !endKey || startKey > endKey) return;
@@ -134,6 +171,7 @@
 
   usageChartEl.addEventListener('mouseleave', () => {
     usageDayEl.textContent = '';
+    if (usageMetric === 'heatmap') return;
     const startKey = usageStartEl.value;
     const endKey = usageEndEl.value;
     if (!startKey || !endKey || startKey > endKey) return;
@@ -147,7 +185,7 @@
         USAGE_METRIC_STORAGE_KEY
       ]);
       usageDaily = stored[KimiCliUsage.DAILY_STORAGE_KEY] || {};
-      usageMetric = USAGE_METRICS[stored[USAGE_METRIC_STORAGE_KEY]]
+      usageMetric = isValidUsageMetric(stored[USAGE_METRIC_STORAGE_KEY])
         ? stored[USAGE_METRIC_STORAGE_KEY]
         : usageMetric;
       usageMetricEl.value = usageMetric;
@@ -183,7 +221,7 @@
   usageStartEl.addEventListener('change', onRangeChange);
   usageEndEl.addEventListener('change', onRangeChange);
   usageMetricEl.addEventListener('change', () => {
-    usageMetric = USAGE_METRICS[usageMetricEl.value] ? usageMetricEl.value : 'total';
+    usageMetric = isValidUsageMetric(usageMetricEl.value) ? usageMetricEl.value : 'total';
     chrome.storage.local.set({ [USAGE_METRIC_STORAGE_KEY]: usageMetric }).catch(() => {});
     usageDayEl.textContent = '';
     renderUsage();
@@ -379,11 +417,135 @@
     await refreshCliStatus();
   });
 
-  function setStatus(authorized) {
-    statusDot.className = `dot ${authorized ? 'ok' : 'bad'}`;
-    statusText.textContent = authorized ? '额度接口已授权' : '额度接口未授权';
-    reauthBtn.textContent = authorized ? '重新授权' : '去授权';
-    reauthBtn.classList.toggle('primary', !authorized);
+  /* ---------- Kimi 账户：多账户列表（切换/改名/重新授权/移除/添加） ---------- */
+
+  let kimiAccounts = [];
+  let flowActive = false;
+  // 授权流程启动前的基线，轮询据此判断流程是真的完成还是超时/被取消
+  let flowBaseline = null;
+  let sawUnauthorizedDuringFlow = false;
+
+  // 授权流程进行中禁用授权入口，避免重复发起
+  function setAuthBusy(disabled) {
+    accountAuthBtn.disabled = disabled;
+  }
+
+  function renderAuthStatus(response) {
+    kimiAccounts = Array.isArray(response?.accounts) ? response.accounts : [];
+    renderKimiAccounts();
+  }
+
+  function renderKimiAccounts() {
+    const list = document.getElementById('account-list');
+    if (!list) return;
+    list.replaceChildren();
+    // 零账户显示空态「去授权」，有账户才显示「+ 添加账户」
+    const hasAccounts = kimiAccounts.length > 0;
+    document.getElementById('account-empty').classList.toggle('hidden', hasAccounts);
+    document.getElementById('account-add-btn').classList.toggle('hidden', !hasAccounts);
+    for (const account of kimiAccounts) {
+      const row = document.createElement('div');
+      row.className = 'ext-row';
+
+      const name = document.createElement('span');
+      name.className = 'ext-name';
+      name.textContent = account.needsReauth ? `${account.label}（需重新授权）` : account.label;
+      name.title = name.textContent;
+      row.append(name);
+
+      const actions = document.createElement('span');
+      actions.className = 'status-actions';
+
+      if (account.active) {
+        const badge = document.createElement('span');
+        badge.className = 'account-badge';
+        badge.textContent = '当前';
+        actions.append(badge);
+      } else {
+        actions.append(makeAccountButton('切换', 'action primary', async (button) => {
+          const response = await send('accounts.switch', { id: account.id });
+          if (!response?.ok) throw new Error(response?.error || '切换失败');
+          await refreshStatus();
+        }, '切换失败'));
+      }
+
+      actions.append(makeAccountButton('改名', 'action', async () => {
+        startAccountRename(row, account);
+      }));
+
+      if (account.needsReauth) {
+        actions.append(makeAccountButton('重新授权', 'action', async () => {
+          await startOAuthFlow(
+            account.active ? send('oauth.reset') : send('oauth.reauth', { id: account.id })
+          );
+        }));
+      }
+
+      actions.append(makeAccountButton('移除', 'action', async (button) => {
+        const response = await send('accounts.remove', { id: account.id });
+        if (!response?.ok) throw new Error(response?.error || '移除失败');
+        await refreshStatus();
+      }, '移除失败'));
+
+      row.append(actions);
+      list.append(row);
+    }
+  }
+
+  // 行内文字按钮：失败时在授权提示区报错并恢复可点
+  function makeAccountButton(text, className, onClick, errorPrefix = '') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = text;
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await onClick(button);
+      } catch (error) {
+        showHint(`${errorPrefix || text}失败：${error.message || error}`);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    return button;
+  }
+
+  // 改名为行内编辑：Enter/保存提交，Escape 取消
+  function startAccountRename(row, account) {
+    row.replaceChildren();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = account.label;
+    input.maxLength = 30;
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'action primary';
+    saveBtn.textContent = '保存';
+    const submit = async () => {
+      const label = input.value.trim();
+      if (!label) {
+        input.focus();
+        return;
+      }
+      saveBtn.disabled = true;
+      try {
+        const response = await send('accounts.rename', { id: account.id, label });
+        if (!response?.ok) throw new Error(response?.error || '改名失败');
+        await refreshStatus();
+      } catch (error) {
+        showHint(`改名失败：${error.message || error}`);
+        saveBtn.disabled = false;
+      }
+    };
+    saveBtn.addEventListener('click', submit);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+      if (event.key === 'Escape') renderKimiAccounts();
+    });
+    row.append(input, saveBtn);
+    input.focus();
+    input.select();
   }
 
   async function refreshStatus() {
@@ -391,22 +553,21 @@
       const response = await send('auth.status');
       if (response?.ok && response.authorized) {
         stopPolling();
-        reauthBtn.disabled = false;
-        setStatus(true);
+        setAuthBusy(false);
+        renderAuthStatus(response);
       } else if (response?.pending) {
-        reauthBtn.disabled = true;
-        statusDot.className = 'dot bad';
-        statusText.textContent = '授权流程进行中…';
+        setAuthBusy(true);
         showHint('请在授权页完成授权。', response.userCode);
+        kimiAccounts = Array.isArray(response?.accounts) ? response.accounts : [];
+        renderKimiAccounts();
         if (!pollTimer) pollTimer = setInterval(poll, 2_000);
       } else {
         stopPolling();
-        reauthBtn.disabled = false;
-        setStatus(false);
+        setAuthBusy(false);
+        renderAuthStatus(response);
       }
     } catch (error) {
-      statusDot.className = 'dot bad';
-      statusText.textContent = `状态查询失败：${error.message || error}`;
+      showHint(`状态查询失败：${error.message || error}`);
     }
   }
 
@@ -422,68 +583,91 @@
     authHint.classList.remove('hidden');
   }
 
-  function hideHint() {
-    authHint.classList.add('hidden');
-    authHint.textContent = '';
-  }
-
   function stopPolling() {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
+  }
+
+  // 统一的授权流程入口：记录基线、启动流程、开始轮询（添加账户/重新授权共用）
+  async function startOAuthFlow(startPromise) {
+    if (pollTimer) return;
+    setAuthBusy(true);
+    showHint('正在打开 Kimi 授权页…');
+    try {
+      const baseline = await send('auth.status').catch(() => null);
+      flowBaseline = {
+        activeId: baseline?.activeId || null,
+        authorized: Boolean(baseline?.authorized)
+      };
+      sawUnauthorizedDuringFlow = false;
+      flowActive = true;
+      const response = await startPromise;
+      if (!response?.ok) throw new Error(response?.error || '无法开始授权');
+      showHint('已在新标签页打开授权页，请完成授权；关闭本弹窗不影响授权。', response.userCode);
+      pollTimer = setInterval(poll, 2_000);
+      poll();
+    } catch (error) {
+      flowActive = false;
+      flowBaseline = null;
+      showHint(`授权启动失败：${error.message || error}`);
+      setAuthBusy(false);
+    }
   }
 
   // 后台在驱动授权轮询，弹窗只需周期性查询授权状态
   async function poll() {
     try {
       const response = await send('auth.status');
-      if (response?.authorized) {
-        stopPolling();
-        showHint('授权成功，状态栏会自动恢复显示。');
-        reauthBtn.disabled = false;
-        setStatus(true);
+      if (response && !response.authorized) sawUnauthorizedDuringFlow = true;
+      if (response?.pending) {
+        showHint('请在授权页完成授权。', response.userCode);
         return;
       }
-      if (response && !response.pending && !response.authorized) {
-        // 后台轮询已结束（超时或失败）
-        stopPolling();
+      // 后台轮询已结束：授权完成（新账户/新激活/经历过未授权后恢复）或超时取消
+      stopPolling();
+      const completed = Boolean(response?.authorized) && flowActive && (
+        !flowBaseline?.authorized ||
+        sawUnauthorizedDuringFlow ||
+        response.activeId !== flowBaseline?.activeId
+      );
+      flowActive = false;
+      flowBaseline = null;
+      if (completed) {
+        showHint('授权成功，状态栏会自动恢复显示。');
+      } else {
         showHint('授权未完成（已超时或被取消），请重试。');
-        reauthBtn.disabled = false;
-        // 顶部状态行同步回「未授权」，不停留在「授权流程进行中…」
-        setStatus(false);
       }
+      setAuthBusy(false);
+      renderAuthStatus(response);
     } catch (error) {
       stopPolling();
+      flowActive = false;
+      flowBaseline = null;
       showHint(`状态查询失败：${error.message || error}`);
-      reauthBtn.disabled = false;
+      setAuthBusy(false);
     }
   }
 
-  reauthBtn.addEventListener('click', async () => {
-    if (pollTimer) return;
-    reauthBtn.disabled = true;
-    showHint('正在打开 Kimi 授权页…');
-    try {
-      const response = await send('oauth.reset');
-      if (!response?.ok) throw new Error(response?.error || '无法开始授权');
-      showHint('已在新标签页打开授权页，请完成授权；关闭本弹窗不影响授权。', response.userCode);
-      pollTimer = setInterval(poll, 2_000);
-      poll();
-    } catch (error) {
-      showHint(`授权启动失败：${error.message || error}`);
-      reauthBtn.disabled = false;
-    }
+  // 零账户空态的「去授权」：直接走添加账户流程（备注名留空，授权后可改）
+  accountAuthBtn.addEventListener('click', () => {
+    startOAuthFlow(send('oauth.add', { label: '' }));
   });
 
-  document.getElementById('clear-btn').addEventListener('click', async () => {
-    stopPolling();
-    hideHint();
-    try {
-      await send('auth.clear');
-      showHint('授权已清除。Kimi Code Web 页面上的新手引导会重新出现，状态栏将回到待授权状态。');
-    } catch (error) {
-      showHint(`清除失败：${error.message || error}`);
-    }
-    refreshStatus();
+  // 添加账户：先填备注名（可留空），再走设备授权流程；授权后仍可改名
+  const accountAddBtn = document.getElementById('account-add-btn');
+  const accountAddPanel = document.getElementById('account-add');
+  const accountLabelInput = document.getElementById('account-label-input');
+  accountAddBtn.addEventListener('click', () => {
+    accountAddPanel.classList.toggle('hidden');
+    accountAddBtn.classList.toggle('hidden', !accountAddPanel.classList.contains('hidden'));
+    accountLabelInput.focus();
+  });
+  document.getElementById('account-add-save').addEventListener('click', async () => {
+    const label = accountLabelInput.value.trim();
+    accountAddPanel.classList.add('hidden');
+    accountAddBtn.classList.remove('hidden');
+    accountLabelInput.value = '';
+    await startOAuthFlow(send('oauth.add', { label }));
   });
 
   /* ---------- 外部账户：加号添加（选类型 + 粘贴 key），列表管理 ---------- */
@@ -507,24 +691,93 @@
 
   let externalAccountsCache = [];
 
-  function renderExternalAccounts() {
+  function renderExternalAccounts(errorMessage = '') {
     const list = document.getElementById('external-list');
     if (!list) return;
     list.replaceChildren();
     for (const account of externalAccountsCache) {
-      const wrap = document.createElement('div');
-      wrap.innerHTML = `
-        <div class="ext-row">
-          <span class="ext-name">${account.name} ·${account.keyTail || ''}</span>
-          <button type="button" class="action" data-remove="${account.id}">删除</button>
-        </div>`;
-      wrap.querySelector('[data-remove]').addEventListener('click', async () => {
-        await send('external.remove', { id: account.id });
-        externalAccountsCache = externalAccountsCache.filter((a) => a.id !== account.id);
-        renderExternalAccounts();
+      const row = document.createElement('div');
+      row.className = 'ext-row';
+
+      // textContent 赋值，名称/尾号不经 innerHTML，无注入面
+      const name = document.createElement('span');
+      name.className = 'ext-name';
+      name.textContent = account.keyTail ? `${account.name} · ${account.keyTail}` : account.name;
+      name.title = name.textContent;
+      row.append(name);
+
+      const actions = document.createElement('span');
+      actions.className = 'status-actions';
+
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'action';
+      renameBtn.textContent = '改名';
+      renameBtn.addEventListener('click', () => startExternalRename(row, account));
+      actions.append(renameBtn);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'action';
+      removeBtn.textContent = '移除';
+      removeBtn.addEventListener('click', async () => {
+        removeBtn.disabled = true;
+        try {
+          const response = await send('external.remove', { id: account.id });
+          if (!response?.ok) throw new Error(response?.error || '移除失败');
+          externalAccountsCache = externalAccountsCache.filter((a) => a.id !== account.id);
+          renderExternalAccounts();
+        } catch (error) {
+          renderExternalAccounts(`移除失败：${error?.message || error}`);
+        }
       });
-      list.append(wrap);
+      actions.append(removeBtn);
+
+      row.append(actions);
+      list.append(row);
     }
+    if (errorMessage) {
+      const errEl = document.createElement('div');
+      errEl.className = 'ext-status err';
+      errEl.textContent = errorMessage;
+      list.append(errEl);
+    }
+  }
+
+  // 外部账户行内改名：Enter/保存提交，Escape 取消；label 由后台保存并覆盖 provider 默认名
+  function startExternalRename(row, account) {
+    row.replaceChildren();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = account.name;
+    input.maxLength = 30;
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'action primary';
+    saveBtn.textContent = '保存';
+    const submit = async () => {
+      const label = input.value.trim();
+      if (!label) {
+        input.focus();
+        return;
+      }
+      saveBtn.disabled = true;
+      try {
+        const response = await send('external.rename', { id: account.id, label });
+        if (!response?.ok) throw new Error(response?.error || '改名失败');
+        await refreshExternalStatus();
+      } catch (error) {
+        renderExternalAccounts(`改名失败：${error?.message || error}`);
+      }
+    };
+    saveBtn.addEventListener('click', submit);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+      if (event.key === 'Escape') renderExternalAccounts();
+    });
+    row.append(input, saveBtn);
+    input.focus();
+    input.select();
   }
 
   async function refreshExternalStatus() {
