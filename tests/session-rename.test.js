@@ -294,12 +294,8 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   assert.match(backgroundSource, /importScripts\([\s\S]*?session-rename\/rename-shared\.js/);
   assert.match(backgroundSource, /importScripts\([\s\S]*?session-rename\/rename-model\.js/);
   assert.match(backgroundSource, /'rename\.model': renameModelCall/);
-  assert.match(backgroundSource, /'rename\.batch\.start': startRenameBatch/);
-  // 批量状态查询与中断：popup 关闭不影响执行，重开可恢复并可中断
-  assert.match(backgroundSource, /'rename\.batch\.status': getRenameBatchStatus/);
-  assert.match(backgroundSource, /'rename\.batch\.abort': abortRenameBatch/);
-  assert.match(backgroundSource, /relayToKimiWebTab\('rename\.batch\.status'\)/);
-  assert.match(backgroundSource, /relayToKimiWebTab\('rename\.batch\.abort'\)/);
+  // 批量功能已移除：background 不再注册 rename.batch.*
+  assert.doesNotMatch(backgroundSource, /rename\.batch\./);
   // 模型清单中转：popup → background → content 同源拉 /api/v1/models
   assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
   assert.match(backgroundSource, /relayToKimiWebTab\('rename\.models\.fetch'\)/);
@@ -310,11 +306,8 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   assert.match(renameContentSource, /apiGet\('\/api\/v1\/models'\)/);
   assert.match(renameContentSource, /kimiCodeModelsFromResponse/);
   assert.match(renameContentSource, /message\?\.type === 'rename\.models\.fetch'/);
-  // 中断在会话粒度生效：循环开头检查 batchAborted，done 广播带 aborted 标记
-  assert.match(renameContentSource, /if \(batchAborted\) break;/);
-  assert.match(renameContentSource, /aborted: batchAborted/);
-  assert.match(renameContentSource, /message\?\.type === 'rename\.batch\.abort'/);
-  assert.match(renameContentSource, /message\?\.type === 'rename\.batch\.status'/);
+  // content 无批量管线与诊断日志
+  assert.doesNotMatch(renameContentSource, /rename\.batch\.|debugLog|sessionRenameDebug/);
 
   // Kimi Code 账户端点未实测：鉴权类失败必须结构化报错，不许重试；模型 id 由调用方透传
   assert.match(

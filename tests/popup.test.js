@@ -105,30 +105,26 @@ test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => 
   assert.match(source, /badge\.textContent = '当前'/);
 });
 
-test('AI 会话标题区块：扁平模型下拉、开关、天数与批量进度', () => {
+test('AI 会话标题区块：模型下拉、开关与用量计数（仅自动命名，无批量入口）', () => {
   assert.match(html, /id="rename-section"/);
   assert.match(html, /AI 会话标题/);
-  // 卡片说明不占行：标题右侧 ⓘ hover 气泡，含 token 消耗说明；旧的说明行已移除
+  // 卡片说明不占行：标题右侧 ⓘ hover 气泡，含命名时机与 token 消耗说明
   assert.match(html, /class="info-icon"/);
   assert.match(html, /输入约 1500~2500 tokens/);
+  assert.match(html, /第 3 轮对话结束后才命名/);
   assert.match(html, /手动改过的名字不会被覆盖/);
   assert.doesNotMatch(html, /ext-desc/);
   assert.match(html, /id="rename-model-select"/);
   assert.match(html, /id="rename-emoji-toggle"/);
   assert.match(html, /id="rename-auto-toggle"/);
-  for (const value of ['1', '3', '7', '30']) {
-    assert.match(html, new RegExp(`<option value="${value}"`));
-  }
-  assert.match(html, /id="rename-start-btn">开始命名/);
-  assert.match(html, /id="rename-status"/);
+  // 批量功能已移除：无天数选择/开始按钮/状态行/诊断日志链接
+  assert.doesNotMatch(html, /rename-days|rename-start-btn|rename-status|rename-debug-link/);
+  assert.doesNotMatch(source, /rename\.batch\./);
+  assert.doesNotMatch(source, /collectCustomTitleSessionIds/);
+  assert.doesNotMatch(backgroundSource, /rename\.batch\./);
   // 次要设置降级：checkbox 包在 10px 灰字的 rename-minor 行里
   assert.match(html, /<div class="rename-minor">/);
   assert.match(html, /\.rename-minor \{[\s\S]*?font-size: 10px[\s\S]*?var\(--text-tertiary\)/);
-  // 批量走 background 中转到活动 Kimi Code Web 标签页，进度由 content 直接广播
-  assert.match(source, /send\('rename\.batch\.start', \{/);
-  assert.match(source, /'rename\.batch\.progress'/);
-  assert.match(source, /'rename\.batch\.done'/);
-  assert.match(backgroundSource, /'rename\.batch\.start': startRenameBatch/);
   // 开关与模型选择持久化；modelSource 为 {kind, model|accountId} 新结构
   assert.match(source, /'sessionRenameSettings'/);
   assert.match(source, /normalizeModelSource/);
@@ -140,11 +136,7 @@ test('AI 会话标题区块：扁平模型下拉、开关、天数与批量进�
   assert.match(source, /'sessionRenameModels'/);
   assert.match(source, /send\('rename\.models\.list'\)/);
   assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
-  // 手动标题保护：已连接 CLI 时由 popup 读 state.json 的 isCustomTitle 随消息带过去
-  assert.match(source, /collectCustomTitleSessionIds/);
-  assert.match(source, /getFileHandle\('state\.json'\)/);
-  assert.match(source, /state\?\.isCustomTitle === true/);
-  assert.match(source, /customTitleIds/);
-  // 结果汇报：成功/跳过/失败三段
-  assert.match(source, /成功 \$\{result\.succeeded \|\| 0\} · 跳过 \$\{result\.skipped \|\| 0\} · 失败 \$\{result\.failed \|\| 0\}/);
+  // token 用量计数：popup 读取 background 累计值展示
+  assert.match(source, /send\('rename\.usage\.get'\)/);
+  assert.match(backgroundSource, /'rename\.usage\.get': getRenameUsage/);
 });

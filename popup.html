@@ -525,23 +525,6 @@
     accent-color: var(--accent);
   }
 
-  #rename-start-btn {
-    flex-shrink: 0;
-  }
-
-  #rename-status {
-    margin: 4px 0 0;
-    font-size: 10px;
-    line-height: 1.5;
-    color: var(--text-tertiary);
-    min-height: 12px;
-    word-break: break-all;
-  }
-
-  #rename-status.err {
-    color: var(--danger);
-  }
-
   #status-text {
     flex: 1;
     min-width: 0;
@@ -675,29 +658,19 @@
   <div id="rename-section">
     <div class="section-head">
       <div class="usage-title">AI 会话标题</div>
-      <span class="info-icon">i<span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百tokens。下方计数器显示累计消耗。</span></span>
+      <span class="info-icon">i<span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。</span></span>
     </div>
     <div class="ext-row">
       <select id="rename-model-select" aria-label="命名模型"></select>
-    </div>
-    <div class="ext-row">
-      <select id="rename-days" aria-label="命名范围">
-        <option value="1">近 1 天</option>
-        <option value="3">近 3 天</option>
-        <option value="7" selected>近 7 天</option>
-        <option value="30">近 30 天</option>
-      </select>
-      <button type="button" class="action primary" id="rename-start-btn">开始命名</button>
     </div>
     <div class="rename-minor">
       <label class="rename-toggle"><input type="checkbox" id="rename-emoji-toggle"> 标题带 emoji</label>
       <label class="rename-toggle"><input type="checkbox" id="rename-auto-toggle"> 新会话自动命名</label>
     </div>
     <div id="rename-usage" class="rename-minor"></div>
-    <div id="rename-status"></div>
   </div>
   <div class="footer">
-    <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="rename-debug-link">命名日志</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
+    <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
     <span>v<span id="version"></span> · <a href="https://github.com/bfjnbvf/kimi-code-monitor/releases" target="_blank" rel="noopener">检查更新</a></span>
   </div>
   <script src="metrics.js"></script>

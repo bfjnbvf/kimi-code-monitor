@@ -1,9 +1,8 @@
 /* 会话智能命名：内容脚本管线（127.0.0.1 / localhost 页面）。
- * 职责：读 localStorage 凭据、拉会话/消息、取样、守卫、写回标题、批量进度上报。
+ * 职责：读 localStorage 凭据、拉会话/消息、取样、守卫、写回标题。
  * 模型调用不在此——取好的上下文发 background（rename.model），由 background 按所选模型请求。
- * 触发入口：
- * - 自动模式：content.js 在 turn.ended 后调 globalThis.KimiSessionRename.onTurnEnded(sessionId)
- * - 手动批量：background 中转 popup 的 rename.batch.run 消息到本脚本 */
+ * 触发入口：content.js 在 turn.ended 后调 globalThis.KimiSessionRename.onTurnEnded(sessionId)，
+ * 第 3 轮对话结束后命名（首轮内容太少不足以概括）。 */
 (function () {
   'use strict';
 
@@ -14,9 +13,8 @@
   const RENAME_LOG_STORAGE_KEY = 'sessionRenameLog';
   const SETTINGS_STORAGE_KEY = 'sessionRenameSettings';
   const AUTO_TRIGGER_DELAY_MS = 3_000;
-  const BATCH_INTERVAL_MS = 300;
   const MAX_ATTEMPTS_PER_SESSION = 3;
-  // 第 3 轮对话结束后才自动命名：首轮内容太少不足以概括（turn_count 取自会话详情）
+  // 第 3 轮对话结束后才自动命名：首轮内容太少不足以概括
   const AUTO_RENAME_MIN_TURNS = 3;
   const DEFAULT_SETTINGS = { autoEnabled: false, emojiEnabled: true, modelSource: shared.defaultModelSource() };
 
@@ -24,7 +22,6 @@
   // 同一 sessionId 页面内去重；attempts 记录失败次数（首轮可能全是工具调用没有文本）
   const triggeredThisPage = new Set();
   const attemptCounts = new Map();
-  let batchRunning = false;
 
   /* ---------- 凭据与本地 REST ---------- */
 
@@ -58,11 +55,6 @@
       signal: AbortSignal.timeout(15_000)
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  }
-
-  async function listSessions() {
-    const body = await apiGet('/api/v1/sessions');
-    return Array.isArray(body?.data?.items) ? body.data.items : [];
   }
 
   async function fetchSession(sessionId) {
@@ -129,86 +121,40 @@
     await chrome.storage.local.set({ [RENAME_LOG_STORAGE_KEY]: log });
   }
 
-  /* ---------- 核心管线（自动/批量共用） ----------
+  /* ---------- 核心管线 ----------
    * 返回 { status: 'renamed'|'skipped'|'failed', reason, title? } */
-  async function renameOneSession(session, { customTitleIds = null, modelSource, withEmoji } = {}) {
-    // [临时] 诊断日志的公共字段
-    const debugBase = {
-      sessionId: session.id,
-      oldTitle: String(session.title || '').slice(0, 60),
-      model: modelSource?.kind === 'external' ? `ext:${modelSource.accountId}` : modelSource?.model
-    };
+  async function renameOneSession(session, { modelSource, withEmoji } = {}) {
     const renameLog = await readRenameLog();
-    const reason = shared.skipSessionReason(session, { renameLog, customTitleIds });
-    if (reason) {
-      debugLog({ ...debugBase, stage: 'guard', status: 'skipped', reason });
-      return { status: 'skipped', reason };
-    }
+    const reason = shared.skipSessionReason(session, { renameLog });
+    if (reason) return { status: 'skipped', reason };
 
-    // 真实首条消息有两个用途：启发式判断手动标题（兜底 CLI state.json 覆盖不到的
-    // 会话，比如其他机器产生的），以及作为头部上下文。拉不到时启发式按保守方向跳过。
+    // 真实首条消息有两个用途：启发式判断手动标题（宁漏勿错），以及作为头部上下文。
+    // 拉不到时启发式按保守方向跳过。
     const firstUserText = await fetchFirstUserText(session.id).catch(() => '');
     if (!shared.looksLikeAutoTitle(session.title, firstUserText)) {
-      debugLog({
-        ...debugBase,
-        stage: 'heuristic',
-        status: 'skipped',
-        reason: 'custom-title',
-        firstUserText: firstUserText.slice(0, 120)
-      });
       return { status: 'skipped', reason: 'custom-title' };
     }
 
     const messages = await fetchMessages(session.id);
     const context = shared.buildRenameContext(messages, { firstUserText });
-    if (!context.text) {
-      debugLog({ ...debugBase, stage: 'context', status: 'skipped', reason: 'empty' });
-      return { status: 'skipped', reason: 'empty' };
-    }
+    if (!context.text) return { status: 'skipped', reason: 'empty' };
 
     const prompt = shared.buildRenamePrompt(context.text, { withEmoji });
     const response = await chrome.runtime.sendMessage({
       type: 'rename.model',
       payload: { modelSource, prompt }
     });
-    if (!response?.ok) {
-      debugLog({
-        ...debugBase,
-        stage: 'model',
-        status: 'failed',
-        reason: response?.error || '模型调用失败',
-        code: response?.code,
-        contextChars: context.text.length
-      });
-      return { status: 'failed', reason: response?.error || '模型调用失败' };
-    }
+    if (!response?.ok) return { status: 'failed', reason: response?.error || '模型调用失败' };
 
     const title = shared.sanitizeTitle(response.text, { withEmoji });
-    if (!title) {
-      debugLog({
-        ...debugBase,
-        stage: 'sanitize',
-        status: 'failed',
-        reason: '模型输出无法解析为标题',
-        modelRaw: String(response.text || '').slice(0, 200)
-      });
-      return { status: 'failed', reason: '模型输出无法解析为标题' };
-    }
+    if (!title) return { status: 'failed', reason: '模型输出无法解析为标题' };
 
     await writeTitle(session.id, title);
     await recordRename(session.id, title);
-    debugLog({
-      ...debugBase,
-      stage: 'done',
-      status: 'renamed',
-      newTitle: title,
-      contextChars: context.text.length,
-      usage: response.usage || null
-    });
     return { status: 'renamed', title };
   }
 
-  /* ---------- 自动模式：首轮回答结束后延迟命名，失败静默 ---------- */
+  /* ---------- 自动模式：第 3 轮回答结束后延迟命名，失败静默 ---------- */
 
   function onTurnEnded(sessionId) {
     if (!settings.autoEnabled || !sessionId) return;
@@ -238,7 +184,7 @@
       if (result.status === 'renamed') {
         attemptCounts.delete(sessionId);
       } else if (result.status === 'failed') {
-        // 失败（首轮可能全是工具调用没有文本）：放回去重集合，
+        // 失败（可能全是工具调用没有文本）：放回去重集合，
         // 后续轮次结束可再触发，直到 MAX_ATTEMPTS_PER_SESSION 次
         attemptCounts.set(sessionId, (attemptCounts.get(sessionId) || 0) + 1);
         triggeredThisPage.delete(sessionId);
@@ -248,93 +194,6 @@
       triggeredThisPage.delete(sessionId);
       console.warn('[Kimi Status] 自动命名失败（已静默）', error);
     }
-  }
-
-  /* ---------- 手动批量：串行处理，逐个上报进度；popup 关闭不影响执行 ---------- */
-
-  function report(type, payload) {
-    chrome.runtime.sendMessage({ type, payload }).catch(() => {});
-  }
-
-  /* [临时·发版前移除] 诊断日志：逐会话记录判定明细到环形缓冲（200 条），
-   * 供 popup「导出命名日志」下载后人工分析，前台不展示。 */
-  const DEBUG_LOG_STORAGE_KEY = 'sessionRenameDebug';
-  const DEBUG_LOG_MAX_ENTRIES = 200;
-
-  async function debugLog(entry) {
-    try {
-      const stored = await chrome.storage.local.get(DEBUG_LOG_STORAGE_KEY);
-      const log = Array.isArray(stored[DEBUG_LOG_STORAGE_KEY]) ? stored[DEBUG_LOG_STORAGE_KEY] : [];
-      log.push({ at: new Date().toISOString(), ...entry });
-      while (log.length > DEBUG_LOG_MAX_ENTRIES) log.shift();
-      await chrome.storage.local.set({ [DEBUG_LOG_STORAGE_KEY]: log });
-    } catch (error) {
-      // 日志失败不影响主流程
-    }
-  }
-
-  let batchAborted = false;
-  let batchCounts = null;
-
-  async function runBatch(payload = {}) {
-    if (batchRunning) return { ok: false, error: '命名任务进行中' };
-    batchRunning = true;
-    batchAborted = false;
-    const days = [1, 3, 7, 30].includes(Number(payload.days)) ? Number(payload.days) : 7;
-    const modelSource = shared.normalizeModelSource(payload.modelSource);
-    const withEmoji = payload.withEmoji !== false;
-    const customTitleIds = new Set(Array.isArray(payload.customTitleIds) ? payload.customTitleIds : []);
-    const counts = { total: 0, done: 0, succeeded: 0, skipped: 0, failed: 0 };
-    batchCounts = counts;
-    const failureReasons = [];
-    // 跳过原因按计数聚合（跳过量大时 top-3 样本说明不了问题）
-    const skipReasonCounts = {};
-
-    try {
-      if (!readCredential()) throw new Error('页面凭据缺失，请刷新 Kimi Code Web 页面');
-      const sessions = await listSessions();
-      const cutoff = Date.now() - days * 86_400_000;
-      const candidates = sessions.filter((session) => {
-        const at = Date.parse(session?.updated_at || session?.created_at || '');
-        return Number.isFinite(at) && at >= cutoff;
-      });
-      counts.total = candidates.length;
-      debugLog({ stage: 'batch-start', days, total: counts.total, model: modelSource?.kind === 'external' ? `ext:${modelSource.accountId}` : modelSource?.model });
-
-      for (const session of candidates) {
-        // popup 的中断请求：在会话粒度上生效，已完成的保留
-        if (batchAborted) break;
-        try {
-          const result = await renameOneSession(session, { customTitleIds, modelSource, withEmoji });
-          if (result.status === 'renamed') counts.succeeded += 1;
-          else if (result.status === 'skipped') {
-            counts.skipped += 1;
-            const key = result.reason || 'unknown';
-            skipReasonCounts[key] = (skipReasonCounts[key] || 0) + 1;
-          } else {
-            counts.failed += 1;
-            if (result.reason && failureReasons.length < 3) failureReasons.push(result.reason);
-          }
-        } catch (error) {
-          counts.failed += 1;
-          if (failureReasons.length < 3) failureReasons.push(error?.message || String(error));
-          debugLog({ stage: 'exception', status: 'failed', sessionId: session?.id, reason: error?.message || String(error) });
-        }
-        counts.done += 1;
-        report('rename.batch.progress', { ...counts });
-        if (!batchAborted && session !== candidates[candidates.length - 1]) {
-          await new Promise((resolve) => setTimeout(resolve, BATCH_INTERVAL_MS));
-        }
-      }
-    } catch (error) {
-      report('rename.batch.done', { ...counts, error: error?.message || String(error) });
-      return { ok: false, error: error?.message || String(error) };
-    } finally {
-      batchRunning = false;
-    }
-    report('rename.batch.done', { ...counts, aborted: batchAborted, failureReasons, skipReasonCounts });
-    debugLog({ stage: 'batch-done', ...counts, aborted: batchAborted });
-    return { ok: true, ...counts, aborted: batchAborted };
   }
 
   /* ---------- 命名模型清单（popup 经 background 中转拉取） ---------- */
@@ -353,21 +212,7 @@
         .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
       return true;
     }
-    if (message?.type === 'rename.batch.status') {
-      sendResponse({ ok: true, running: batchRunning, counts: batchCounts ? { ...batchCounts } : null });
-      return false;
-    }
-    if (message?.type === 'rename.batch.abort') {
-      // 中断在当前会话处理完后生效（不半路打断单个请求）
-      if (batchRunning) batchAborted = true;
-      sendResponse({ ok: true, running: batchRunning });
-      return false;
-    }
-    if (message?.type !== 'rename.batch.run') return false;
-    runBatch(message.payload)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
+    return false;
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {

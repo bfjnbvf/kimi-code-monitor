@@ -233,9 +233,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'external.remove': removeExternalAccount,
     'external.rename': renameExternalAccount,
     'rename.model': renameModelCall,
-    'rename.batch.start': startRenameBatch,
-    'rename.batch.status': getRenameBatchStatus,
-    'rename.batch.abort': abortRenameBatch,
     'rename.usage.get': getRenameUsage,
     'rename.models.list': listRenameModels
   };
@@ -464,7 +461,7 @@ async function renameExternalAccount(payload) {
  * modelSource：{ kind:'kimi-code', model } 用激活账户设备 token 调 api.kimi.com
  * （端点未实测，鉴权类失败返回 KIMI_MODEL_UNAVAILABLE，由 UI 引导改用外部账户）；
  * { kind:'external', accountId } 用已配置的外部账户（kimiapi/deepseek）。
- * 手动批量与模型清单都由 popup 发起，这里中转给活动 Kimi Code Web 标签页。
+ * 模型清单由 popup 发起，这里中转给活动 Kimi Code Web 标签页。
  * 每次成功的模型调用按响应 usage 累计到 sessionRenameUsage，供 popup 展示。 */
 const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage';
 
@@ -531,20 +528,6 @@ async function relayToKimiWebTab(type, payload) {
   } catch (error) {
     return failure(new Error('命名面板未就绪，请刷新 Kimi Code Web 页面后重试'), 'CONTENT_UNAVAILABLE');
   }
-}
-
-// popup → 活动 Kimi Code Web 标签页的 content 脚本；进度由 content 直接广播回 popup
-function startRenameBatch(payload) {
-  return relayToKimiWebTab('rename.batch.run', payload);
-}
-
-// popup 查询批量状态（popup 重开时恢复进度显示）与请求中断
-function getRenameBatchStatus() {
-  return relayToKimiWebTab('rename.batch.status');
-}
-
-function abortRenameBatch() {
-  return relayToKimiWebTab('rename.batch.abort');
 }
 
 // popup 拉命名模型清单：content 同源请求 /api/v1/models；失败时 popup 用硬编码兜底

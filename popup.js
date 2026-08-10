@@ -852,12 +852,7 @@
   const renameModelSelect = document.getElementById('rename-model-select');
   const renameEmojiToggle = document.getElementById('rename-emoji-toggle');
   const renameAutoToggle = document.getElementById('rename-auto-toggle');
-  const renameDaysSelect = document.getElementById('rename-days');
-  const renameStartBtn = document.getElementById('rename-start-btn');
-  const renameStatus = document.getElementById('rename-status');
   const renameUsage = document.getElementById('rename-usage');
-  // 批量任务在 content 脚本里跑，popup 关掉不中断；重开时按状态恢复按钮与进度
-  let renameBatchRunning = false;
   let renameSettings = {
     autoEnabled: false,
     emojiEnabled: true,
@@ -865,19 +860,6 @@
   };
   // Kimi Code 模型清单：先渲染缓存/硬编码兜底，弹窗打开时后台刷新
   let renameModelsCache = renameShared.KIMI_CODE_FALLBACK_MODELS;
-
-  function showRenameStatus(message = '', isError = false) {
-    renameStatus.textContent = message;
-    renameStatus.classList.toggle('err', isError);
-  }
-
-  // 批量进行中：按钮切换为「中断」（会话粒度停止，不半路打断单个请求）
-  function setRenameStartMode(running) {
-    renameBatchRunning = running;
-    renameStartBtn.textContent = running ? '中断' : '开始命名';
-    renameStartBtn.classList.toggle('primary', !running);
-    renameStartBtn.disabled = false;
-  }
 
   // 命名 token 用量累计（每次模型调用的响应 usage 由 background 累加）
   async function refreshRenameUsage() {
@@ -1001,167 +983,11 @@
     saveRenameSettings();
   });
 
-  /* 手动标题保护的权威依据：已连接 CLI 目录时读各会话 state.json 的 isCustomTitle。
-   * 目录句柄在扩展域 IndexedDB，popup 可读而 content 脚本读不到，故在批量启动时
-   * 由这里收集后随消息带过去；未连接/读取失败一律回退为内容脚本的启发式判断。 */
-  async function collectCustomTitleSessionIds() {
-    const ids = [];
-    try {
-      const handle = await KimiCliUsage.getDirectoryHandle();
-      if (!handle || (await KimiCliUsage.permissionState(handle)) !== 'granted') return ids;
-      const root = handle.name === '.kimi-code' ? await handle.getDirectoryHandle('sessions') : handle;
-      for await (const [, workspaceHandle] of root.entries()) {
-        if (workspaceHandle.kind !== 'directory') continue;
-        try {
-          for await (const [sessionName, sessionHandle] of workspaceHandle.entries()) {
-            if (sessionHandle.kind !== 'directory' || !sessionName.startsWith('session_')) continue;
-            try {
-              const fileHandle = await sessionHandle.getFileHandle('state.json');
-              const file = await fileHandle.getFile();
-              if (file.size > 1024 * 1024) continue;
-              const state = JSON.parse(await file.text());
-              if (state?.isCustomTitle === true) ids.push(sessionName);
-            } catch (error) {
-              // 单个会话读取失败跳过
-            }
-          }
-        } catch (error) {
-          // 单个 workspace 不可读跳过
-        }
-      }
-    } catch (error) {
-      // 未连接 CLI 或句柄失效：返回空，走启发式
-    }
-    return ids;
-  }
-
-  renameStartBtn.addEventListener('click', async () => {
-    // 批量进行中：此按钮为「中断」，请求在会话粒度上停止
-    if (renameBatchRunning) {
-      renameStartBtn.disabled = true;
-      showRenameStatus('正在中断…（当前会话处理完后停止）');
-      try {
-        const response = await send('rename.batch.abort');
-        // 竞态：请求到达时批量已完成，直接复位按钮
-        if (response?.ok && response.running === false) setRenameStartMode(false);
-      } catch (error) {
-        // 中断请求失败不阻塞；下一轮进度/结果广播会纠正状态
-      }
-      return;
-    }
-    renameStartBtn.disabled = true;
-    showRenameStatus('正在准备…');
-    try {
-      const modelSource = renameSettings.modelSource;
-      // 外部账户的域名权限必须在用户手势里申请（通常添加账户时已授予）
-      if (modelSource.kind === 'external') {
-        const account = externalAccountsCache.find((item) => item.id === modelSource.accountId);
-        const provider = globalThis.KimiExternalProviders?.PROVIDERS?.[account?.provider];
-        if (provider) {
-          const granted = await chrome.permissions
-            .request({ origins: [`${provider.origin}/*`] })
-            .catch(() => false);
-          if (!granted) throw new Error('未授予该外部账户的域名权限');
-        }
-      }
-      const customTitleIds = await collectCustomTitleSessionIds();
-      showRenameStatus('正在统计会话…');
-      // 响应在整批完成后才返回；过程进度由 rename.batch.progress 广播驱动
-      const response = await send('rename.batch.start', {
-        days: Number(renameDaysSelect.value) || 7,
-        modelSource,
-        withEmoji: renameSettings.emojiEnabled !== false,
-        customTitleIds
-      });
-      if (!response?.ok) throw new Error(response?.error || '批量命名失败');
-    } catch (error) {
-      showRenameStatus(error?.message || String(error), true);
-      setRenameStartMode(false);
-    }
-  });
-
-  // popup 重开时恢复批量状态：进行中则显示进度并切换到「中断」模式
-  async function restoreRenameBatchState() {
-    try {
-      const response = await send('rename.batch.status');
-      if (response?.ok && response.running) {
-        setRenameStartMode(true);
-        const counts = response.counts || {};
-        showRenameStatus(`处理中 ${counts.done || 0}/${counts.total || 0}`);
-      }
-    } catch (error) {
-      // 页面未打开/查询失败：保持未运行状态
-    }
-  }
-
-  // content 脚本广播的批量进度/结果（不经 background 转发，runtime 消息直达 popup）
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message?.type === 'rename.batch.progress') {
-      const progress = message.payload || {};
-      if (!renameBatchRunning) setRenameStartMode(true);
-      showRenameStatus(`处理中 ${progress.done || 0}/${progress.total || 0}`);
-      return;
-    }
-    if (message?.type === 'rename.batch.done') {
-      const result = message.payload || {};
-      if (result.error) {
-        showRenameStatus(result.error, true);
-      } else {
-        let text = `${result.aborted ? '已中断' : '完成'}：成功 ${result.succeeded || 0} · 跳过 ${result.skipped || 0} · 失败 ${result.failed || 0}`;
-        const SKIP_REASON_LABELS = {
-          busy: '进行中',
-          archived: '已归档',
-          empty: '空对话',
-          'already-renamed': '已命名过',
-          'custom-title': '可能手动改过',
-          'no-id': '无 id',
-          unknown: '未知'
-        };
-        const reasons = [];
-        if (result.skipReasonCounts && typeof result.skipReasonCounts === 'object') {
-          const parts = Object.entries(result.skipReasonCounts)
-            .map(([reason, count]) => `${SKIP_REASON_LABELS[reason] || reason} ${count}`);
-          if (parts.length) reasons.push(`跳过：${parts.join(' · ')}`);
-        }
-        if (result.failed > 0 && Array.isArray(result.failureReasons) && result.failureReasons.length) {
-          reasons.push(result.failureReasons[0]);
-        }
-        if (reasons.length) text += `（${reasons.join('；')}）`;
-        showRenameStatus(text, result.failed > 0 && result.succeeded === 0);
-      }
-      setRenameStartMode(false);
-      refreshRenameUsage();
-    }
-  });
-
   refreshStatus();
   setCliPathHelp();
   refreshCliStatus();
   buildExternalSection();
   refreshExternalStatus();
   loadRenameSettings().then(loadRenameModels);
-  restoreRenameBatchState();
   refreshRenameUsage();
-
-  // [临时·发版前移除] 导出命名诊断日志（环形缓冲 JSON 下载，供人工分析）
-  document.getElementById('rename-debug-link').addEventListener('click', async (event) => {
-    event.preventDefault();
-    try {
-      const stored = await chrome.storage.local.get(['sessionRenameDebug', 'sessionRenameUsage']);
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        usage: stored.sessionRenameUsage || null,
-        entries: Array.isArray(stored.sessionRenameDebug) ? stored.sessionRenameDebug : []
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `session-rename-debug-${Date.now()}.json`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } catch (error) {
-      showRenameStatus(`导出日志失败：${error?.message || error}`, true);
-    }
-  });
 })();
