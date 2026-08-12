@@ -1109,6 +1109,7 @@
     if (els.statusDot) els.statusDot.className = `ksb-status-dot ksb-${display}`;
     if (els.agentStatus) els.agentStatus.textContent = STATUS_TEXT[display] || display;
     petUpdateStatus(display);
+    roamPetSetStatus(display);
   }
 
   function setAgentStatus(status) {
@@ -1436,7 +1437,7 @@
 
   let externalProviders = [];
 
-  // 格式化单个账户的主数值与子数值：余额类「API 余额 ¥4.46」；
+  // 格式化单个账户的主数值与子数值：余额类「API余额 ¥4.46」；
   // 套餐类「5h 40.0% · 1w 12.0%」；半宽只取主数值 + 次要窗口做下角标
   function formatExternalValue(provider) {
     if (provider.error) return { main: '获取失败', sub: '', note: provider.error };
@@ -1482,7 +1483,7 @@
     }
 
     // 整宽：一行一个账户，名称在左、格式化数值在右。
-    // 数值的类型前缀（API 余额 / 5小时 等）单独成 span，窄面板时整体隐藏只留数字
+    // 数值的类型前缀（API余额 / 5小时 等）单独成 span，窄面板时整体隐藏只留数字
     if (!els?.externalList) return;
     if (!visible.length) {
       els.externalList.innerHTML =
@@ -1495,7 +1496,7 @@
     const valueHtml = (provider) => {
       if (provider.error) return '获取失败';
       if (provider.kind === 'balance') {
-        return `<span class="ksb-external-kind">API 余额</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
+        return `<span class="ksb-external-kind">API余额</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
       }
       if (provider.windows?.length) {
         return provider.windows
@@ -1866,6 +1867,116 @@
     }
     petClockTick();
     petSyncState();
+  }
+
+  /* ---------- 桌面宠物模块：Codex Pet（官方图集契约，素材库在线换装） ----------
+   * 播放器在 pet/pet-sprites.js（CodexRoamPet），官方九行动画表 + 拖拽 + 状态联动。
+   * 素材库在 IndexedDB（pet/pet-store.js，popup 写入），content script 读不到扩展
+   * IDB，经 background「pet.asset.active」消息取当前宠物的 data URL；切换实时生效。
+   * 拖拽停放位置持久化在 storage。开关存独立 key，不并入 widget 布局配置。 */
+  const ROAM_PET_STORAGE_KEY = 'kimi-statusbar.roamPet';
+  const PET_ACTIVE_ID_STORAGE_KEY = 'kimi-statusbar.petActiveId';
+  const PET_POS_STORAGE_KEY = 'kimi-statusbar.petPos';
+  const PET_LOOK_STORAGE_KEY = 'kimi-statusbar.petLook'; // 环视开关（仅 v2 图集生效）
+  const PET_SCALE_STORAGE_KEY = 'kimi-statusbar.petScale'; // 宠物大小（百分比 50–150）
+  const PET_LOOK_RADIUS = 500;
+  let roamPet = null;
+  let roamPetStarting = false;
+  let roamPetEnabledFlag = false;
+  let roamPetAssetUrl = '';
+  let roamPetPos = null;
+  let roamPetLookFlag = true;
+  let roamPetScale = 1;
+
+  function roamPetSetStatus(display) {
+    try {
+      roamPet?.setStatus(display);
+    } catch (error) {
+      // 宠物动作切换失败不影响面板
+    }
+  }
+
+  async function roamPetStart() {
+    if (roamPet || roamPetStarting || disposed || !pageActivated) return;
+    if (!roamPetEnabledFlag || !roamPetAssetUrl || !globalThis.CodexRoamPet || !document.body) return;
+    roamPetStarting = true;
+    const assetUrl = roamPetAssetUrl;
+    const startPos = roamPetPos;
+    try {
+      const instance = await globalThis.CodexRoamPet.create({
+        imageUrl: assetUrl,
+        position: startPos,
+        zIndex: 9998,
+        scale: roamPetScale,
+        look: { enabled: roamPetLookFlag, radius: PET_LOOK_RADIUS },
+        onPositionChange: (pos) => {
+          roamPetPos = pos;
+          chrome.storage.local.set({ [PET_POS_STORAGE_KEY]: pos }).catch(() => {});
+        }
+      });
+      // 等待素材期间页面已销毁、开关被关掉或素材已更换：立即回收，避免僵尸宠物
+      if (disposed || !roamPetEnabledFlag || assetUrl !== roamPetAssetUrl) {
+        instance.destroy();
+        return;
+      }
+      roamPet = instance;
+      roamPetSetStatus(displayedAgentStatus || 'idle');
+    } catch (error) {
+      console.warn('[Kimi Status] 桌面宠物加载失败', error);
+    } finally {
+      roamPetStarting = false;
+    }
+  }
+
+  function roamPetStop() {
+    if (!roamPet) return;
+    try {
+      roamPet.destroy();
+    } catch (error) {
+      // 忽略
+    }
+    roamPet = null;
+  }
+
+  function roamPetApplyEnabled(enabled) {
+    roamPetEnabledFlag = enabled;
+    if (enabled) roamPetStart();
+    else roamPetStop();
+  }
+
+  // 存储值（百分比 50–150）→ 缩放倍率（0.5–1.5），非法值回 1
+  function roamPetClampScale(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(150, Math.max(50, Math.round(n))) / 100 : 1;
+  }
+
+  async function roamPetLoadConfig() {
+    try {
+      const stored = await chrome.storage.local.get([
+        ROAM_PET_STORAGE_KEY, PET_POS_STORAGE_KEY, PET_LOOK_STORAGE_KEY, PET_SCALE_STORAGE_KEY
+      ]);
+      // 默认关闭：popup 卡片收起，页面上不出现宠物
+      roamPetEnabledFlag = stored[ROAM_PET_STORAGE_KEY] === true;
+      roamPetPos = stored[PET_POS_STORAGE_KEY] && Number.isFinite(stored[PET_POS_STORAGE_KEY].x)
+        ? stored[PET_POS_STORAGE_KEY]
+        : null;
+      roamPetLookFlag = stored[PET_LOOK_STORAGE_KEY] !== false;
+      roamPetScale = roamPetClampScale(stored[PET_SCALE_STORAGE_KEY]);
+      roamPetAssetUrl = await roamPetFetchAsset();
+    } catch (error) {
+      roamPetEnabledFlag = false;
+    }
+    roamPetApplyEnabled(roamPetEnabledFlag);
+  }
+
+  // 经 background 从素材库取当前宠物的 data URL（未安装/未选择时为空串）
+  async function roamPetFetchAsset() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'pet.asset.active' });
+      return resp?.ok && typeof resp.dataUrl === 'string' ? resp.dataUrl : '';
+    } catch (error) {
+      return '';
+    }
   }
 
   /* ---------- 额度与授权 ---------- */
@@ -2837,6 +2948,7 @@
     maybeShowGuide();
     fetchQuota();
     loadWidgetConfig();
+    roamPetLoadConfig();
     loadUsageDaily({ refreshIfStale: true });
     startSession(initialSessionId);
     quotaTimer = setInterval(fetchQuota, QUOTA_INTERVAL_MS);
@@ -2891,6 +3003,30 @@
       usageDailyCache = changes[KimiCliUsage.DAILY_STORAGE_KEY].newValue || {};
       renderChart();
       renderPetStats();
+    }
+    // 桌面宠物开关（popup 写入）：缺省/删除都视为关闭
+    if (changes[ROAM_PET_STORAGE_KEY]) {
+      roamPetApplyEnabled(changes[ROAM_PET_STORAGE_KEY].newValue === true);
+    }
+    // 切换当前宠物（popup 素材库点「切换」/新装/删除后落到下一只）：重新取图重建
+    if (changes[PET_ACTIVE_ID_STORAGE_KEY]) {
+      roamPetFetchAsset().then((assetUrl) => {
+        roamPetAssetUrl = assetUrl;
+        roamPetStop();
+        roamPetStart();
+      });
+    }
+    // 环视开关：重建宠物生效（位置已持久化，无感）
+    if (changes[PET_LOOK_STORAGE_KEY]) {
+      roamPetLookFlag = changes[PET_LOOK_STORAGE_KEY].newValue !== false;
+      roamPetStop();
+      roamPetStart();
+    }
+    // 宠物大小：重建宠物生效
+    if (changes[PET_SCALE_STORAGE_KEY]) {
+      roamPetScale = roamPetClampScale(changes[PET_SCALE_STORAGE_KEY].newValue);
+      roamPetStop();
+      roamPetStart();
     }
     if (changes[KimiCliUsage.STATE_STORAGE_KEY]) {
       cliUsageConnected = changes[KimiCliUsage.STATE_STORAGE_KEY].newValue?.connected === true;
@@ -2974,6 +3110,7 @@
       petReturnToBase = false;
     }
     petCancelTurn();
+    roamPetStop();
     clearToolStatus();
     // 侧栏改造的全局 class 一并移除，避免扩展重载后样式残留无法关闭
     document.documentElement.classList.remove('ksb-sidebar-tidy');

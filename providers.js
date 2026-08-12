@@ -174,7 +174,7 @@
   const PROVIDERS = {
     deepseek: {
       name: 'DeepSeek',
-      typeLabel: 'API 余额',
+      typeLabel: 'API余额',
       origin: 'https://api.deepseek.com',
       hint: 'platform.deepseek.com → API keys',
       async fetch(key) {
@@ -183,7 +183,7 @@
     },
     kimiapi: {
       name: 'Kimi API',
-      typeLabel: 'API 余额',
+      typeLabel: 'API余额',
       origin: 'https://api.moonshot.cn',
       hint: 'platform.moonshot.cn → API Key 管理',
       async fetch(key) {

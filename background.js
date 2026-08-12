@@ -3,7 +3,8 @@ importScripts(
   'cli-usage.js',
   'providers.js',
   'session-rename/rename-shared.js',
-  'session-rename/rename-model.js'
+  'session-rename/rename-model.js',
+  'pet/pet-store.js'
 );
 
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
@@ -234,7 +235,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'external.rename': renameExternalAccount,
     'rename.model': renameModelCall,
     'rename.usage.get': getRenameUsage,
-    'rename.models.list': listRenameModels
+    'rename.models.list': listRenameModels,
+    'rename.external.models.list': listExternalRenameModels,
+    'pet.asset.active': getActivePetAsset
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -510,10 +513,64 @@ async function renameModelCall(payload) {
     } catch (error) {
       return failure(new Error('本机密钥不可用，请删除后重新添加'), 'KEY_UNAVAILABLE');
     }
-    result = await KimiSessionRenameModel.callExternal(account.provider, key, prompt);
+    result = await KimiSessionRenameModel.callExternal(account.provider, key, prompt, modelSource.model);
   }
   if (result?.ok && result.usage) await recordRenameUsage(result.usage);
   return result;
+}
+
+// 外部账户的命名模型列表：解密账户 key 后调各 provider 的 /models（OpenAI 兼容）。
+// 拉取失败（无权限/网络/HTTP 错误）回落该 provider 的兜底默认模型，保证下拉可用。
+async function listExternalRenameModels() {
+  const supported = KimiSessionRenameModel.RENAME_MODEL_PROVIDERS || {};
+  const accounts = await readExternalAccounts();
+  const results = [];
+  for (const account of accounts) {
+    const target = supported[account.provider];
+    if (!target) continue;
+    const provider = KimiExternalProviders.PROVIDERS[account.provider];
+    const base = {
+      accountId: account.id,
+      provider: account.provider,
+      name: account.label || provider?.name || account.provider,
+      models: []
+    };
+    try {
+      const hasPermission = await chrome.permissions.contains({ origins: [`${provider.origin}/*`] });
+      if (!hasPermission) throw new Error('未授予域名权限');
+      const key = await decryptSecret(account.keyEnc);
+      const resp = await fetch(target.modelsUrl, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const ids = (Array.isArray(data?.data) ? data.data : [])
+        .map((item) => item?.id)
+        .filter((id) => typeof id === 'string' && id);
+      base.models = ids.length ? ids : [target.model];
+    } catch (error) {
+      base.models = [target.model];
+      base.error = error?.message || String(error);
+    }
+    results.push(base);
+  }
+  return { ok: true, accounts: results };
+}
+
+// 当前桌面宠物的图集：content script 读不到扩展的 IndexedDB，由这里中转。
+// 顺带触发旧版单宠物存储的一次性迁移（幂等）。
+async function getActivePetAsset() {
+  try {
+    await CodexPetStore.ensureMigrated();
+    const stored = await chrome.storage.local.get(CodexPetStore.ACTIVE_ID_KEY);
+    const activeId = stored[CodexPetStore.ACTIVE_ID_KEY];
+    if (!activeId) return { ok: true, dataUrl: null };
+    const record = await CodexPetStore.get(activeId);
+    return { ok: true, dataUrl: record?.dataUrl || null };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error) };
+  }
 }
 
 // 找活动 Kimi Code Web 标签页并转发消息；无页面/内容脚本未就绪时结构化报错

@@ -13,6 +13,7 @@ zip -r "$OUT" \
   session-rename \
   rive \
   rules \
+  pet \
   popup.html popup.js \
   icons \
   README.md LICENSE \

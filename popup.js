@@ -60,21 +60,42 @@
   let cliConnected = false;
   let usageMetric = 'total';
 
+  // 活跃热力图：140 天（约 20 周）窗口；格子边长按实际列数算出（--heat-cell），
+  // 严格正方形且精确铺满 212px 内容宽，版式与其他指标一致
+  const HEATMAP_DAYS = 140;
+  const HEATMAP_INNER_PX = 212;
+  const HEATMAP_GAP_PX = 2;
+
   // 活跃热力图是展示模式而非数值指标，不参与 USAGE_METRICS 的取值/格式化
   function isValidUsageMetric(id) {
     return id === 'heatmap' || Boolean(USAGE_METRICS[id]);
   }
 
-  // 活跃热力图：固定最近 90 天窗口，格子自带悬浮提示，不占用大数字与日期区
+  // 活跃热力图：固定最近 140 天窗口，格子自带悬浮提示，不占用日期区；
+  // 大数字显示该窗口的总消耗，保证与其他指标的版式一致
   function renderHeatmap() {
-    const { weeks } = buildHeatmapData(usageDaily, usageDayKey(new Date()));
+    const { weeks } = buildHeatmapData(usageDaily, usageDayKey(new Date()), HEATMAP_DAYS);
     usageChartEl.replaceChildren();
+    let totalSum = 0;
     const grid = document.createElement('div');
     grid.className = 'usage-heatmap';
-    for (const week of weeks) {
+    // 格子边长按列数精确计算：正方形且铺满卡片内容宽度（212px）
+    const cell = (HEATMAP_INNER_PX - (weeks.length - 1) * HEATMAP_GAP_PX) / weeks.length;
+    grid.style.setProperty('--heat-cell', `${cell.toFixed(2)}px`);
+    // 空白格：首列顶到首日的星期序、末列补满 7 格，热力图始终是完整矩形
+    const blankCell = () => {
+      const el = document.createElement('span');
+      el.className = 'usage-heat-cell usage-heat-blank';
+      return el;
+    };
+    for (const [weekIndex, week] of weeks.entries()) {
       const weekEl = document.createElement('span');
       weekEl.className = 'usage-heat-week';
+      const padTop = weekIndex === 0 ? 7 - week.length : 0;
+      const padBottom = weekIndex === weeks.length - 1 ? 7 - week.length : 0;
+      for (let i = 0; i < padTop; i += 1) weekEl.append(blankCell());
       for (const cell of week) {
+        totalSum += cell.total;
         const cellEl = document.createElement('span');
         cellEl.className = 'usage-heat-cell';
         cellEl.dataset.level = cell.level;
@@ -83,9 +104,11 @@
           : `${cell.key.slice(5)} · 无记录`;
         weekEl.append(cellEl);
       }
+      for (let i = 0; i < padBottom; i += 1) weekEl.append(blankCell());
       grid.append(weekEl);
     }
     usageChartEl.append(grid);
+    usageTokensEl.textContent = totalSum > 0 ? formatTokenCount(totalSum) : '--';
   }
 
   // 大数字与柱图使用同一个按日期可聚合指标；不混入只属于当前会话的速度。
@@ -848,10 +871,18 @@
 
   const RENAME_SETTINGS_STORAGE_KEY = 'sessionRenameSettings';
   const RENAME_MODELS_STORAGE_KEY = 'sessionRenameModels';
+  const RENAME_EXT_MODELS_STORAGE_KEY = 'sessionRenameExtModels';
   const renameShared = globalThis.KimiSessionRename;
   const renameModelSelect = document.getElementById('rename-model-select');
   const renameEmojiToggle = document.getElementById('rename-emoji-toggle');
   const renameAutoToggle = document.getElementById('rename-auto-toggle');
+  const renameSection = document.getElementById('rename-section');
+
+  // 功能卡片展开状态 = 总开关状态
+  function renameSectionSetOn(on) {
+    renameAutoToggle.checked = on;
+    renameSection.classList.toggle('on', on);
+  }
   const renameUsage = document.getElementById('rename-usage');
   let renameSettings = {
     autoEnabled: false,
@@ -860,6 +891,8 @@
   };
   // Kimi Code 模型清单：先渲染缓存/硬编码兜底，弹窗打开时后台刷新
   let renameModelsCache = renameShared.KIMI_CODE_FALLBACK_MODELS;
+  // 外部账户模型清单：{ accountId: [modelId...] }，同样先缓存后刷新
+  let renameExternalModelsCache = {};
 
   // 命名 token 用量累计（每次模型调用的响应 usage 由 background 累加）
   async function refreshRenameUsage() {
@@ -880,42 +913,70 @@
 
   // <select> 的字符串 value 与 modelSource 对象互转
   function modelSourceToValue(source) {
-    return source.kind === 'external' ? `ext:${source.accountId}` : `kimi-code:${source.model}`;
+    return source.kind === 'external'
+      ? `ext:${source.accountId}:${source.model || ''}`
+      : `kimi-code:${source.model}`;
   }
 
   function valueToModelSource(value) {
     if (typeof value === 'string' && value.startsWith('kimi-code:')) {
       return { kind: 'kimi-code', model: value.slice('kimi-code:'.length) };
     }
+    // ext:<accountId>:<model>（模型名为 provider 返回的真实 ID，可含点/短横线，不含冒号）
+    if (typeof value === 'string' && value.startsWith('ext:')) {
+      const rest = value.slice(4);
+      const sep = rest.indexOf(':');
+      const accountId = sep < 0 ? rest : rest.slice(0, sep);
+      const model = sep < 0 ? '' : rest.slice(sep + 1);
+      return renameShared.normalizeModelSource({ kind: 'external', accountId, model: model || undefined });
+    }
     return renameShared.normalizeModelSource(value);
   }
 
-  // 扁平下拉：Kimi Code 各模型（display_name）在前，已配置的外部账户在后，不按账户分组
+  // 分组下拉：Kimi Code 一组；每个支持命名的外部账户一组，组内是 provider 实时返回的具体模型
   function buildRenameModelOptions() {
     const previousValue = modelSourceToValue(renameSettings.modelSource);
     renameModelSelect.replaceChildren();
+    const kimiGroup = document.createElement('optgroup');
+    kimiGroup.label = 'Kimi Code';
     for (const entry of renameModelsCache) {
       const option = document.createElement('option');
       option.value = `kimi-code:${entry.model}`;
-      option.textContent = `${entry.display_name}（Kimi Code）`;
-      renameModelSelect.append(option);
+      option.textContent = entry.display_name;
+      kimiGroup.append(option);
     }
+    renameModelSelect.append(kimiGroup);
     const supported = globalThis.KimiSessionRenameModel?.RENAME_MODEL_PROVIDERS || {};
     for (const account of externalAccountsCache) {
-      if (!supported[account.provider]) continue;
+      const target = supported[account.provider];
+      if (!target) continue;
       const providerName =
         globalThis.KimiExternalProviders?.PROVIDERS?.[account.provider]?.name || account.provider;
-      const option = document.createElement('option');
-      option.value = `ext:${account.id}`;
+      const group = document.createElement('optgroup');
       // 「DeepSeek · 备注名」：未改名时只显示 provider 名
-      option.textContent =
+      group.label =
         account.name && account.name !== providerName
           ? `${providerName} · ${account.name}`
           : providerName;
-      renameModelSelect.append(option);
+      // 模型列表：实时拉取的缓存；拉不到时用该 provider 的兜底默认模型
+      const cached = renameExternalModelsCache[account.id];
+      const models = Array.isArray(cached) && cached.length ? cached : [target.model];
+      for (const model of models) {
+        const option = document.createElement('option');
+        option.value = `ext:${account.id}:${model}`;
+        option.textContent = model;
+        group.append(option);
+      }
+      renameModelSelect.append(group);
     }
-    const values = [...renameModelSelect.options].map((option) => option.value);
-    const nextValue = values.includes(previousValue) ? previousValue : values[0];
+    // 选中项恢复：精确匹配 → 旧配置（无模型的外部账户）落到该账户第一项 → 兜底第一项
+    const options = [...renameModelSelect.options];
+    let nextValue = options.some((o) => o.value === previousValue) ? previousValue : '';
+    if (!nextValue && renameSettings.modelSource?.kind === 'external') {
+      const prefix = `ext:${renameSettings.modelSource.accountId}:`;
+      nextValue = options.find((o) => o.value.startsWith(prefix))?.value || '';
+    }
+    if (!nextValue && options.length) nextValue = options[0].value;
     if (nextValue) {
       renameModelSelect.value = nextValue;
       renameSettings.modelSource = valueToModelSource(nextValue);
@@ -938,7 +999,7 @@
         chrome.storage.local.set({ sessionRenameModelV2: true }).catch(() => {});
       }
       renameEmojiToggle.checked = renameSettings.emojiEnabled !== false;
-      renameAutoToggle.checked = renameSettings.autoEnabled === true;
+      renameSectionSetOn(renameSettings.autoEnabled === true);
       // 旧版字符串 modelSource（'kimi' / 'ext:<id>'）迁移为新结构后回写一次
       if (raw && JSON.stringify(raw.modelSource) !== JSON.stringify(renameSettings.modelSource)) {
         saveRenameSettings();
@@ -948,12 +1009,17 @@
     }
   }
 
-  // 模型清单：先用缓存渲染，再经 background 中继向 Kimi Code Web 页面拉最新值
+  // 模型清单：先用缓存渲染，再经 background 中继向 Kimi Code Web 页面拉最新值；
+  // 外部账户模型由 background 直接调各 provider 的 /models
   async function loadRenameModels() {
     try {
-      const stored = await chrome.storage.local.get(RENAME_MODELS_STORAGE_KEY);
+      const stored = await chrome.storage.local.get([
+        RENAME_MODELS_STORAGE_KEY, RENAME_EXT_MODELS_STORAGE_KEY
+      ]);
       const cached = stored[RENAME_MODELS_STORAGE_KEY];
       if (Array.isArray(cached) && cached.length) renameModelsCache = cached;
+      const extCached = stored[RENAME_EXT_MODELS_STORAGE_KEY];
+      if (extCached && typeof extCached === 'object') renameExternalModelsCache = extCached;
     } catch (error) {
       // 读缓存失败用兜底
     }
@@ -968,6 +1034,20 @@
     } catch (error) {
       // 页面未打开/拉取失败：保持缓存或兜底
     }
+    try {
+      const extResponse = await send('rename.external.models.list');
+      if (extResponse?.ok && Array.isArray(extResponse.accounts)) {
+        const next = {};
+        for (const account of extResponse.accounts) {
+          if (Array.isArray(account.models) && account.models.length) next[account.accountId] = account.models;
+        }
+        renameExternalModelsCache = next;
+        chrome.storage.local.set({ [RENAME_EXT_MODELS_STORAGE_KEY]: next }).catch(() => {});
+        buildRenameModelOptions();
+      }
+    } catch (error) {
+      // 拉取失败：保持缓存或兜底默认模型
+    }
   }
 
   renameModelSelect.addEventListener('change', () => {
@@ -980,8 +1060,167 @@
   });
   renameAutoToggle.addEventListener('change', () => {
     renameSettings.autoEnabled = renameAutoToggle.checked;
+    renameSectionSetOn(renameAutoToggle.checked);
     saveRenameSettings();
   });
+
+  /* ---------- 桌面宠物：开关 + 素材库（IndexedDB 存图，页面经 background 取图） ---------- */
+  const roamPetToggle = document.getElementById('roam-pet-toggle');
+  const roamPetList = document.getElementById('roam-pet-list');
+  const roamPetAddRow = document.getElementById('roam-pet-add');
+  const roamPetAddBtn = document.getElementById('roam-pet-add-btn');
+  const roamPetInput = document.getElementById('roam-pet-input');
+  const roamPetInstallBtn = document.getElementById('roam-pet-install');
+  const roamPetStatus = document.getElementById('roam-pet-status');
+  const roamPetSection = document.getElementById('roam-pet-section');
+  const roamPetLookToggle = document.getElementById('roam-pet-look');
+  const ROAM_PET_STORAGE_KEY = 'kimi-statusbar.roamPet';
+  const PET_LOOK_STORAGE_KEY = 'kimi-statusbar.petLook';
+
+  function petSectionSetOn(on) {
+    roamPetToggle.checked = on;
+    roamPetSection.classList.toggle('on', on);
+  }
+
+  function petSetStatus(text, isError = false) {
+    roamPetStatus.textContent = text;
+    roamPetStatus.classList.toggle('err', isError);
+    roamPetStatus.hidden = !text; // 无消息时不占行高
+  }
+
+  // 素材库列表：一行一只（名称 + 当前/切换/移除），与账户行同款
+  async function renderPetLibrary() {
+    const store = globalThis.CodexPetStore;
+    if (!store) return;
+    await store.ensureMigrated();
+    const pets = await store.list();
+    const stored = await chrome.storage.local.get(store.ACTIVE_ID_KEY).catch(() => ({}));
+    const activeId = stored[store.ACTIVE_ID_KEY] || '';
+    roamPetList.replaceChildren();
+    if (!pets.length) {
+      const empty = document.createElement('div');
+      empty.className = 'pet-note';
+      empty.textContent = '尚未安装宠物';
+      roamPetList.append(empty);
+      return;
+    }
+    for (const pet of pets) {
+      const row = document.createElement('div');
+      row.className = 'ext-row';
+      const name = document.createElement('span');
+      name.className = 'ext-name';
+      name.textContent = pet.author ? `${pet.name} by ${pet.author}` : pet.name;
+      name.title = name.textContent;
+      row.append(name);
+      const actions = document.createElement('span');
+      actions.className = 'status-actions';
+      if (pet.id === activeId) {
+        const badge = document.createElement('span');
+        badge.className = 'account-badge';
+        badge.textContent = '当前';
+        actions.append(badge);
+      } else {
+        const switchBtn = document.createElement('button');
+        switchBtn.type = 'button';
+        switchBtn.className = 'action';
+        switchBtn.textContent = '切换';
+        switchBtn.addEventListener('click', async () => {
+          await chrome.storage.local.set({ [store.ACTIVE_ID_KEY]: pet.id }).catch(() => {});
+          renderPetLibrary();
+        });
+        actions.append(switchBtn);
+      }
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'action';
+      removeBtn.textContent = '移除';
+      removeBtn.addEventListener('click', async () => {
+        await store.remove(pet.id).catch(() => {});
+        if (pet.id === activeId) {
+          // 删掉当前只：自动落到剩下的第一只（没有则清空，页面不再显示宠物）
+          const rest = await store.list().catch(() => []);
+          await chrome.storage.local
+            .set({ [store.ACTIVE_ID_KEY]: rest[0]?.id || '' })
+            .catch(() => {});
+        }
+        renderPetLibrary();
+      });
+      actions.append(removeBtn);
+      row.append(actions);
+      roamPetList.append(row);
+    }
+  }
+
+  // 默认关闭（卡片收起）；用户打开过才保持展开
+  chrome.storage.local.get(ROAM_PET_STORAGE_KEY).then((stored) => {
+    petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
+  }).catch(() => {});
+  roamPetToggle.addEventListener('change', () => {
+    petSectionSetOn(roamPetToggle.checked);
+    chrome.storage.local.set({ [ROAM_PET_STORAGE_KEY]: roamPetToggle.checked }).catch(() => {});
+  });
+
+  // 安装输入框默认隐藏，点「+ 安装新宠物」才展开
+  roamPetAddBtn.addEventListener('click', () => {
+    roamPetAddRow.classList.remove('hidden');
+    roamPetAddBtn.classList.add('hidden');
+    roamPetInput.focus();
+  });
+
+  roamPetInstallBtn.addEventListener('click', async () => {
+    const installer = globalThis.CodexPetInstall;
+    const store = globalThis.CodexPetStore;
+    if (!installer || !store) return;
+    roamPetInstallBtn.disabled = true;
+    petSetStatus('下载中…');
+    try {
+      const plan = installer.parseInput(roamPetInput.value);
+      const { dataUrl, info } = await installer.fetchPet(plan);
+      const id = await store.add({
+        name: info.name,
+        author: info.author,
+        source: info.source,
+        dataUrl
+      });
+      // 新装的自动切换为当前宠物（页面实时换装）
+      await chrome.storage.local.set({ [store.ACTIVE_ID_KEY]: id }).catch(() => {});
+      petSetStatus('安装成功，已切换为新宠物');
+      roamPetInput.value = '';
+      roamPetAddRow.classList.add('hidden');
+      roamPetAddBtn.classList.remove('hidden');
+      renderPetLibrary();
+    } catch (error) {
+      petSetStatus(`安装失败：${error.message}`, true);
+    } finally {
+      roamPetInstallBtn.disabled = false;
+    }
+  });
+
+  // 环视开关（默认开；仅 v2 图集的宠物会响应）
+  chrome.storage.local.get(PET_LOOK_STORAGE_KEY).then((stored) => {
+    roamPetLookToggle.checked = stored[PET_LOOK_STORAGE_KEY] !== false;
+  }).catch(() => {});
+  roamPetLookToggle.addEventListener('change', () => {
+    chrome.storage.local.set({ [PET_LOOK_STORAGE_KEY]: roamPetLookToggle.checked }).catch(() => {});
+  });
+
+  // 宠物大小：自由填百分比，钳制在 50–150
+  const roamPetScaleInput = document.getElementById('roam-pet-scale');
+  const PET_SCALE_STORAGE_KEY = 'kimi-statusbar.petScale';
+  const clampPetScale = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(150, Math.max(50, Math.round(n))) : 100;
+  };
+  chrome.storage.local.get(PET_SCALE_STORAGE_KEY).then((stored) => {
+    roamPetScaleInput.value = clampPetScale(stored[PET_SCALE_STORAGE_KEY]);
+  }).catch(() => {});
+  roamPetScaleInput.addEventListener('change', () => {
+    const value = clampPetScale(roamPetScaleInput.value);
+    roamPetScaleInput.value = value;
+    chrome.storage.local.set({ [PET_SCALE_STORAGE_KEY]: value }).catch(() => {});
+  });
+
+  renderPetLibrary();
 
   refreshStatus();
   setCliPathHelp();

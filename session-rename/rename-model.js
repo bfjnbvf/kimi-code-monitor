@@ -23,24 +23,43 @@
   const TEMPERATURE = 0.2;
 
   /* 支持命名的外部 provider（OpenAI 兼容端点）。
-   * 与 providers.js 的 origin 保持一致；新增一家只需在这里加一行。 */
+   * 与 providers.js 的 origin 保持一致；新增一家只需在这里加一行。
+   * model 是兜底默认（模型列表拉取失败时使用）；popup 下拉展示的是
+   * 通过 modelsUrl 实时拉取的具体模型，不再只显示账户名。
+   * 注意 deepseek-chat / deepseek-reasoner 已于 2026-07-24 退役，
+   * 默认模型必须用现行 ID（deepseek-v4-flash / deepseek-v4-pro）。 */
   const RENAME_MODEL_PROVIDERS = {
-    kimiapi: { endpoint: 'https://api.moonshot.cn/v1/chat/completions', model: 'moonshot-v1-8k' },
-    deepseek: { endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat' }
+    kimiapi: {
+      endpoint: 'https://api.moonshot.cn/v1/chat/completions',
+      modelsUrl: 'https://api.moonshot.cn/v1/models',
+      model: 'moonshot-v1-8k'
+    },
+    deepseek: {
+      endpoint: 'https://api.deepseek.com/chat/completions',
+      modelsUrl: 'https://api.deepseek.com/models',
+      model: 'deepseek-v4-flash'
+    }
   };
 
   function ok(text, usage = null) {
     return { ok: true, text, usage };
   }
 
-  // 从响应里提取 token 用量（Anthropic / OpenAI 两种形状），取不到返回 null
+  // 从响应里提取 token 用量（Anthropic / OpenAI 两种形状），取不到返回 null。
+  // 注意 Anthropic 的 input_tokens 不含缓存部分（cache_read/cache_creation），
+  // 只统计它会导致「输入看起来特别少」——缓存读写也是真实消耗，一并计入输入。
   function extractUsage(data) {
     const usage = data?.usage;
     if (!usage || typeof usage !== 'object') return null;
     const input = Number(usage.input_tokens ?? usage.prompt_tokens);
     const output = Number(usage.output_tokens ?? usage.completion_tokens);
     if (!Number.isFinite(input) && !Number.isFinite(output)) return null;
-    return { input: Number.isFinite(input) ? input : 0, output: Number.isFinite(output) ? output : 0 };
+    const cacheRead = Number(usage.cache_read_input_tokens) || 0;
+    const cacheCreate = Number(usage.cache_creation_input_tokens) || 0;
+    return {
+      input: (Number.isFinite(input) ? input : 0) + cacheRead + cacheCreate,
+      output: Number.isFinite(output) ? output : 0
+    };
   }
 
   function fail(code, error) {
@@ -99,8 +118,8 @@
     return ok(text, extractUsage(data));
   }
 
-  // 外部账户：OpenAI 兼容 chat/completions
-  async function callExternal(providerId, key, prompt) {
+  // 外部账户：OpenAI 兼容 chat/completions；model 缺省用 provider 兜底默认
+  async function callExternal(providerId, key, prompt, model) {
     const target = RENAME_MODEL_PROVIDERS[providerId];
     if (!target) return fail('PROVIDER_UNSUPPORTED', '该外部账户不支持会话命名');
     let response;
@@ -112,7 +131,7 @@
           'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model: target.model,
+          model: model || target.model,
           max_tokens: MAX_TOKENS,
           temperature: TEMPERATURE,
           messages: [{ role: 'user', content: prompt }]

@@ -15,6 +15,7 @@
     --green: #16c456;
     --danger: #ff3849;
     --tooltip-bg: #ffffff;
+    --switch-off: rgba(120, 124, 133, 0.32);
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
 
@@ -31,6 +32,7 @@
       --green: #16c456;
       --danger: #ff4756;
       --tooltip-bg: #2a2a2a;
+      --switch-off: rgba(255, 255, 255, 0.28);
     }
     body { background: #1f1f1f; }
   }
@@ -167,12 +169,19 @@
     margin-bottom: 2px;
   }
 
-  /* --- 卡片标题行：标题 + 右侧 ⓘ 说明（hover 弹出，不占行） --- */
+  /* --- 卡片标题行：ⓘ 说明 + 标题在左，胶囊开关在右 --- */
   .section-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
+  }
+
+  .feature-title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
   }
 
   .info-icon {
@@ -181,15 +190,24 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 13px;
-    height: 13px;
+    width: 11px;
+    height: 11px;
     border: 1px solid var(--text-tertiary);
     border-radius: 50%;
     color: var(--text-tertiary);
-    font-size: 9px;
-    font-style: italic;
     cursor: help;
     user-select: none;
+    transform: translateY(-1px);
+  }
+
+  /* 正体 i 比斜体更居中；上移 0.5px 补偿字形视觉下沉 */
+  .info-icon::before {
+    content: "i";
+    font-size: 8px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 1;
+    transform: translateY(-0.5px);
   }
 
   .info-icon:hover {
@@ -201,7 +219,7 @@
     display: none;
     position: absolute;
     top: 17px;
-    right: -1px;
+    left: -1px;
     z-index: 50;
     width: 220px;
     padding: 8px 10px;
@@ -329,8 +347,10 @@
   }
 
   .usage-title select {
+    /* 宽度跟随当前选中项文字，箭头紧贴标题（Chrome 123+；更老版本忽略此行，退化为按最长选项定宽） */
+    field-sizing: content;
     max-width: 92px;
-    padding: 0 14px 0 0;
+    padding: 0 3px 0 0;
     border: none;
     outline: none;
     background: transparent;
@@ -425,33 +445,37 @@
     flex-shrink: 0;
   }
 
-  /* 活跃热力图模式：隐藏大数字、单日标签与日期范围选择器，图表区高度自适应 */
-  .usage-data.heatmap-mode .usage-big-tokens,
+  /* 活跃热力图模式：只隐藏单日标签与日期选择器；大数字保留（显示 90 天总消耗），
+     图表区固定为「柱状图 + 日期行」的等高 76px，切换指标时卡片版式不动 */
   .usage-data.heatmap-mode #usage-day,
   .usage-data.heatmap-mode .usage-dates {
     display: none;
   }
 
   .usage-data.heatmap-mode .usage-chart {
-    height: auto;
+    height: 76px;
+    margin-bottom: 0;
+    align-items: center;
+    justify-content: center;
   }
 
-  /* 活跃热力图：GitHub 风格 90 天日历，按周分列，灰→蓝五档 */
+  /* 活跃热力图：GitHub 风格 90 天日历，按周分列，灰→蓝五档（8px 格子适配固定高度） */
   .usage-heatmap {
     display: flex;
-    gap: 3px;
+    gap: 2px;
     padding: 2px 0;
   }
 
   .usage-heat-week {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
   }
 
   .usage-heat-cell {
-    width: 11px;
-    height: 11px;
+    /* 宽高由 JS 按周数算成 --heat-cell，严格正方形且精确铺满卡片宽度 */
+    width: var(--heat-cell, 8.2px);
+    height: var(--heat-cell, 8.2px);
     border-radius: 2px;
     background: var(--fill-2);
   }
@@ -460,6 +484,11 @@
   .usage-heat-cell[data-level="2"] { background: var(--accent); opacity: 0.45; }
   .usage-heat-cell[data-level="3"] { background: var(--accent); opacity: 0.65; }
   .usage-heat-cell[data-level="4"] { background: var(--accent); }
+
+  /* 首末列补位的空白格：占位但不可见 */
+  .usage-heat-blank {
+    visibility: hidden;
+  }
 
   .usage-dates input[type="date"] {
     flex: 1;
@@ -478,7 +507,161 @@
     box-shadow: 0 0 0 2px var(--accent);
   }
 
-  .hidden { display: none; }
+  /* --- 可展开功能卡片：标题行胶囊开关是总开关，关闭时收起正文 --- */
+  .feature-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+  }
+
+  .feature-toggle .usage-title {
+    margin-bottom: 0;
+  }
+
+  .feature-card:not(.on) .feature-body {
+    display: none;
+  }
+
+  /* 胶囊开关：对齐 Kimi Web ui-switch 的比例（缩小到 30x17 轨道 / 13 圆点 / 滑动 13px） */
+  .kswitch {
+    position: relative;
+    display: inline-block;
+    width: 30px;
+    height: 17px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--switch-off);
+    cursor: pointer;
+    transition: background 150ms ease;
+  }
+
+  .kswitch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: transform 150ms ease;
+  }
+
+  .kswitch-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    margin: 0;
+  }
+
+  .kswitch-input:checked + .kswitch {
+    background: var(--accent);
+  }
+
+  .kswitch-input:checked + .kswitch::after {
+    transform: translate(13px);
+  }
+
+  .kswitch-input:focus-visible + .kswitch {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+
+  .feature-toggle:hover .kswitch {
+    filter: brightness(0.98);
+  }
+
+  /* 功能卡片正文与注释区之间的分割线；注释（用量计数、推荐链接等）一律沉底 */
+  .feature-divider {
+    border-top: 1px solid var(--fill-2);
+    margin: 6px 0 4px;
+  }
+
+  /* 表单行内前缀标签（如「使用模型」） */
+  .ext-label {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  /* --- 桌面宠物区块 --- */
+  #roam-pet-section {
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--fill-1);
+    margin-bottom: 10px;
+  }
+
+  #roam-pet-section .ext-row {
+    margin-top: 8px;
+  }
+
+  /* 列表首行不再留上距（标题行与正文间距由 .feature-body 统一给） */
+  #roam-pet-list .ext-row:first-child {
+    margin-top: 0;
+  }
+
+  #roam-pet-add-btn {
+    margin-top: 8px;
+  }
+
+  /* 列表行内的名称与操作按钮按文字基线对齐 */
+  #account-list .ext-row,
+  #roam-pet-list .ext-row {
+    align-items: baseline;
+  }
+
+  /* 宠物大小输入框：窄宽 */
+  .pet-scale-input {
+    width: 56px;
+    padding: 2px 4px;
+    border: 1px solid var(--fill-2);
+    border-radius: 6px;
+    background: var(--fill-1);
+    color: inherit;
+    font-size: 11px;
+    font-family: var(--mono);
+    text-align: right;
+  }
+
+  .pet-scale-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  /* 宠物区块内的说明/状态小字（不带 .ext-status 的 64px 缩进） */
+  .pet-note {
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    min-height: 12px;
+  }
+
+  .pet-note.err {
+    color: var(--danger);
+  }
+
+  /* 卡片内的推荐链接小字 */
+  .pet-links {
+    margin: 4px 2px 0;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .pet-links a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .pet-links a:hover {
+    text-decoration: underline;
+  }
+
+  /* !important：button.action 等带元素名的选择器优先级更高，否则会盖掉 hidden */
+  .hidden { display: none !important; }
 
   /* --- 新会话 AI 自动命名区块 --- */
   #rename-section {
@@ -488,14 +671,39 @@
     margin-bottom: 10px;
   }
 
-  /* 行距收紧，与 Kimi 账户/外部账户卡片密度一致 */
+  /* 行距与 Kimi 账户/外部账户卡片密度一致 */
   #rename-section .ext-row {
-    margin-top: 4px;
+    margin-top: 8px;
+  }
+
+  /* 功能卡片：标题行与正文的间距、首行不再重复留出上距 */
+  .feature-body {
+    margin-top: 8px;
+  }
+
+  .feature-body > .ext-row:first-child {
+    margin-top: 0;
+  }
+
+  /* 次级选项行：11px 正文 + 右侧小开关 */
+  .feature-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .feature-option .kswitch {
+    flex-shrink: 0;
   }
 
   #rename-section select {
-    flex: 1;
-    min-width: 0;
+    flex: 0 0 auto;
+    width: 152px;
+    margin-left: auto;
     padding: 3px 4px;
     border: 1px solid var(--fill-2);
     border-radius: 6px;
@@ -504,7 +712,7 @@
     font-size: 11px;
   }
 
-  /* 次要设置：10px 灰字，视觉上从主控件降级 */
+  /* 次要注释：10px 灰字，视觉上从主控件降级 */
   .rename-minor {
     display: flex;
     gap: 10px;
@@ -513,26 +721,15 @@
     color: var(--text-tertiary);
   }
 
-  .rename-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-  }
-
-  .rename-toggle input {
-    margin: 0;
-    accent-color: var(--accent);
-  }
-
   #status-text {
     flex: 1;
     min-width: 0;
   }
 
-  /* 行内轻操作：文字按钮，替代原大按钮 */
+  /* 行内轻操作：文字按钮，替代原大按钮；按文字基线对齐（徽章/按钮同高） */
   .status-actions {
     display: flex;
+    align-items: baseline;
     gap: 8px;
     flex-shrink: 0;
   }
@@ -545,7 +742,7 @@
     background: none;
     color: var(--text-tertiary);
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     cursor: pointer;
     transition: color 120ms ease;
@@ -623,8 +820,10 @@
   </div>
   <div id="account-section">
     <div class="section-head">
-      <div class="usage-title">Kimi 账户</div>
-      <span class="info-icon">i<span class="info-tip">面板额度条显示当前账户的 5 小时与本周额度。</span></span>
+      <div class="feature-title">
+        <span class="info-icon"><span class="info-tip">面板额度条显示当前账户的 5 小时与本周额度。</span></span>
+        <div class="usage-title">Kimi 账户</div>
+      </div>
     </div>
     <div id="account-list"></div>
     <div id="account-empty" class="hidden">
@@ -641,8 +840,10 @@
   </div>
   <div id="external-section">
     <div class="section-head">
-      <div class="usage-title">外部账户</div>
-      <span class="info-icon">i<span class="info-tip">添加后，面板「外部账户」模块会显示对应余额/额度，Key 只保存在本机扩展存储中。</span></span>
+      <div class="feature-title">
+        <span class="info-icon"><span class="info-tip">添加后，面板「外部账户」模块会显示对应余额/额度，Key 只保存在本机扩展存储中。</span></span>
+        <div class="usage-title">外部账户</div>
+      </div>
     </div>
     <div id="external-list"></div>
     <div id="external-add" class="hidden">
@@ -655,19 +856,55 @@
     </div>
     <button type="button" class="action" id="ext-add-btn">+ 添加账户</button>
   </div>
-  <div id="rename-section">
+  <div id="rename-section" class="feature-card">
     <div class="section-head">
-      <div class="usage-title">新会话 AI 自动命名</div>
-      <span class="info-icon">i<span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。</span></span>
+      <div class="feature-title">
+        <span class="info-icon"><span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。<br><br>开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。</span></span>
+        <span class="usage-title">新会话 AI 自动命名</span>
+      </div>
+      <label class="feature-toggle"><input type="checkbox" id="rename-auto-toggle" class="kswitch-input"><span class="kswitch"></span></label>
     </div>
-    <div class="ext-row">
-      <select id="rename-model-select" aria-label="命名模型"></select>
+    <div class="feature-body">
+      <div class="ext-row">
+        <span class="ext-label">使用模型</span>
+        <select id="rename-model-select" aria-label="命名模型"></select>
+      </div>
+      <div class="feature-option">
+        <span>标题带 emoji</span>
+        <label class="feature-toggle"><input type="checkbox" id="rename-emoji-toggle" class="kswitch-input"><span class="kswitch"></span></label>
+      </div>
+      <div class="feature-divider"></div>
+      <div id="rename-usage" class="rename-minor"></div>
     </div>
-    <div class="rename-minor">
-      <label class="rename-toggle"><input type="checkbox" id="rename-emoji-toggle"> 标题带 emoji</label>
-      <label class="rename-toggle"><input type="checkbox" id="rename-auto-toggle"> 开启此功能</label>
+  </div>
+  <div id="roam-pet-section" class="feature-card">
+    <div class="section-head">
+      <div class="feature-title">
+        <span class="info-icon"><span class="info-tip">到 codexpet.top 挑选喜欢的宠物，复制它的安装命令（那段 bash），回到这里点「+ 添加宠物」粘贴即可。<br><br>宠物素材来自社区分享，其权利归属与使用限制以各发布页面为准；本扩展仅提供本地播放功能，不持有也不担保素材的任何权利。</span></span>
+        <span class="usage-title">桌面宠物</span>
+      </div>
+      <label class="feature-toggle"><input type="checkbox" id="roam-pet-toggle" class="kswitch-input"><span class="kswitch"></span></label>
     </div>
-    <div id="rename-usage" class="rename-minor"></div>
+    <div class="feature-body">
+      <div id="roam-pet-list"></div>
+      <div class="ext-row hidden" id="roam-pet-add">
+        <input type="text" id="roam-pet-input" placeholder="粘贴宠物安装 bash 命令" autocomplete="off" spellcheck="false">
+        <button type="button" class="action primary" id="roam-pet-install">安装</button>
+      </div>
+      <div class="pet-note" id="roam-pet-status" hidden></div>
+      <button type="button" class="action" id="roam-pet-add-btn">+ 添加宠物</button>
+      <div class="feature-divider"></div>
+      <div class="feature-option">
+        <span>靠近时注视鼠标（仅v2版宠物支持）</span>
+        <label class="feature-toggle"><input type="checkbox" id="roam-pet-look" class="kswitch-input"><span class="kswitch"></span></label>
+      </div>
+      <div class="feature-option">
+        <span>宠物大小</span>
+        <span><input type="number" id="roam-pet-scale" class="pet-scale-input" min="50" max="150" step="5" value="100" inputmode="numeric"> <span style="color: var(--text-tertiary)">%</span></span>
+      </div>
+      <div class="feature-divider"></div>
+      <div class="pet-links">推荐画廊：<a href="https://codexpet.top/zh" target="_blank" rel="noopener">codexpet.top</a></div>
+    </div>
   </div>
   <div class="footer">
     <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
@@ -676,6 +913,8 @@
   <script src="metrics.js"></script>
   <script src="cli-usage.js"></script>
   <script src="providers.js"></script>
+  <script src="pet/pet-install.js"></script>
+  <script src="pet/pet-store.js"></script>
   <script src="session-rename/rename-shared.js"></script>
   <script src="session-rename/rename-model.js"></script>
   <script src="popup.js"></script>

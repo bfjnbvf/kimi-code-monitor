@@ -75,12 +75,17 @@ test('外部账户行：textContent 渲染无注入面，改名/移除统一及�
   assert.match(source, /catch \(error\) \{[^}]*renderExternalAccounts/s);
 });
 
-test('活跃热力图作为指标选项：固定 90 天窗口，隐藏大数字与日期选择器', () => {
+test('活跃热力图作为指标选项：固定 90 天窗口，版式与其他指标一致', () => {
   assert.match(html, /<option value="heatmap">活跃热力图<\/option>/);
-  // 热力图模式隐藏大数字、单日标签与日期范围选择器
-  assert.match(html, /\.usage-data\.heatmap-mode \.usage-big-tokens[\s\S]*?\.usage-data\.heatmap-mode \.usage-dates[\s\S]*?display: none/);
-  // 固定最近 90 天窗口，不读日期范围选择器
-  assert.match(source, /buildHeatmapData\(usageDaily, usageDayKey\(new Date\(\)\)\)/);
+  // 热力图模式只隐藏单日标签与日期范围选择器；大数字保留（显示 90 天总消耗）
+  assert.match(html, /\.usage-data\.heatmap-mode #usage-day[\s\S]*?\.usage-data\.heatmap-mode \.usage-dates[\s\S]*?display: none/);
+  assert.doesNotMatch(html, /\.usage-data\.heatmap-mode \.usage-big-tokens/);
+  // 图表区固定为与「柱状图 + 日期行」等高的 76px，切换指标时卡片版式不动
+  assert.match(html, /\.usage-data\.heatmap-mode \.usage-chart \{[\s\S]*?height: 76px/);
+  // 大数字显示 90 天窗口总消耗
+  assert.match(source, /usageTokensEl\.textContent = totalSum > 0 \? formatTokenCount\(totalSum\) : '--'/);
+  // 固定最近 140 天窗口（约 20 周），不读日期范围选择器
+  assert.match(source, /buildHeatmapData\(usageDaily, usageDayKey\(new Date\(\)\), HEATMAP_DAYS\)/);
   assert.match(source, /if \(usageMetric === 'heatmap'\) \{\s*usageDataEl\.classList\.add\('heatmap-mode'\);/);
   // heatmap 是合法的可持久化选项，但不是数值指标
   assert.match(source, /id === 'heatmap' \|\| Boolean\(USAGE_METRICS\[id\]\)/);
@@ -108,7 +113,9 @@ test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => 
 test('新会话 AI 自动命名区块：模型下拉、开关与用量计数（仅自动命名，无批量入口）', () => {
   assert.match(html, /id="rename-section"/);
   assert.match(html, /新会话 AI 自动命名/);
-  assert.match(html, /<input type="checkbox" id="rename-auto-toggle"> 开启此功能/);
+  // 总开关在标题行右侧（iOS 风格胶囊开关，对齐 Kimi Web ui-switch 规格）
+  assert.match(html, /<input type="checkbox" id="rename-auto-toggle" class="kswitch-input"><span class="kswitch">/);
+  assert.match(html, /\.kswitch::after/);
   // 卡片说明不占行：标题右侧 ⓘ hover 气泡，含命名时机与 token 消耗说明
   assert.match(html, /class="info-icon"/);
   assert.match(html, /输入约 1500~2500 tokens/);
@@ -118,25 +125,29 @@ test('新会话 AI 自动命名区块：模型下拉、开关与用量计数（�
   assert.match(html, /id="rename-model-select"/);
   assert.match(html, /id="rename-emoji-toggle"/);
   assert.match(html, /id="rename-auto-toggle"/);
+  // 模型选择框带「使用模型」前缀标签
+  assert.match(html, /<span class="ext-label">使用模型<\/span>/);
   // 批量功能已移除：无天数选择/开始按钮/状态行/诊断日志链接
   assert.doesNotMatch(html, /rename-days|rename-start-btn|rename-status|rename-debug-link/);
   assert.doesNotMatch(source, /rename\.batch\./);
   assert.doesNotMatch(source, /collectCustomTitleSessionIds/);
   assert.doesNotMatch(backgroundSource, /rename\.batch\./);
-  // 次要设置降级：checkbox 包在 10px 灰字的 rename-minor 行里
-  assert.match(html, /<div class="rename-minor">/);
+  // 注释行降级：10px 灰字的 rename-minor（用量计数等注释内容沉底）
+  assert.match(html, /class="rename-minor"/);
   assert.match(html, /\.rename-minor \{[\s\S]*?font-size: 10px[\s\S]*?var\(--text-tertiary\)/);
-  // 开关与模型选择持久化；modelSource 为 {kind, model|accountId} 新结构
+  // 开关与模型选择持久化；modelSource 为 {kind, model|accountId+model} 新结构
   assert.match(source, /'sessionRenameSettings'/);
   assert.match(source, /normalizeModelSource/);
-  assert.match(source, /kind === 'external' \? `ext:\$\{source\.accountId\}` : `kimi-code:\$\{source\.model\}`/);
-  // 扁平下拉：Kimi Code 模型在前（display_name + Kimi Code 标注），不按账户分组
-  assert.match(source, /`\$\{entry\.display_name\}（Kimi Code）`/);
-  assert.doesNotMatch(source, /optgroup/i);
-  // 模型清单：缓存渲染 + 经 background 中继后台刷新
+  assert.match(source, /kind === 'external'\s*\?\s*`ext:\$\{source\.accountId\}:\$\{source\.model \|\| ''\}`/);
+  // 分组下拉：Kimi Code 一组；外部账户每家一个 optgroup，组内为 provider 实时模型
+  assert.match(source, /optgroup/);
+  assert.match(source, /kimiGroup\.label = 'Kimi Code'/);
+  // 模型清单：缓存渲染 + 经 background 中继后台刷新；外部模型由 background 直连 provider
   assert.match(source, /'sessionRenameModels'/);
   assert.match(source, /send\('rename\.models\.list'\)/);
   assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
+  assert.match(source, /send\('rename\.external\.models\.list'\)/);
+  assert.match(backgroundSource, /'rename\.external\.models\.list': listExternalRenameModels/);
   // token 用量计数：popup 读取 background 累计值展示
   assert.match(source, /send\('rename\.usage\.get'\)/);
   assert.match(backgroundSource, /'rename\.usage\.get': getRenameUsage/);

@@ -8,7 +8,6 @@
   'use strict';
 
   const DB_NAME = 'kimi-code-monitor';
-  const DB_VERSION = 1;
   const HANDLE_STORE = 'file-handles';
   const SESSIONS_HANDLE_KEY = 'kimi-cli-sessions';
   const DAILY_STORAGE_KEY = 'kimiCliUsageDaily';
@@ -24,7 +23,9 @@
 
   function openHandleDb() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      // 不显式指定版本：本库可能被其他模块升过级，写死低版本会报 VersionError；
+      // 不存在时以 v1 创建并触发 onupgradeneeded
+      const request = indexedDB.open(DB_NAME);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(HANDLE_STORE)) db.createObjectStore(HANDLE_STORE);

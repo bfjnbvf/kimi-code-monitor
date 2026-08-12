@@ -1450,3 +1450,14 @@ html[data-color-scheme="dark"] #ksb-walk {
     display: none;
   }
 }
+
+/* ===== Codex 桌面宠物（pet/pet-sprites.js 创建，position:fixed，可拖拽停放） =====
+ * 元素本身的定位/尺寸/背景图都在 JS 内联，这里只负责状态外观 */
+.codex-roam-pet-dim {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.codex-roam-pet-held {
+  cursor: grabbing;
+}

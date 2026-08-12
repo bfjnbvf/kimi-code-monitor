@@ -228,7 +228,9 @@
         return { kind: 'kimi-code', model: value.model };
       }
       if (value.kind === 'external' && typeof value.accountId === 'string' && value.accountId) {
-        return { kind: 'external', accountId: value.accountId };
+        // model 可选：缺省时由 provider 兜底默认模型
+        const model = typeof value.model === 'string' && value.model ? value.model : undefined;
+        return model ? { kind: 'external', accountId: value.accountId, model } : { kind: 'external', accountId: value.accountId };
       }
       return defaultModelSource();
     }

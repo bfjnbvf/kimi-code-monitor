@@ -247,6 +247,16 @@ test('modelSource 迁移：旧字符串值归一化为新结构，默认 K2.7 Co
     kind: 'external',
     accountId: 'ext-9'
   });
+  // 外部账户可携带具体模型名（provider /models 拉取），缺省时省略 model 字段
+  assert.deepEqual(shared.normalizeModelSource({ kind: 'external', accountId: 'ext-9', model: 'deepseek-v4-flash' }), {
+    kind: 'external',
+    accountId: 'ext-9',
+    model: 'deepseek-v4-flash'
+  });
+  assert.deepEqual(shared.normalizeModelSource({ kind: 'external', accountId: 'ext-9', model: '' }), {
+    kind: 'external',
+    accountId: 'ext-9'
+  });
   // 残缺对象回落默认
   assert.deepEqual(shared.normalizeModelSource({ kind: 'kimi-code' }), defaultModel);
   assert.deepEqual(shared.normalizeModelSource({ kind: 'weird', model: 'x' }), defaultModel);
