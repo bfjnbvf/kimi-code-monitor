@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Node（测试与构建依赖）
+node_modules/
+dist/
+
 # 旧版残留与本地预览
 content 2.js
 .preview.html
@@ -11,8 +15,10 @@ content 2.js
 kimi-web-status-bar-v*.zip
 .preview-*.html
 
-# 打包产物（新命名）
+# 打包产物（zip 归档目录 + 根目录新生成的 zip）
+dist-archive/
 kimi-code-monitor-v*.zip
+kimi-code-monitor-v*-unpacked/
 
 # Chrome 加载解包扩展时生成
 _metadata/

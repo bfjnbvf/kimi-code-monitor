@@ -1324,16 +1324,6 @@ html[data-color-scheme="dark"] #ksb-walk {
 
 /* 仅两行状态（如「子代理/工作中」）时切 flex 末端对齐：
    文字块与时钟下边缘对齐、向上延伸；单行保持原有基线对齐与右对齐 */
-.ksb-pet-status:has(#ksb-pet-status-text.ksb-status-twoline) {
-  display: inline-flex;
-  align-items: flex-end;
-}
-
-/* 长状态两行排版：行高收紧，向上突出不挤压时钟 */
-#ksb-pet-status-text.ksb-status-twoline {
-  line-height: 1.25;
-}
-
 /* 状态时钟：与上方数值同尺寸等宽字体，颜色/呼吸随状态行继承；
    间距与下行标签-数值间距一致（6px） */
 .ksb-pet-clock {

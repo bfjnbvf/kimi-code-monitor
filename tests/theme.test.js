@@ -1,8 +1,10 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const css = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
 
 test('保留原版色板，并由 Kimi Web 的主题设置选择亮暗模式', () => {

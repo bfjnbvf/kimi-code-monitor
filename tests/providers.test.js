@@ -1,13 +1,13 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-const {
+import {
   PROVIDERS,
   parseDeepSeek,
   parseKimiApi,
   parseZhipu,
   parseMiniMax
-} = require('../providers.js');
+} from '../src/providers.js';
 
 test('DeepSeek 只取人民币余额并拆分赠送/充值', () => {
   const result = parseDeepSeek({

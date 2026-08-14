@@ -1,11 +1,15 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
-const KimiMetrics = require('../metrics.js');
-const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
+import * as KimiMetrics from '../src/metrics.js';
+import { loadBackgroundModule, runInBackgroundContext } from './background-test-helper.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'background.js'), 'utf8');
 
 function eventTarget() {
   return { addListener() {}, removeListener() {} };
@@ -29,20 +33,105 @@ function storageArea(initial = {}) {
   };
 }
 
-function loadBackground({ local = {}, fetchImpl = async () => { throw new Error('unexpected fetch'); } } = {}) {
+function createIndexedDBMock() {
+  const dbs = new Map();
+  function request(result) {
+    const r = { result, onsuccess: null, onerror: null };
+    queueMicrotask(() => {
+      if (r.onsuccess) r.onsuccess({ target: r });
+    });
+    return r;
+  }
+  function getStore(db, name) {
+    if (!db.stores[name]) db.stores[name] = new Map();
+    return db.stores[name];
+  }
+  return {
+    open(dbName, version) {
+      let db = dbs.get(dbName);
+      let upgraded = false;
+      if (!db) {
+        db = {
+          name: dbName,
+          version: version || 1,
+          stores: {},
+          objectStoreNames: {
+            names: new Set(),
+            contains(name) { return this.names.has(name); },
+            [Symbol.iterator]() { return this.names.values(); }
+          },
+          createObjectStore(name) {
+            getStore(db, name);
+            this.objectStoreNames.names.add(name);
+            return {};
+          },
+          close() {}
+        };
+        db.createObjectStore = db.createObjectStore.bind(db);
+        db.transaction = (storeName, mode) => {
+          const store = getStore(db, storeName);
+          return {
+            objectStore() {
+              return {
+                get(key) { return request(store.get(key)); },
+                put(value, key) { store.set(key, value); return request(undefined); },
+                delete(key) { store.delete(key); return request(undefined); }
+              };
+            },
+            onabort: null
+          };
+        };
+        db.close = () => {};
+        dbs.set(dbName, db);
+        upgraded = true;
+      } else if (version && db.version < version) {
+        db.version = version;
+        upgraded = true;
+      }
+      const r = { result: db, onsuccess: null, onerror: null, onupgradeneeded: null };
+      queueMicrotask(() => {
+        if (upgraded && r.onupgradeneeded) {
+          r.onupgradeneeded({ target: r, oldVersion: 0, newVersion: version || 1 });
+        }
+        if (r.onsuccess) r.onsuccess({ target: r });
+      });
+      return r;
+    },
+    transaction(db, storeName, mode) {
+      const store = getStore(db, storeName);
+      return {
+        objectStore() {
+          return {
+            get(key) { return request(store.get(key)); },
+            put(value, key) { store.set(key, value); return request(undefined); },
+            delete(key) { store.delete(key); return request(undefined); }
+          };
+        },
+        onabort: null
+      };
+    }
+  };
+}
+
+async function loadBackground({ local = {}, fetchImpl = async () => { throw new Error('unexpected fetch'); } } = {}) {
   const localArea = storageArea(local);
   const sessionArea = storageArea();
   const notifications = [];
-  const context = vm.createContext({
+
+  Object.assign(globalThis, {
+    AbortController,
     AbortSignal,
+    TextDecoder,
+    TextEncoder,
     URLSearchParams,
+    atob,
+    btoa,
     clearTimeout,
     console,
-    crypto,
     fetch: fetchImpl,
     importScripts() {},
+    indexedDB: createIndexedDBMock(),
     KimiMetrics,
-    navigator: { platform: 'test', userAgent: 'test' },
     setTimeout,
     chrome: {
       alarms: {
@@ -73,12 +162,23 @@ function loadBackground({ local = {}, fetchImpl = async () => { throw new Error(
       }
     }
   });
-  vm.runInContext(backgroundSource, context, { filename: 'background.js' });
+
+  // Node 的 globalThis.navigator 是只读 getter，需用 defineProperty 覆盖
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { platform: 'test', userAgent: 'test' },
+    configurable: true,
+    writable: true,
+    enumerable: true
+  });
+
+  await loadBackgroundModule();
+
+  const context = vm.createContext(globalThis);
   return {
     context,
     local: localArea.data,
     notifications,
-    run(expression) { return vm.runInContext(expression, context); }
+    run(expression) { return runInBackgroundContext(expression, context); }
   };
 }
 
@@ -136,7 +236,7 @@ test('账户表建立：消息注册、旧 token 迁移、授权新建与自动�
   assert.match(backgroundSource, /'accounts\.rename': renameAccount/);
 
   // 旧版单 token 自动迁移为首个账户（账户 1）并设为激活，旧键删除
-  const legacy = loadBackground({ local: { kimiOAuthToken: makeToken('legacy') } });
+  const legacy = await loadBackground({ local: { kimiOAuthToken: makeToken('legacy') } });
   const migrated = await legacy.run('authStatus()');
   assert.equal(migrated.ok, true);
   assert.equal(migrated.authorized, true);
@@ -145,16 +245,21 @@ test('账户表建立：消息注册、旧 token 迁移、授权新建与自动�
   assert.equal(migrated.accounts[0].active, true);
   assert.equal(migrated.accounts[0].needsReauth, false);
   assert.ok(!('kimiOAuthToken' in legacy.local));
-  assert.equal(legacy.local.kimiOAuthAccounts.accounts[0].token.access_token, 'legacy-access');
+  assert.ok(legacy.local.kimiOAuthAccounts.accounts[0].tokenEnc);
+  assert.equal(
+    (await legacy.run('readAccountStore()')).accounts[0].token.access_token,
+    'legacy-access'
+  );
   assert.equal(legacy.local.kimiOAuthAccounts.activeId, legacy.local.kimiOAuthAccounts.accounts[0].id);
 
   // 设备授权完成即新建账户并成为激活账户，备注名缺省时自动编号
-  const adding = loadBackground({ fetchImpl: oauthFetchImpl() });
+  const adding = await loadBackground({ fetchImpl: oauthFetchImpl() });
   await adding.run(`startOAuth({ forceNew: true, label: '工作号' })`);
   let store = adding.local.kimiOAuthAccounts;
   assert.equal(store.accounts.length, 1);
   assert.equal(store.accounts[0].label, '工作号');
-  assert.equal(store.accounts[0].token.access_token, 'new-access');
+  assert.ok(store.accounts[0].tokenEnc);
+  assert.equal((await adding.run('readAccountStore()')).accounts[0].token.access_token, 'new-access');
   assert.equal(store.accounts[0].needsReauth, false);
   assert.equal(store.activeId, store.accounts[0].id);
   await adding.run(`startOAuth({ forceNew: true })`);
@@ -164,7 +269,7 @@ test('账户表建立：消息注册、旧 token 迁移、授权新建与自动�
   assert.equal(store.activeId, store.accounts[1].id);
 
   // 激活账户失效时，无参数 startOAuth 视为重新授权该账户（不新建）
-  const reauth = loadBackground({
+  const reauth = await loadBackground({
     local: seedStore([makeAccount('acc-a', '主号', null, { needsReauth: true })], 'acc-a'),
     fetchImpl: oauthFetchImpl()
   });
@@ -173,13 +278,14 @@ test('账户表建立：消息注册、旧 token 迁移、授权新建与自动�
   assert.equal(store.accounts.length, 1);
   assert.equal(store.accounts[0].id, 'acc-a');
   assert.equal(store.accounts[0].label, '主号');
-  assert.equal(store.accounts[0].token.access_token, 'new-access');
+  assert.ok(store.accounts[0].tokenEnc);
+  assert.equal((await reauth.run('readAccountStore()')).accounts[0].token.access_token, 'new-access');
   assert.equal(store.accounts[0].needsReauth, false);
   assert.equal(store.activeId, 'acc-a');
 });
 
 test('账户操作：切换、移除（自动切换/清空回未授权/预警清理）、改名及错误分支', async () => {
-  const app = loadBackground({
+  const app = await loadBackground({
     local: {
       ...seedStore(
         [makeAccount('acc-a', '账户 1', makeToken('a')), makeAccount('acc-b', '账户 2', makeToken('b'))],
@@ -225,7 +331,7 @@ test('账户操作：切换、移除（自动切换/清空回未授权/预警清
 
 test('token 刷新按账户 id 单飞：同账户共享进行中 promise，跨账户互不阻塞', async () => {
   const refreshBodies = [];
-  const app = loadBackground({
+  const app = await loadBackground({
     local: seedStore(
       [
         makeAccount('acc-a', '账户 1', makeToken('a', -100)),
@@ -265,15 +371,17 @@ test('token 刷新按账户 id 单飞：同账户共享进行中 promise，跨�
     'b-refresh-new-access',
     'b-refresh-new-access'
   ].join('|'));
-  // 两个账户的新 token 各自落盘
+  // 两个账户的新 token 各自落盘（持久化形态为密文，内存中解密后校验）
   const store = app.local.kimiOAuthAccounts;
-  assert.equal(store.accounts[0].token.access_token, 'a-refresh-new-access');
-  assert.equal(store.accounts[1].token.access_token, 'b-refresh-new-access');
+  assert.ok(store.accounts[0].tokenEnc);
+  assert.ok(store.accounts[1].tokenEnc);
+  assert.equal((await app.run('readAccountStore()')).accounts[0].token.access_token, 'a-refresh-new-access');
+  assert.equal((await app.run('readAccountStore()')).accounts[1].token.access_token, 'b-refresh-new-access');
 });
 
 test('额度 401：刷新失败或刷新后重试仍 401 都标记该账户需重新授权，不影响其他账户', async () => {
   // 刷新失败：标记失效，另一账户原样保留且切过去即可正常拉取
-  const failing = loadBackground({
+  const failing = await loadBackground({
     local: seedStore(
       [makeAccount('acc-a', '账户 1', makeToken('a')), makeAccount('acc-b', '账户 2', makeToken('b'))],
       'acc-a'
@@ -295,13 +403,17 @@ test('额度 401：刷新失败或刷新后重试仍 401 都标记该账户需�
   assert.equal(store.accounts[0].needsReauth, true);
   assert.equal(store.accounts[0].token, null);
   assert.equal(store.accounts[1].needsReauth, false);
-  assert.equal(store.accounts[1].token.access_token, 'b-access');
+  assert.ok(store.accounts[1].tokenEnc);
+  assert.equal(
+    (await failing.run('readAccountStore()')).accounts[1].token.access_token,
+    'b-access'
+  );
   await failing.run(`switchAccount({ id: 'acc-b' })`);
   assert.equal((await failing.run(`fetchQuota({ force: true })`)).ok, true);
   assert.equal(failing.local.kimiOAuthAccounts.accounts[0].needsReauth, true);
 
   // 刷新成功但重试仍 401：同样标记
-  const retrying = loadBackground({
+  const retrying = await loadBackground({
     local: seedStore([makeAccount('acc-a', '账户 1', makeToken('a'))], 'acc-a'),
     fetchImpl: async (url) => {
       if (String(url).includes('/usages')) return failJson(401, { error: 'invalid_token' });
@@ -322,7 +434,7 @@ test('额度 401：刷新失败或刷新后重试仍 401 都标记该账户需�
 test('缓存与预警按账户隔离：allowStale 命中旧缓存，同一阈值各账户各通知一次', async () => {
   // 额度缓存按账户隔离：切换后 allowStale 先返回旧缓存，常规拉取再刷新
   let quotaCalls = 0;
-  const caching = loadBackground({
+  const caching = await loadBackground({
     local: seedStore(
       [makeAccount('acc-a', '账户 1', makeToken('a')), makeAccount('acc-b', '账户 2', makeToken('b'))],
       'acc-a'
@@ -353,12 +465,12 @@ test('缓存与预警按账户隔离：allowStale 命中旧缓存，同一阈值
   assert.equal(quotaCalls, 3);
 
   // 额度预警状态按账户隔离，同一阈值各账户各通知一次；同账户重复越级不重复通知
-  const alerting = loadBackground();
+  const alerting = await loadBackground();
   await alerting.run(`evaluateQuotaAlerts({ usage: { limit: 100, used: 85 } }, 'acc-a')`);
   await alerting.run(`evaluateQuotaAlerts({ usage: { limit: 100, used: 85 } }, 'acc-b')`);
   assert.equal(alerting.notifications.length, 2);
   await alerting.run(`evaluateQuotaAlerts({ usage: { limit: 100, used: 86 } }, 'acc-a')`);
   assert.equal(alerting.notifications.length, 2);
-  assert.equal(alerting.local.quotaAlertState['acc-a'].week.level, 80);
-  assert.equal(alerting.local.quotaAlertState['acc-b'].week.level, 80);
+  assert.equal(alerting.local.quotaAlertState['acc-a'].week.notified80, true);
+  assert.equal(alerting.local.quotaAlertState['acc-b'].week.notified80, true);
 });

@@ -1,15 +1,19 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const shared = require('../session-rename/rename-shared.js');
+import * as shared from '../src/session-rename/rename-shared.js';
+import * as model from '../src/session-rename/rename-model.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const buildSh = fs.readFileSync(path.join(root, 'build.sh'), 'utf8');
-const backgroundSource = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
-const contentSource = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
+const backgroundSource = fs.readFileSync(path.join(root, 'src', 'background.js'), 'utf8');
+const contentSource = fs.readFileSync(path.join(root, 'src', 'content.js'), 'utf8');
+const wsSessionSource = fs.readFileSync(path.join(root, 'src', 'content', 'websocket-session.js'), 'utf8');
 
 function userMessage(text) {
   return { role: 'user', content: [{ type: 'text', text }] };
@@ -127,13 +131,20 @@ test('标题清洗：解析失败兜底、去引号、去结尾标点、超长�
   assert.equal(shared.sanitizeTitle('{"emoji":"🐛"}'), '');
 });
 
-test('自动标题启发式：title 与首条消息互为前缀才算自动标题', () => {
+test('自动标题启发式：完全相等、仅尾部截断或首条明显更长才算自动标题', () => {
   const firstUser = '帮我修复登录按钮在移动端的样式问题';
+  // 标题是首条消息的前缀，且首条明显更长 → 自动标题
   assert.equal(shared.looksLikeAutoTitle('帮我修复登录按钮', firstUser), true);
-  assert.equal(shared.looksLikeAutoTitle(firstUser, '帮我修复登录按钮'), true);
+  // 标题比首条消息长：不属于「仅差尾部截断」，宁漏勿错 → 手动标题
+  assert.equal(shared.looksLikeAutoTitle(firstUser, '帮我修复登录按钮'), false);
+  // 完全相等 → 自动标题
+  assert.equal(shared.looksLikeAutoTitle(firstUser, firstUser), true);
   // 尾部省略号/截断忽略
   assert.equal(shared.looksLikeAutoTitle('帮我修复登录按钮在移动端的样式…', firstUser), true);
   assert.equal(shared.looksLikeAutoTitle('帮我修复登录按钮...', firstUser), true);
+  // 用户手动改成的短前缀：首条没有明显更长 → 手动标题
+  assert.equal(shared.looksLikeAutoTitle('帮我修复登录按钮', '帮我修复登录按钮在移动端'), false);
+  assert.equal(shared.looksLikeAutoTitle('帮我修复登录按钮', '帮我修复登录按钮样式'), false);
   // 用户手动改过的名字：不一致 → false
   assert.equal(shared.looksLikeAutoTitle('登录页样式专项', firstUser), false);
   assert.equal(shared.looksLikeAutoTitle('', firstUser), false);
@@ -144,10 +155,10 @@ test('自动标题启发式：title 与首条消息互为前缀才算自动标�
   assert.equal(shared.looksLikeAutoTitle('/[redacted]，帮我修复一下这个Chrome插件', '/Users/gabriel/x，帮我修复一下这个Chrome插件'), true);
   // 打码标题但前后文对不上：仍是手动标题
   assert.equal(shared.looksLikeAutoTitle('我要来修改/[redacted]，请你先简单浏览一遍内容', '帮我看看这个目录里有什么'), false);
-  // 空白差异忽略：服务端生成标题时会折叠/增删空格
+  // 空白差异忽略：服务端生成标题时会折叠/增删空格，但需满足明显更长阈值
   assert.equal(
     shared.looksLikeAutoTitle('为什么没反应： ▐█▛█▛█▌ Kimi server ready', '为什么没反应：  ▐█▛█▛█▌  Kimi server ready 0.32.0'),
-    true
+    false
   );
   assert.equal(
     shared.looksLikeAutoTitle('安装一下这个skill Attache', '安装一下这个skillAttached file "ex.zip"'),
@@ -181,8 +192,51 @@ test('自动标题启发式：title 与首条消息互为前缀才算自动标�
   );
 });
 
+test('模型调用错误细分：429/5xx/401/403/网络错误/空模型返回不同 code', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const makeResponse = (status, body) => ({
+      status,
+      ok: status >= 200 && status < 300,
+      text: async () => body,
+      json: async () => JSON.parse(body)
+    });
+
+    globalThis.fetch = async () => makeResponse(429, '{"error":{"message":"rate limited"}}');
+    let result = await model.callExternal('deepseek', 'key', 'prompt');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MODEL_RATE_LIMITED');
+
+    globalThis.fetch = async () => makeResponse(500, '{}');
+    result = await model.callExternal('deepseek', 'key', 'prompt');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MODEL_SERVER_ERROR');
+
+    globalThis.fetch = async () => makeResponse(401, '{}');
+    result = await model.callExternal('deepseek', 'key', 'prompt');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'AUTH_KEY_INVALID');
+
+    globalThis.fetch = async () => makeResponse(400, '{"error":{"message":"bad request"}}');
+    result = await model.callExternal('deepseek', 'key', 'prompt');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MODEL_REQUEST_INVALID');
+
+    globalThis.fetch = async () => { throw new Error('network down'); };
+    result = await model.callExternal('deepseek', 'key', 'prompt');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MODEL_NETWORK_ERROR');
+
+    result = await model.callExternal('deepseek', 'key', 'prompt', '');
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MODEL_ID_REQUIRED');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('首条消息回翻：role=user 过滤 + before_id 真实 id 逐页向旧，不用合成锚点', () => {
-  const content = fs.readFileSync(path.join(__dirname, '..', 'session-rename', 'rename-content.js'), 'utf8');
+  const content = fs.readFileSync(path.join(__dirname, '..', 'src', 'session-rename', 'rename-content.js'), 'utf8');
   assert.match(content, /role=user&page_size=100/);
   assert.match(content, /before_id=/);
   assert.doesNotMatch(content, /msg_\$\{sessionId\}_000010/);
@@ -293,24 +347,28 @@ test('模型清单过滤：只留 managed:kimi-code，display_name 缺省回退 
 
 test('接线：manifest 与 build.sh 登记新文件，background/content 挂接 rename 管线', () => {
   const contentScripts = manifest.content_scripts[0].js;
-  assert.ok(contentScripts.includes('session-rename/rename-shared.js'));
-  assert.ok(contentScripts.includes('session-rename/rename-content.js'));
-  // rename-content 必须先于 content.js 注入，turn.ended 钩子才找得到它
-  assert.ok(
-    contentScripts.indexOf('session-rename/rename-content.js') < contentScripts.indexOf('content.js')
-  );
-  assert.match(buildSh, /session-rename/);
+  // ESM 迁移后 rename-content 被打包进 dist/content.js，manifest 不再单独列出 session-rename 脚本
+  assert.ok(contentScripts.includes('dist/content.js'));
+  assert.ok(!contentScripts.some((s) => s.includes('session-rename/')));
+  assert.match(buildSh, /node build\.mjs/);
 
-  assert.match(backgroundSource, /importScripts\([\s\S]*?session-rename\/rename-shared\.js/);
-  assert.match(backgroundSource, /importScripts\([\s\S]*?session-rename\/rename-model\.js/);
+  // rename 管线实现已迁至 background/rename.js；入口只剩消息路由
+  const renameBgSource = fs.readFileSync(
+    path.join(root, 'src', 'background', 'rename.js'),
+    'utf8'
+  );
+
+  // background.js 改为 ESM import，不再用 importScripts
+  assert.match(renameBgSource, /from '\.\.\/session-rename\/rename-shared\.js'/);
+  assert.match(renameBgSource, /from '\.\.\/session-rename\/rename-model\.js'/);
   assert.match(backgroundSource, /'rename\.model': renameModelCall/);
   // 批量功能已移除：background 不再注册 rename.batch.*
   assert.doesNotMatch(backgroundSource, /rename\.batch\./);
   // 模型清单中转：popup → background → content 同源拉 /api/v1/models
   assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
-  assert.match(backgroundSource, /relayToKimiWebTab\('rename\.models\.fetch'\)/);
+  assert.match(renameBgSource, /relayToKimiWebTab\('rename\.models\.fetch'\)/);
   const renameContentSource = fs.readFileSync(
-    path.join(root, 'session-rename', 'rename-content.js'),
+    path.join(root, 'src', 'session-rename', 'rename-content.js'),
     'utf8'
   );
   assert.match(renameContentSource, /apiGet\('\/api\/v1\/models'\)/);
@@ -321,11 +379,11 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
 
   // Kimi Code 账户端点未实测：鉴权类失败必须结构化报错，不许重试；模型 id 由调用方透传
   assert.match(
-    backgroundSource,
+    renameBgSource,
     /KimiSessionRenameModel\.callKimiCode\(token\.access_token, prompt, modelSource\.model\)/
   );
   const modelSource = fs.readFileSync(
-    path.join(root, 'session-rename', 'rename-model.js'),
+    path.join(root, 'src', 'session-rename', 'rename-model.js'),
     'utf8'
   );
   assert.match(modelSource, /KIMI_MODEL_UNAVAILABLE/);
@@ -343,14 +401,18 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   assert.match(modelSource, /usage\.input_tokens \?\? usage\.prompt_tokens/);
   assert.match(modelSource, /usage\.output_tokens \?\? usage\.completion_tokens/);
   assert.match(backgroundSource, /'rename\.usage\.get': getRenameUsage/);
-  assert.match(backgroundSource, /recordRenameUsage\(result\.usage\)/);
-  assert.match(backgroundSource, /const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage'/);
+  assert.match(renameBgSource, /recordRenameUsage\(result\.usage\)/);
+  assert.match(renameBgSource, /const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage'/);
 
-  // content.js 的 turn.ended 钩子
-  assert.match(contentSource, /globalThis\.KimiSessionRename\?\.onTurnEnded\?\.\(sessionId\)/);
+  // turn.ended 钩子直接 import 后注入 websocket-session.js，不再走 globalThis 兜底
+  // 渲染层拆分后由 websocket-session 直接 import onTurnEnded，不再经 content.js 注入
+  assert.match(wsSessionSource, /import \{ onTurnEnded \} from '\.\.\/session-rename\/rename-content\.js';/);
+  assert.match(wsSessionSource, /onTurnEnded\(sessionId\)/);
 });
 
 test('授权横幅小字：缩短为「授权后显示额度与预警」', () => {
-  assert.match(contentSource, /授权后显示额度与预警/);
-  assert.doesNotMatch(contentSource, /授权后显示 5h/);
+  // 面板 DOM 模板已迁至 widget-structure.js
+  const widgetSource = fs.readFileSync(path.join(root, 'src', 'content', 'widget-structure.js'), 'utf8');
+  assert.match(widgetSource, /授权后显示额度与预警/);
+  assert.doesNotMatch(widgetSource, /授权后显示 5h/);
 });

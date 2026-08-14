@@ -18,8 +18,8 @@ const usageDaily = {};
 
 for (let i = days - 1; i >= 0; i--) {
   const d = new Date();
-  d.setDate(d.getDate() - i);
-  const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  d.setUTCDate(d.getUTCDate() - i);
+  const key = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
   // 留几天空白，模拟没有使用的日子
   if (i % 11 === 5) continue;

@@ -1,7 +1,7 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-const {
+import {
   aggregateSpeed,
   boosterBalanceYuan,
   buildHeatmapData,
@@ -17,7 +17,7 @@ const {
   sumUsageBetween,
   totalInputTokens,
   usageDayKey
-} = require('../metrics.js');
+} from '../src/metrics.js';
 
 test('总输入包含未缓存、缓存读取和缓存创建 token', () => {
   const usage = normalizeUsage({
@@ -114,7 +114,7 @@ test('钱包未启用时不展示接口中的伪余额', () => {
   }), 3.152507);
 });
 
-test('日期键使用本地时区且可字符串比较，修剪只保留近期桶', () => {
+test('日期键使用 UTC 且可字符串比较，修剪只保留近期桶', () => {
   const now = new Date('2026-07-30T15:00:00');
   assert.equal(usageDayKey(now), '2026-07-30');
 
@@ -125,6 +125,17 @@ test('日期键使用本地时区且可字符串比较，修剪只保留近期�
   };
   const pruned = pruneDailyUsage(daily, 30, now);
   assert.deepEqual(Object.keys(pruned), ['2026-07-30']);
+});
+
+test('UTC 日期键跨本地时区/DST 午夜仍稳定', () => {
+  // 2026-07-15 23:30 UTC，在 UTC+8 等东时区已落入次日，但日期键应仍为 UTC 日
+  const nearMidnight = new Date('2026-07-15T23:30:00.000Z');
+  assert.equal(usageDayKey(nearMidnight), '2026-07-15');
+  assert.equal(nearMidnight.getUTCDate(), 15);
+
+  // 美国东部夏令时 2026-03-08 02:00 是 DST 切换点，UTC 日不变
+  const dstSwitch = new Date('2026-03-08T07:00:00.000Z');
+  assert.equal(usageDayKey(dstSwitch), '2026-03-08');
 });
 
 test('token 数量缩写与 widget 一致', () => {

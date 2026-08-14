@@ -1,7 +1,10 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-const KimiCliUsage = require('../cli-usage.js');
+import * as KimiCliUsage from '../src/cli-usage.js';
+import * as KimiMetrics from '../src/metrics.js';
+
+const DAY_KEY = KimiMetrics.usageDayKey(new Date(1785686400000));
 
 function usageLine({ inputOther = 0, cacheRead = 0, cacheCreation = 0, output = 0, time = 0 }) {
   return JSON.stringify({
@@ -26,7 +29,7 @@ test('只累计 usage.record，不解析包含同名文本的对话记录', () =
   ].join('\n');
 
   assert.equal(KimiCliUsage.parseUsageLines(text, daily), 1);
-  assert.deepEqual(daily['2026-08-03'], { input: 35, output: 3, cacheRead: 20 });
+  assert.deepEqual(daily[DAY_KEY], { input: 35, output: 3, cacheRead: 20 });
 });
 
 test('文件末尾半行不推进偏移，下次写完整后只补记一次', async () => {
@@ -42,7 +45,7 @@ test('文件末尾半行不推进偏移，下次写完整后只补记一次', as
   const completedFile = new File([`${initialText}\n`], 'wire.jsonl', { lastModified: 2000 });
   const completed = await KimiCliUsage.scanFile(completedFile, initial);
   assert.equal(completed.usageRecords, 2);
-  assert.deepEqual(completed.daily['2026-08-03'], { input: 30, output: 4, cacheRead: 20 });
+  assert.deepEqual(completed.daily[DAY_KEY], { input: 30, output: 4, cacheRead: 20 });
 });
 
 test('同大小文件被改写时重建该文件统计，不与旧结果叠加', async () => {
@@ -58,14 +61,14 @@ test('同大小文件被改写时重建该文件统计，不与旧结果叠加',
   const after = await KimiCliUsage.scanFile(afterFile, before);
 
   assert.equal(after.usageRecords, 1);
-  assert.deepEqual(after.daily['2026-08-03'], { input: 9, output: 0, cacheRead: 0 });
+  assert.deepEqual(after.daily[DAY_KEY], { input: 9, output: 0, cacheRead: 0 });
 });
 
 test('子代理文件同额累加进 sub 子桶，合流后保留主/子拆分', async () => {
   const daily = {};
   const line = usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 });
   assert.equal(KimiCliUsage.parseUsageLines(line, daily, true), 1);
-  assert.deepEqual(daily['2026-08-03'], {
+  assert.deepEqual(daily[DAY_KEY], {
     input: 30, output: 3, cacheRead: 20,
     sub: { input: 30, output: 3, cacheRead: 20 }
   });
@@ -76,7 +79,7 @@ test('子代理文件同额累加进 sub 子桶，合流后保留主/子拆分',
   const mainScan = await KimiCliUsage.scanFile(mainFile, null, undefined, false);
   const subScan = await KimiCliUsage.scanFile(subFile, null, undefined, true);
   const combined = KimiCliUsage.combineFileDaily({ main: mainScan, sub: subScan });
-  assert.deepEqual(combined['2026-08-03'], {
+  assert.deepEqual(combined[DAY_KEY], {
     input: 60, output: 6, cacheRead: 40,
     sub: { input: 30, output: 3, cacheRead: 20 }
   });
@@ -149,7 +152,7 @@ test('目录扫描按实际读取量报告百分比，并以 100 结束', async 
   assert.equal(progress[0], 0);
   assert.equal(progress.at(-1), 100);
   assert.equal(result.fileCount, 1);
-  assert.deepEqual(result.daily['2026-08-03'], { input: 40, output: 0, cacheRead: 30 });
+  assert.deepEqual(result.daily[DAY_KEY], { input: 40, output: 0, cacheRead: 30 });
 });
 
 test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）', async () => {
@@ -183,7 +186,7 @@ test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）',
   assert.equal(result.skippedFiles, 1);
   assert.match(result.firstError, /NotReadableError/);
   // 好文件的数据不受影响
-  assert.deepEqual(result.daily['2026-08-03'], { input: 10, output: 0, cacheRead: 0 });
+  assert.deepEqual(result.daily[DAY_KEY], { input: 10, output: 0, cacheRead: 0 });
 });
 
 test('纯追加（上次已扫到旧文件尾且文件变大）从旧偏移续扫并沿用旧统计', async () => {
@@ -197,7 +200,7 @@ test('纯追加（上次已扫到旧文件尾且文件变大）从旧偏移续�
   ], 'wire.jsonl', { lastModified: 2000 });
   const appended = await KimiCliUsage.scanFile(appendedFile, initial);
   assert.equal(appended.usageRecords, 2);
-  assert.deepEqual(appended.daily['2026-08-03'], { input: 30, output: 4, cacheRead: 20 });
+  assert.deepEqual(appended.daily[DAY_KEY], { input: 30, output: 4, cacheRead: 20 });
 });
 
 test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，daily 从空重建', async () => {
@@ -221,5 +224,67 @@ test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，da
   assert.equal(after.offset, replacedFile.size);
   assert.equal(after.usageRecords, 2);
   // daily 从空重建：只含新文件内容，不与旧结果叠加
-  assert.deepEqual(after.daily['2026-08-03'], { input: 14, output: 0, cacheRead: 2 });
+  assert.deepEqual(after.daily[DAY_KEY], { input: 14, output: 0, cacheRead: 2 });
+});
+
+test('单个 wire getFile 失败保留旧索引并打标 failed，下次不再 unchanged 短路', async () => {
+  const good = new File([
+    `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
+  ], 'wire.jsonl', { lastModified: 1000 });
+  const previousIndex = {
+    version: 4,
+    files: {
+      // 好文件与旧索引一致，走 unchanged 短路
+      'ws/session_1/agents/main/wire.jsonl': {
+        size: good.size,
+        lastModified: good.lastModified,
+        offset: good.size,
+        daily: { [DAY_KEY]: { input: 10, output: 0, cacheRead: 0 } }
+      },
+      'ws/session_1/agents/agent-1/wire.jsonl': {
+        size: 1,
+        lastModified: 1,
+        offset: 1,
+        daily: { [DAY_KEY]: { input: 777, output: 0, cacheRead: 0 } }
+      }
+    }
+  };
+  const goodWire = { async getFile() { return good; } };
+  const badWire = { async getFile() { throw new Error('NotReadableError'); } };
+  const mainAgent = { kind: 'directory', async getFileHandle() { return goodWire; } };
+  const subAgent = { kind: 'directory', async getFileHandle() { return badWire; } };
+  const agentsHandle = {
+    async *entries() { yield ['main', mainAgent]; yield ['agent-1', subAgent]; }
+  };
+  const sessionHandle = {
+    kind: 'directory',
+    async getDirectoryHandle(name) {
+      if (name !== 'agents') throw new Error('not found');
+      return agentsHandle;
+    }
+  };
+  const workspaceHandle = {
+    kind: 'directory',
+    async *entries() { yield ['session_1', sessionHandle]; }
+  };
+  const sessionsHandle = {
+    async *entries() { yield ['ws', workspaceHandle]; }
+  };
+
+  const result = await KimiCliUsage.scanSessionsDirectory(sessionsHandle, previousIndex, () => {});
+  const files = result.index.files;
+  // 好文件走 unchanged 短路保留正确旧数据；坏文件保留旧数据并打标 failed
+  assert.deepEqual(files['ws/session_1/agents/main/wire.jsonl'].daily[DAY_KEY], { input: 10, output: 0, cacheRead: 0 });
+  assert.equal(files['ws/session_1/agents/agent-1/wire.jsonl'].failed, true);
+  assert.equal(files['ws/session_1/agents/agent-1/wire.jsonl'].daily[DAY_KEY].input, 777);
+});
+
+test('listWireFiles 权限失败直接上抛，不返回空数据', async () => {
+  const sessionsHandle = {
+    async *entries() { throw new Error('NotAllowedError'); }
+  };
+  await assert.rejects(
+    KimiCliUsage.scanSessionsDirectory(sessionsHandle, null, () => {}),
+    /NotAllowedError/
+  );
 });

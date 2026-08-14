@@ -71,6 +71,7 @@ Kimi Code Web 的侧边栏监控扩展。一只会反映工作状态的吉祥物
 
 需要 Chrome 120 或更高版本。
 
+0. 首次使用先构建：`npm install && npm run build`（把 `src/` 打成 `dist/`；之后改了源码就再跑一次 `npm run build`）
 1. 在 `chrome://extensions` 开启开发者模式，加载本目录（或解压 zip 后加载）
 2. 打开 `kimi web` 启动的本地页面
 3. 首次加载会显示新手引导；面板提示授权时点击完成一次设备授权
@@ -94,12 +95,17 @@ Kimi Code Web 的侧边栏监控扩展。一只会反映工作状态的吉祥物
 
 ## 项目结构
 
-- `content.js`：面板注入、WebSocket 订阅、模块渲染与交互、宠物驱动
-- `walkthrough.js`：首次加载的分步新手引导（高亮目标 + 气泡说明）
-- `background.js`：OAuth、额度 API、本地 CLI 扫描调度、额度预警
-- `cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
-- `metrics.js`：共享纯函数（用量解析、日期汇总、配置归一化）
-- `popup.html / popup.js`：工具栏弹窗（授权管理、完整版消耗量、宠物素材库、导出、重置布局）
-- `pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）
-- `session-rename/`：新会话 AI 自动命名（模型调用、命名策略与共享工具）
+源码在 `src/`（ES modules），`npm run build` 用 esbuild 打出 `dist/`（content/background/popup 三个 bundle），manifest 与 popup.html 只引用 `dist/` 产物。`npm test` 先构建再跑全部测试，`npm run lint` 做引用检查（no-undef 等）。
+
+三个运行面各自一个目录，共享模块在 `src/` 根部：
+
+- `src/content.js` + `src/content/`：页面内面板——`content.js`（编排入口与生命周期）、`panel-state.js`（共享状态容器）、`render.js`（渲染层）、`widget-structure.js`（DOM 结构与编辑模式）、`websocket-session.js`（WS 状态机）、`session.js`（会话与快照）、`quota.js`（额度与授权）、`usage-daily.js`（CLI 长期统计与外部账户）、`pet-panel.js`（Rive 吉祥物与桌面宠物驱动）、`utils.js` / `walkthrough.js`
+- `src/background/`：后台域模块——`store.js`（存储锁/fetch/中转）、`vault.js`（密钥库）、`oauth.js`（授权与账户）、`quota.js`（额度/预警/快照）、`external.js`（外部 provider）、`rename.js`（会话命名）、`pet.js`、`cli-scan.js`；`src/background.js` 是消息路由入口
+- `src/popup/`：弹窗板块——`shared.js`、`usage.js`、`accounts.js`、`external.js`、`rename.js`、`pets.js`；`src/popup.js` 是装配入口，样式在 `popup.css`
+- `src/metrics.js`：共享纯函数（用量解析、日期汇总、配置归一化）
+- `src/cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
+- `src/providers.js`：外部 provider 的端点与解析
+- `src/pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）
+- `src/session-rename/`：新会话 AI 自动命名（模型调用、命名策略与共享工具）
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）
+- `web-token.js`：已停用的网页端 token 中继（保留备用，未在 manifest 注册）
