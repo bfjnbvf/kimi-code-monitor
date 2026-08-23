@@ -14,6 +14,8 @@ A sidebar monitor extension for Kimi Code Web. A mascot that mirrors the agent's
 
 Adopt a pixel pet on the page. It follows your working rhythm: heads down while your prompt is being processed, signals you when the answer is ready, droops on errors or disconnects, and idles quietly otherwise.
 
+![Desktop pet: drag to park and interact](docs/screenshots/pet-demo.gif)
+
 - Fully compatible with the Codex official pet asset format: open the popup, copy an install command from a pet gallery ([codexpet.top](https://codexpet.top/zh), [petdex.dev](https://petdex.dev)), paste, install — done
 - Keep multiple pets and switch with one click; hover to greet, drag to park it anywhere, and it turns to watch your cursor (v2 assets); scalable from 50% to 150%
 
@@ -35,6 +37,8 @@ See an answer worth keeping? Click the star in the action row below it.
 - A sidebar "Bookmark" entry opens a full-page bookmark manager: **list / card views**, group-by-session and time sorting, batch management (select all / delete selected)
 - Open any item for a detail card: your previous question + the reply fully rendered in Markdown + a jump-to-original button
 - Cross-session jumps supported; all bookmark data stays local
+
+![Bookmark page: list view (session / date / full content)](docs/screenshots/bookmarks.png)
 
 ### Usage Share Card
 
