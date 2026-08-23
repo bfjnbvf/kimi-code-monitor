@@ -40,6 +40,12 @@ function makeChromeStub() {
 }
 
 function injectScript(window, file) {
+  // i18n 跟随 Kimi Web 语言设置：测试环境锁定中文
+  //（chrome-extension:// 等不透明来源没有 localStorage，静默跳过即可——默认 zh）
+  try {
+    window.localStorage.setItem('kimi-locale', 'zh');
+  } catch {}
+
   const script = window.document.createElement('script');
   script.textContent = fs.readFileSync(path.join(ROOT, file), 'utf8');
   window.document.body.appendChild(script);

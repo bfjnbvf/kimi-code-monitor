@@ -35,6 +35,7 @@ import {
   ensureWidget,
   applyWidgetConfig,
   loadWidgetConfig,
+  renderWidgetStructure,
   setConnectionHint,
   maybeShowGuide,
   exitEditMode,
@@ -64,6 +65,14 @@ import {
   setSessionToken,
   isSnapshotPending
 } from './content/session.js';
+import {
+  initBookmarks,
+  disposeBookmarks,
+  handleBookmarksStorageChanged,
+  repaintBookmarkStars,
+  refreshBookmarksLocale
+} from './content/bookmarks.js';
+import { syncLocaleFromPage } from './i18n.js';
 
 // ESM 静态依赖：缺失即加载失败，错误会直接在控制台可见，不再需要运行时守卫。
 
@@ -185,6 +194,11 @@ function checkPageState() {
   }
   if (disposed) return;
   if (!ensureWidget()) return;
+  // 语言跟随 Kimi Web 设置（localStorage kimi-locale）：变化时重建面板结构与收藏 UI
+  if (syncLocaleFromPage() && pageActivated) {
+    renderWidgetStructure();
+    refreshBookmarksLocale();
+  }
   if (activationPromise) return;
   if (!pageActivated) {
     activatePage();
@@ -199,7 +213,11 @@ function checkPageState() {
     startSession(nextSessionId);
     return;
   }
-  if (nextSessionId !== getCurrentSessionId()) startSession(nextSessionId);
+  if (nextSessionId !== getCurrentSessionId()) {
+    startSession(nextSessionId);
+    // 会话重绘后星标按新会话重新上色（observer 触发时路由可能还没切过来）
+    repaintBookmarkStars();
+  }
   else if (getCurrentSessionId() && getSessionToken() && !isSnapshotPending() && conn.isIdle()) {
     conn.connect();
   }
@@ -234,6 +252,8 @@ function handleStorageChanged(changes, area) {
   }
   // 桌面宠物的开关/换素材/环视/大小变更由宠物域处理
   handlePetStorageChanged(changes);
+  // 收藏数据变化（其他标签页写入）：刷新星标/目录行/收藏页
+  handleBookmarksStorageChanged(changes);
   const stateKey = KimiCliUsage.STATE_STORAGE_KEY;
   if (stateKey && changes[stateKey]) {
     panel.cliUsageConnected = changes[stateKey].newValue?.connected === true;
@@ -310,6 +330,7 @@ function dispose() {
   externalTimer = null;
   disposeRender();
   disposeUsageDaily();
+  disposeBookmarks();
   if (routeTimer) clearInterval(routeTimer);
   // 扩展重载后 Chrome 不会自动重新注入 content script，
   // 残留脚本退出时一并移除 widget，避免留下一个永远灰色的「僵尸面板」
@@ -338,6 +359,11 @@ function init() {
   window.addEventListener('pageshow', handlePageShow);
   chrome.storage.onChanged.addListener(handleStorageChanged);
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+  // 收藏域：DOM 注入与存储镜像，失败不影响面板
+  initBookmarks({
+    isDisposed: () => disposed,
+    getSessionId: () => getCurrentSessionId()
+  }).catch((error) => console.warn('[Kimi Status] 收藏功能初始化失败', error));
 }
 
 if (document.readyState === 'loading') {

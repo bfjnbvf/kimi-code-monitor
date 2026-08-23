@@ -9,7 +9,8 @@
  */
 
 import { panel } from './panel-state.js';
-import { STATUS_TEXT, PET_ANSWER_STATUSES, CONSOLE_URL, SUBSCRIPTION_URL } from './utils.js';
+import { PET_ANSWER_STATUSES, CONSOLE_URL, SUBSCRIPTION_URL } from './utils.js';
+import { statusText } from '../i18n.js';
 import { getDisplayedAgentStatus } from './render.js';
 import { create as createRoamPet } from '../pet/sprites.js';
 
@@ -60,7 +61,7 @@ const PET_CLOCK_STATUSES = ['thinking', 'executing', 'replying', 'subagent', 'ra
 const ROAM_PET_STORAGE_KEY = 'kimi-statusbar.roamPet';
 const PET_ACTIVE_ID_STORAGE_KEY = 'kimi-statusbar.petActiveId';
 const PET_POS_STORAGE_KEY = 'kimi-statusbar.petPos';
-const PET_LOOK_STORAGE_KEY = 'kimi-statusbar.petLook'; // 环视开关（仅 v2 图集生效）
+// 环视常开（仅 v2 图集生效）：popup 已隐藏该开关，不再读 petLook 存储键
 const PET_SCALE_STORAGE_KEY = 'kimi-statusbar.petScale'; // 宠物大小（百分比 50–150）
 const PET_LOOK_RADIUS = 400;
 let roamPet = null;
@@ -68,7 +69,6 @@ let roamPetStarting = false;
 let roamPetEnabledFlag = false;
 let roamPetAssetUrl = '';
 let roamPetPos = null;
-let roamPetLookFlag = true;
 let roamPetScale = 1;
 
 // 装配时注入的生命周期依赖（content.js）
@@ -327,7 +327,7 @@ export function petStart() {
 // Stars 由同一会话的 turn 生命周期触发，不再从显示状态变化推断。
 export function petUpdateStatus(display) {
   if (panel.els?.petStatusText) {
-    panel.els.petStatusText.textContent = STATUS_TEXT[display] || display;
+    panel.els.petStatusText.textContent = statusText(display);
     panel.els.petStatus.dataset.status = display;
   }
   if (display === petStatus) {
@@ -393,7 +393,7 @@ export async function roamPetStart() {
       position: startPos,
       zIndex: 9998,
       scale: roamPetScale,
-      look: { enabled: roamPetLookFlag, radius: PET_LOOK_RADIUS },
+      look: { enabled: true, radius: PET_LOOK_RADIUS },
       onPositionChange: (pos) => {
         roamPetPos = pos;
         chrome.storage.local.set({ [PET_POS_STORAGE_KEY]: pos }).catch(() => {});
@@ -439,14 +439,13 @@ export async function roamPetLoadConfig() {
   if (deps.isDisposed()) return;
   try {
     const stored = await chrome.storage.local.get([
-      ROAM_PET_STORAGE_KEY, PET_POS_STORAGE_KEY, PET_LOOK_STORAGE_KEY, PET_SCALE_STORAGE_KEY
+      ROAM_PET_STORAGE_KEY, PET_POS_STORAGE_KEY, PET_SCALE_STORAGE_KEY
     ]);
     // 默认关闭：popup 卡片收起，页面上不出现宠物
     roamPetEnabledFlag = stored[ROAM_PET_STORAGE_KEY] === true;
     roamPetPos = stored[PET_POS_STORAGE_KEY] && Number.isFinite(stored[PET_POS_STORAGE_KEY].x)
       ? stored[PET_POS_STORAGE_KEY]
       : null;
-    roamPetLookFlag = stored[PET_LOOK_STORAGE_KEY] !== false;
     roamPetScale = roamPetClampScale(stored[PET_SCALE_STORAGE_KEY]);
     roamPetAssetUrl = await roamPetFetchAsset();
   } catch (error) {
@@ -482,11 +481,6 @@ export function handlePetStorageChanged(changes) {
       roamPetStop();
       roamPetStart();
     });
-  }
-  // 环视开关：重建宠物生效（位置已持久化，无感）
-  if (changes[PET_LOOK_STORAGE_KEY]) {
-    roamPetLookFlag = changes[PET_LOOK_STORAGE_KEY].newValue !== false;
-    if (!deps.isDisposed()) { roamPetStop(); roamPetStart(); }
   }
   // 宠物大小：重建宠物生效
   if (changes[PET_SCALE_STORAGE_KEY]) {

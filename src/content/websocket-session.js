@@ -12,6 +12,7 @@ import { setAgentStatus, renderAll } from './render.js';
 import { onTurnEnded } from '../session-rename/rename-content.js';
 import { petBeginTurn, petCompleteTurn } from './pet-panel.js';
 import { toNumber } from './utils.js';
+import { t } from '../i18n.js';
 import {
   panel,
   registerSessionAgent,
@@ -104,14 +105,14 @@ export function createWebSocketSession(deps) {
     if (ws) {
       // 已有连接（或正在建立）：CONNECTING 状态超时未打开视为假死，主动关闭后由 onclose 重连
       if (ws.readyState === WebSocket.CONNECTING && Date.now() - wsConnectingSince > WS_CONNECTING_TIMEOUT_MS) {
-        setConnectionHint('WebSocket 连接建立超时，正在重试…');
+        setConnectionHint(t('WebSocket 连接建立超时，正在重试…'));
         try { ws.close(); } catch {}
       }
       return;
     }
     // 连续重试达到上限后改为低频探测，避免无限重连
     if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      setConnectionHint('WebSocket 连续重连失败，已暂停自动重连');
+      setConnectionHint(t('WebSocket 连续重连失败，已暂停自动重连'));
       scheduleReconnect(true);
       return;
     }
@@ -133,7 +134,7 @@ export function createWebSocketSession(deps) {
     helloWatchdog = setTimeout(() => {
       helloWatchdog = null;
       if (ws) {
-        setConnectionHint('等待 server_hello 超时，正在重连…');
+        setConnectionHint(t('等待 server_hello 超时，正在重连…'));
         try {
           ws.close();
         } catch (error) {
@@ -155,18 +156,18 @@ export function createWebSocketSession(deps) {
       ws = null;
       // 断线统一显示「未连接」，后台退避重连；重连成功后由 server_hello 恢复
       setAgentStatus('offline');
-      setConnectionHint(`WebSocket 已断开（${event.code}${event.reason ? `: ${event.reason}` : ''}），正在重连…`);
+      setConnectionHint(t('WebSocket 已断开（{code}{reason}），正在重连…', { code: event.code, reason: event.reason ? `: ${event.reason}` : '' }));
       reconnectAttempts += 1;
       scheduleReconnect();
     };
 
-    ws.onerror = () => setConnectionHint('WebSocket 连接失败');
+    ws.onerror = () => setConnectionHint(t('WebSocket 连接失败'));
   }
 
   function scheduleReconnect(isProbe = false) {
     if (isDisposed() || reconnectTimer) return;
     if (!isProbe && reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      setConnectionHint('WebSocket 连续重连失败，已暂停自动重连');
+      setConnectionHint(t('WebSocket 连续重连失败，已暂停自动重连'));
       scheduleReconnect(true);
       return;
     }
@@ -288,7 +289,7 @@ export function createWebSocketSession(deps) {
     if (message.type === 'server_hello') {
       clearHelloWatchdog();
       reconnectAttempts = 0;
-      setConnectionHint('Kimi Status 已连接');
+      setConnectionHint(t('Kimi Status 已连接'));
       // 重连成功后先回到空闲，后续事件（含游标补发的）会把状态修正过来
       if (metrics.agentStatus === 'offline') {
         setAgentStatus('idle');

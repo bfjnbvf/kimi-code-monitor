@@ -12,6 +12,9 @@ const RENAME_LOG_STORAGE_KEY = 'sessionRenameLog';
 const SETTINGS_STORAGE_KEY = 'sessionRenameSettings';
 const AUTO_TRIGGER_DELAY_MS = 3_000;
 const MAX_ATTEMPTS_PER_SESSION = 3;
+// 暂时性跳过原因：不消耗尝试次数，后续轮次结束可再触发
+// （busy：轮末 3 秒内用户已发下一条；locked：他页持锁但自己可能失败）
+const RETRYABLE_SKIP_REASONS = new Set(['busy', 'locked']);
 // 第 3 轮对话结束后才自动命名：首轮内容太少不足以概括
 const AUTO_RENAME_MIN_TURNS = 3;
 const DEFAULT_SETTINGS = { autoEnabled: false, emojiEnabled: true, modelSource: shared.defaultModelSource() };
@@ -219,6 +222,9 @@ async function autoRename(sessionId) {
       // 后续轮次结束可再触发，直到 MAX_ATTEMPTS_PER_SESSION 次
       attemptCounts.set(sessionId, (attemptCounts.get(sessionId) || 0) + 1);
       triggeredThisPage.delete(sessionId);
+    } else if (result.status === 'skipped' && RETRYABLE_SKIP_REASONS.has(result.reason)) {
+      // 暂时性跳过：放回去重集合但不消耗尝试次数
+      triggeredThisPage.delete(sessionId);
     }
   } catch (error) {
     attemptCounts.set(sessionId, (attemptCounts.get(sessionId) || 0) + 1);
@@ -265,6 +271,7 @@ export {
   SETTINGS_STORAGE_KEY,
   AUTO_TRIGGER_DELAY_MS,
   MAX_ATTEMPTS_PER_SESSION,
+  RETRYABLE_SKIP_REASONS,
   AUTO_RENAME_MIN_TURNS,
   DEFAULT_SETTINGS,
   RENAME_LOCK_PREFIX,

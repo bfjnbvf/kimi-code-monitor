@@ -250,10 +250,9 @@
     margin-bottom: 10px;
   }
 
-  /* 激活账户的标记 */
+  /* 激活账户的标记：蓝色与行内主操作（button.action.primary）统一 */
   .account-badge {
     flex-shrink: 0;
-    color: var(--accent);
     font-size: 11px;
   }
 
@@ -446,6 +445,56 @@
     flex-shrink: 0;
   }
 
+  .usage-share-row {
+    margin-top: 6px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* 分享卡片预览弹层：遮罩 + 居中卡片图，弹窗与 options 标签页通用 */
+  #share-card-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .share-card-dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    background: var(--tooltip-bg);
+    border-radius: 10px;
+    max-width: 92vw;
+    max-height: 92vh;
+  }
+
+  #share-card-preview {
+    display: block;
+    width: min(300px, 78vw);
+    max-height: 70vh;
+    object-fit: contain;
+    border: 1px solid var(--fill-2);
+    border-radius: 4px;
+    background: #fafaf8;
+  }
+
+  .share-card-actions {
+    display: flex;
+    gap: 14px;
+  }
+
+  .share-card-status {
+    min-height: 14px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
   /* 活跃热力图模式：只隐藏单日标签与日期选择器；大数字保留（显示 140 天总消耗），
      图表区固定为「柱状图 + 日期行」的等高 76px，切换指标时卡片版式不动 */
   .usage-data.heatmap-mode #usage-day,
@@ -615,23 +664,7 @@
     align-items: baseline;
   }
 
-  /* 宠物大小输入框：窄宽 */
-  .pet-scale-input {
-    width: 56px;
-    padding: 2px 4px;
-    border: 1px solid var(--fill-2);
-    border-radius: 6px;
-    background: var(--fill-1);
-    color: inherit;
-    font-size: 11px;
-    font-family: var(--mono);
-    text-align: right;
-  }
-
-  .pet-scale-input:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
+  /* 宠物大小：重置/放大/缩小文字按钮（status-actions 样式复用） */
 
   /* 宠物区块内的说明/状态小字（不带 .ext-status 的 64px 缩进） */
   .pet-note {
@@ -752,8 +785,8 @@
   button.action:hover { color: var(--text-secondary); }
   button.action:disabled { opacity: 0.5; cursor: default; }
 
-  /* 未授权时的主操作「去授权」 */
-  button.action.primary { color: var(--accent); }
+  /* 行内主操作与激活标记的统一蓝色 */
+  button.action.primary, .account-badge { color: var(--accent); }
   button.action.primary:hover { color: var(--accent-hover); }
 
   .footer {
@@ -765,6 +798,13 @@
     padding: 0 2px;
     font-size: 10px;
     color: var(--text-tertiary);
+    /* 英文文案较长时两组整体换行，不在词中断行 */
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .footer span {
+    white-space: nowrap;
   }
 
   .footer a {

@@ -2,6 +2,7 @@
  * Kimi 账户板块：多账户列表（切换/改名/重新授权/移除/添加）与设备授权轮询。
  */
 import { send, AUTH_POLL_INTERVAL_MS, pageState } from './shared.js';
+import { t } from '../i18n.js';
 import { buildRenameModelOptions } from './rename.js';
 
   const authHint = document.getElementById('auth-hint');
@@ -47,7 +48,7 @@ import { buildRenameModelOptions } from './rename.js';
 
       const name = document.createElement('span');
       name.className = 'ext-name';
-      name.textContent = account.needsReauth ? `${account.label}（需重新授权）` : account.label;
+      name.textContent = account.needsReauth ? `${account.label}${t('（需重新授权）')}` : account.label;
       name.title = name.textContent;
       row.append(name);
 
@@ -57,33 +58,33 @@ import { buildRenameModelOptions } from './rename.js';
       if (account.active) {
         const badge = document.createElement('span');
         badge.className = 'account-badge';
-        badge.textContent = '当前';
+        badge.textContent = t('当前');
         actions.append(badge);
       } else {
-        actions.append(makeAccountButton('切换', 'action primary', async (button) => {
+        actions.append(makeAccountButton(t('切换'), 'action primary', async (button) => {
           const response = await send('accounts.switch', { id: account.id });
-          if (!response?.ok) throw new Error(response?.error || '切换失败');
+          if (!response?.ok) throw new Error(response?.error || t('切换失败'));
           await refreshStatus();
-        }, '切换失败'));
+        }, t('切换失败')));
       }
 
-      actions.append(makeAccountButton('改名', 'action', async () => {
+      actions.append(makeAccountButton(t('改名'), 'action', async () => {
         startAccountRename(row, account);
       }));
 
       if (account.needsReauth) {
-        actions.append(makeAccountButton('重新授权', 'action', async () => {
+        actions.append(makeAccountButton(t('重新授权'), 'action', async () => {
           await startOAuthFlow(
             account.active ? send('oauth.reset') : send('oauth.reauth', { id: account.id })
           );
         }));
       }
 
-      actions.append(makeAccountButton('移除', 'action', async (button) => {
+      actions.append(makeAccountButton(t('移除'), 'action', async (button) => {
         const response = await send('accounts.remove', { id: account.id });
-        if (!response?.ok) throw new Error(response?.error || '移除失败');
+        if (!response?.ok) throw new Error(response?.error || t('移除失败'));
         await refreshStatus();
-      }, '移除失败'));
+      }, t('移除失败')));
 
       row.append(actions);
       list.append(row);
@@ -101,7 +102,7 @@ import { buildRenameModelOptions } from './rename.js';
       try {
         await onClick(button);
       } catch (error) {
-        showHint(`${errorPrefix || text}失败：${error.message || error}`);
+        showHint(t('{name}失败：{msg}', { name: errorPrefix || text, msg: error.message || error }));
       } finally {
         button.disabled = false;
       }
@@ -119,7 +120,7 @@ import { buildRenameModelOptions } from './rename.js';
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'action primary';
-    saveBtn.textContent = '保存';
+    saveBtn.textContent = t('保存');
     const submit = async () => {
       const label = input.value.trim();
       if (!label) {
@@ -132,7 +133,7 @@ import { buildRenameModelOptions } from './rename.js';
         if (!response?.ok) throw new Error(response?.error || '改名失败');
         await refreshStatus();
       } catch (error) {
-        showHint(`改名失败：${error.message || error}`);
+        showHint(t('改名失败：{msg}', { msg: error.message || error }));
         saveBtn.disabled = false;
       }
     };
@@ -155,7 +156,7 @@ import { buildRenameModelOptions } from './rename.js';
         renderAuthStatus(response);
       } else if (response?.pending) {
         setAuthBusy(true);
-        showHint('请在授权页完成授权。', response.userCode);
+        showHint(t('请在授权页完成授权。'), response.userCode);
         kimiAccounts = Array.isArray(response?.accounts) ? response.accounts : [];
         renderKimiAccounts();
         if (!pollTimer) pollTimer = setInterval(poll, AUTH_POLL_INTERVAL_MS);
@@ -166,7 +167,7 @@ import { buildRenameModelOptions } from './rename.js';
       }
     } catch (error) {
       stopPolling();
-      showHint(`状态查询失败：${error.message || error}`);
+      showHint(t('状态查询失败：{msg}', { msg: error.message || error }));
     }
   }
 
@@ -174,7 +175,7 @@ import { buildRenameModelOptions } from './rename.js';
     authHint.replaceChildren();
     authHint.append(document.createTextNode(message));
     if (userCode) {
-      authHint.append(document.createElement('br'), document.createTextNode('验证码：'));
+      authHint.append(document.createElement('br'), document.createTextNode(t('验证码：')));
       const strong = document.createElement('strong');
       strong.textContent = userCode;
       authHint.append(strong);
@@ -191,7 +192,7 @@ import { buildRenameModelOptions } from './rename.js';
   async function startOAuthFlow(startPromise) {
     if (pollTimer) return;
     setAuthBusy(true);
-    showHint('正在打开 Kimi 授权页…');
+    showHint(t('正在打开 Kimi 授权页…'));
     try {
       const baseline = await send('auth.status').catch(() => null);
       flowBaseline = {
@@ -201,14 +202,14 @@ import { buildRenameModelOptions } from './rename.js';
       sawUnauthorizedDuringFlow = false;
       flowActive = true;
       const response = await startPromise;
-      if (!response?.ok) throw new Error(response?.error || '无法开始授权');
-      showHint('已在新标签页打开授权页，请完成授权；关闭本弹窗不影响授权。', response.userCode);
+      if (!response?.ok) throw new Error(response?.error || t('无法开始授权'));
+      showHint(t('已在新标签页打开授权页，请完成授权；关闭本弹窗不影响授权。'), response.userCode);
       pollTimer = setInterval(poll, AUTH_POLL_INTERVAL_MS);
       poll();
     } catch (error) {
       flowActive = false;
       flowBaseline = null;
-      showHint(`授权启动失败：${error.message || error}`);
+      showHint(t('授权启动失败：{msg}', { msg: error.message || error }));
       setAuthBusy(false);
     }
   }
@@ -223,7 +224,7 @@ import { buildRenameModelOptions } from './rename.js';
         sawUnauthorizedDuringFlow = true;
       }
       if (response?.pending) {
-        showHint('请在授权页完成授权。', response.userCode);
+        showHint(t('请在授权页完成授权。'), response.userCode);
         return;
       }
       // 后台轮询已结束：授权完成（新账户/新激活/经历过未授权后恢复）或超时取消
@@ -236,9 +237,9 @@ import { buildRenameModelOptions } from './rename.js';
       flowActive = false;
       flowBaseline = null;
       if (completed) {
-        showHint('授权成功，状态栏会自动恢复显示。');
+        showHint(t('授权成功，状态栏会自动恢复显示。'));
       } else {
-        showHint('授权未完成（已超时或被取消），请重试。');
+        showHint(t('授权未完成（已超时或被取消），请重试。'));
       }
       setAuthBusy(false);
       renderAuthStatus(response);
@@ -246,7 +247,7 @@ import { buildRenameModelOptions } from './rename.js';
       stopPolling();
       flowActive = false;
       flowBaseline = null;
-      showHint(`状态查询失败：${error.message || error}`);
+      showHint(t('状态查询失败：{msg}', { msg: error.message || error }));
       setAuthBusy(false);
     }
   }

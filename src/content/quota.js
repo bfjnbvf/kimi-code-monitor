@@ -17,6 +17,7 @@ import {
   setAgentStatus
 } from './render.js';
 import { setConnectionHint, maybeShowGuide } from './widget-structure.js';
+import { t } from '../i18n.js';
 
 let oauthStarting = false;
 
@@ -69,7 +70,7 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
       return;
     }
     console.warn('[Kimi Status] 额度更新失败', error);
-    setConnectionHint(`额度更新失败：${error.message || error}`);
+    setConnectionHint(t('额度更新失败：{msg}', { msg: error.message || error }));
   }
 }
 
@@ -82,11 +83,11 @@ export function setQuotaAuthRequired(required) {
   panel.els.widget.setAttribute('role', required ? 'button' : 'status');
   if (panel.els.authBanner) {
     panel.els.authBanner.hidden = !required;
-    if (required && panel.els.authBannerText) panel.els.authBannerText.textContent = '点击完成 Kimi 授权';
+    if (required && panel.els.authBannerText) panel.els.authBannerText.textContent = t('点击完成 Kimi 授权');
   }
   // 授权状态变化会改变状态灯的显示（未授权恒红 / 恢复后回到真实状态）
   setAgentStatus(panel.metrics.agentStatus);
-  setConnectionHint(required ? '点击授权 Kimi 额度查询' : 'Kimi Status 已连接');
+  setConnectionHint(required ? t('点击授权 Kimi 额度查询') : t('Kimi Status 已连接'));
   // 授权完成后补一次新手引导（未授权期间引导被推迟）
   if (!required) maybeShowGuide();
 }
@@ -95,9 +96,9 @@ export async function beginOAuth() {
   if (!panel.quotaAuthRequired || oauthStarting) return;
   oauthStarting = true;
   try {
-    setConnectionHint('正在打开 Kimi 授权页…');
+    setConnectionHint(t('正在打开 Kimi 授权页…'));
     const response = await chrome.runtime.sendMessage({ type: 'oauth.start' });
-    if (!response?.ok) throw new Error(response?.error || '无法开始授权');
+    if (!response?.ok) throw new Error(response?.error || t('无法开始授权'));
     // 轮询由后台 service worker 驱动，授权页完成后自动关闭，面板自动恢复
     if (panel.els.authBannerText) {
       panel.els.authBannerText.textContent = '授权中，完成后自动恢复';

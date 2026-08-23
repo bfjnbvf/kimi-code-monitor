@@ -68,6 +68,10 @@ export default [
         module: 'readonly',
         Response: 'readonly',
         Image: 'readonly',
+        ClipboardItem: 'readonly',
+        CSS: 'readonly',
+        Node: 'readonly',
+        sessionStorage: 'readonly',
         showDirectoryPicker: 'readonly'
       }
     },

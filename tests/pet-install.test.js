@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { unzip } from '../src/pet/install.js';
+import { unzip, parseInput, parsePetdexScript } from '../src/pet/install.js';
 
 function u16(v) {
   const b = Buffer.alloc(2);
@@ -240,4 +240,37 @@ test('unzip：central directory 与 local header 不一致时报错', async () =
   ]);
   const zip = Buffer.concat([local, cd, eocd(local.length, cd.length, 1)]);
   await assert.rejects(async () => unzip(toArrayBuffer(zip)), /central directory/);
+});
+
+test('parseInput：识别 petdex 安装命令', () => {
+  const plan = parseInput('curl -sSf https://petdex.dev/install/sasuke-uchiha | sh');
+  assert.deepEqual(plan, { kind: 'petdex', url: 'https://petdex.dev/install/sasuke-uchiha' });
+});
+
+test('parseInput：识别裸 petdex 安装 URL', () => {
+  const plan = parseInput('https://petdex.dev/install/sasuke-uchiha');
+  assert.deepEqual(plan, { kind: 'petdex', url: 'https://petdex.dev/install/sasuke-uchiha' });
+});
+
+test('parseInput：codex-pets.net 与 slug 格式不受影响', () => {
+  assert.equal(parseInput('curl -L "https://codex-pets.net/api/pets/abc/download?v=1" -o x.zip').kind, 'zip');
+  assert.equal(parseInput('tanjiro-kamado--wangfan002').kind, 'slug');
+});
+
+const PETDEX_SCRIPT = `#!/bin/sh
+set -e
+PET_DIR="$HOME/.codex/pets/sasuke-uchiha"
+curl -fsSL -e "https://petdex.dev/" -o "$PET_DIR/pet.json" 'https://assets.petdex.dev/pets/sasuke-uchiha-1f598b965f64/petjson.json'
+curl -fsSL -e "https://petdex.dev/" -o "$PET_DIR/spritesheet.webp" 'https://assets.petdex.dev/pets/sasuke-uchiha-1f598b965f64/sprite.webp'
+`;
+
+test('parsePetdexScript：从安装脚本提取素材地址', () => {
+  const { petJsonUrl, spriteUrl } = parsePetdexScript(PETDEX_SCRIPT);
+  assert.equal(petJsonUrl, 'https://assets.petdex.dev/pets/sasuke-uchiha-1f598b965f64/petjson.json');
+  assert.equal(spriteUrl, 'https://assets.petdex.dev/pets/sasuke-uchiha-1f598b965f64/sprite.webp');
+});
+
+test('parsePetdexScript：缺少素材地址时报错', () => {
+  assert.throws(() => parsePetdexScript('#!/bin/sh\necho hello\n'), /素材地址/);
+  assert.throws(() => parsePetdexScript(''), /素材地址/);
 });

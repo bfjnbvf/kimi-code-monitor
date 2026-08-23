@@ -13,6 +13,7 @@ import {
   totalInputTokens,
   decodeSpeed
 } from '../metrics.js';
+import { t } from '../i18n.js';
 
 // 会话内逐 step 样本与逐轮耗时样本只保留最近 50 条
 const SESSION_SAMPLE_LIMIT = 50;
@@ -65,9 +66,9 @@ export const panel = {
 
 // 显示名：主代理 / 子代理 1 / 子代理 2…（按本会话首次出现顺序）
 export function agentDisplayName(agentId) {
-  if (agentId === 'main') return '主代理';
+  if (agentId === 'main') return t('主代理');
   const index = panel.sessionAgentOrder.indexOf(agentId);
-  return index > 0 ? `子代理 ${index}` : '子代理';
+  return index > 0 ? t('子代理 {index}', { index }) : t('子代理');
 }
 
 export function agentModelLabel(agentId) {

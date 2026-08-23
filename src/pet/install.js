@@ -1,11 +1,15 @@
 /* Codex Pet 在线安装器（popup 侧）。
  *
- * 支持两种输入（直接粘贴画廊的安装命令即可）：
+ * 支持三种输入（直接粘贴画廊的安装命令即可）：
  * 1. awesome-codex-pet（GitHub 画廊）：
  *    curl -fsSL .../install-pet.sh | bash -s -- --raw-base <url> <pet-slug--author-slug>
  *    或只写 slug：tanjiro-kamado--wangfan002
  * 2. codex-pets.net（zip 画廊）：
  *    curl -L "https://codex-pets.net/api/pets/<name>/download?v=..." -o ...（只需其中的 URL）
+ * 3. petdex.dev（脚本画廊）：
+ *    curl -sSf https://petdex.dev/install/<slug> | sh
+ *    安装脚本本身只是从 assets.petdex.dev 下载 pet.json + spritesheet.webp，
+ *    这里只解析脚本里的素材地址，绝不执行脚本。
  *
  * 只下载素材（pet.json + spritesheet.webp），绝不执行任何安装脚本。
  * zip 用浏览器原生 DecompressionStream 解压，无第三方依赖。
@@ -18,6 +22,9 @@ const DEFAULT_RAW_BASE = 'https://raw.githubusercontent.com/legeling/awesome-cod
 const SLUG_RE = /[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*/;
 const ZIP_URL_RE = /https:\/\/codex-pets\.net\/api\/pets\/[\w-]+\/download[^\s"'\\]*/;
 const RAW_BASE_RE = /--raw-base\s+(https:\/\/[^\s"'\\]+)/;
+const PETDEX_INSTALL_RE = /https:\/\/petdex\.dev\/install\/([a-z0-9][a-z0-9-]*)/;
+// petdex 安装脚本里的素材地址（petjson.json / sprite.webp 都在 assets.petdex.dev 上）
+const PETDEX_ASSET_RE = /https:\/\/assets\.petdex\.dev\/[^\s"'\\]+/g;
 
 // zip 解压安全限制
 const ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
@@ -31,19 +38,35 @@ const MIN_ROWS = 9;
 
 /**
  * 解析用户输入，返回下载计划。
- * @returns {{kind:'slug', slug:string, rawBase:string} | {kind:'zip', url:string}}
+ * @returns {{kind:'slug', slug:string, rawBase:string} | {kind:'zip', url:string} | {kind:'petdex', url:string}}
  */
 function parseInput(text) {
   const input = (text || '').trim();
   if (!input) throw new Error('请粘贴安装命令或宠物 slug');
   const zipMatch = input.match(ZIP_URL_RE);
   if (zipMatch) return { kind: 'zip', url: zipMatch[0] };
+  const petdexMatch = input.match(PETDEX_INSTALL_RE);
+  if (petdexMatch) return { kind: 'petdex', url: petdexMatch[0] };
   const slugMatch = input.match(SLUG_RE);
   if (slugMatch) {
     const baseMatch = input.match(RAW_BASE_RE);
     return { kind: 'slug', slug: slugMatch[0], rawBase: baseMatch ? baseMatch[1] : DEFAULT_RAW_BASE };
   }
   throw new Error('格式错误');
+}
+
+/**
+ * 解析 petdex 安装脚本，取出 pet.json 与 spritesheet.webp 的素材地址。
+ * 脚本里文件名固定为 petjson.json / sprite.webp（与官方命名不同，注意区分）。
+ * @returns {{petJsonUrl:string, spriteUrl:string}}
+ */
+function parsePetdexScript(scriptText) {
+  const text = String(scriptText || '');
+  const urls = text.match(PETDEX_ASSET_RE) || [];
+  const petJsonUrl = urls.find((u) => u.endsWith('/petjson.json'));
+  const spriteUrl = urls.find((u) => u.endsWith('/sprite.webp'));
+  if (!petJsonUrl || !spriteUrl) throw new Error('petdex 安装脚本里没找到素材地址');
+  return { petJsonUrl, spriteUrl };
 }
 
 async function fetchBytes(url, maxBytes = 16 * 1024 * 1024) {
@@ -216,6 +239,13 @@ async function fetchPet(plan) {
     const base = `${plan.rawBase}/pets/${plan.slug}`;
     petJsonText = new TextDecoder().decode(await fetchBytes(`${base}/pet.json`, 64 * 1024));
     webpBytes = new Uint8Array(await fetchBytes(`${base}/spritesheet.webp`));
+  } else if (plan.kind === 'petdex') {
+    source = 'petdex.dev';
+    const scriptResp = await fetch(plan.url);
+    if (!scriptResp.ok) throw new Error(`下载失败（${scriptResp.status}）：${plan.url}`);
+    const { petJsonUrl, spriteUrl } = parsePetdexScript(await scriptResp.text());
+    petJsonText = new TextDecoder().decode(await fetchBytes(petJsonUrl, 64 * 1024));
+    webpBytes = new Uint8Array(await fetchBytes(spriteUrl));
   } else {
     source = 'codex-pets.net';
     const files = await unzip(await fetchBytes(plan.url));
@@ -260,6 +290,6 @@ async function fetchPet(plan) {
   };
 }
 
-const CodexPetInstall = { parseInput, fetchPet, unzip };
+const CodexPetInstall = { parseInput, parsePetdexScript, fetchPet, unzip };
 
-export { parseInput, fetchPet, unzip, CodexPetInstall };
+export { parseInput, parsePetdexScript, fetchPet, unzip, CodexPetInstall };

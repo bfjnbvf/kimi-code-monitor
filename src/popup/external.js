@@ -3,21 +3,22 @@
  */
 import * as KimiExternalProviders from '../providers.js';
 import { send, pageState } from './shared.js';
+import { t } from '../i18n.js';
 import { buildRenameModelOptions } from './rename.js';
 
   /* ---------- 外部账户：加号添加（选类型 + 粘贴 key），列表管理 ---------- */
 
   function formatExternalStatus(provider) {
-    if (provider.error) return { text: `获取失败：${provider.error}`, isError: true };
+    if (provider.error) return { text: t('获取失败：{msg}', { msg: provider.error }), isError: true };
     if (provider.kind === 'balance') {
       const total = Number(provider.total);
       const granted = Number(provider.granted);
       const paid = Number(provider.paid);
       if (!Number.isFinite(total) || !Number.isFinite(granted) || !Number.isFinite(paid)) {
-        return { text: '余额数据异常', isError: true };
+        return { text: t('余额数据异常'), isError: true };
       }
       return {
-        text: `余额 ${provider.currency || ''}${total.toFixed(2)}（赠送 ${granted.toFixed(2)} · 充值 ${paid.toFixed(2)}）`,
+        text: t('余额 {total}（赠送 {granted} · 充值 {paid}）', { total: `${provider.currency || ''}${total.toFixed(2)}`, granted: granted.toFixed(2), paid: paid.toFixed(2) }),
         isError: false
       };
     }
@@ -28,9 +29,9 @@ import { buildRenameModelOptions } from './rename.js';
           return Number.isFinite(pct) ? `${w.label} ${pct.toFixed(1)}%` : null;
         })
         .filter(Boolean);
-      return { text: parts.length ? parts.join(' · ') : '窗口数据异常', isError: !parts.length };
+      return { text: parts.length ? parts.join(' · ') : t('窗口数据异常'), isError: !parts.length };
     }
-    return { text: provider.plan || '已启用', isError: false };
+    return { text: provider.plan || t('已启用'), isError: false };
   }
 
   let externalAccountsCache = [];
@@ -61,23 +62,23 @@ import { buildRenameModelOptions } from './rename.js';
       const renameBtn = document.createElement('button');
       renameBtn.type = 'button';
       renameBtn.className = 'action';
-      renameBtn.textContent = '改名';
+      renameBtn.textContent = t('改名');
       renameBtn.addEventListener('click', () => startExternalRename(row, account));
       actions.append(renameBtn);
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'action';
-      removeBtn.textContent = '移除';
+      removeBtn.textContent = t('移除');
       removeBtn.addEventListener('click', async () => {
         removeBtn.disabled = true;
         try {
           const response = await send('external.remove', { id: account.id });
-          if (!response?.ok) throw new Error(response?.error || '移除失败');
+          if (!response?.ok) throw new Error(response?.error || t('移除失败'));
           externalAccountsCache = externalAccountsCache.filter((a) => a.id !== account.id);
           renderExternalAccounts();
         } catch (error) {
-          renderExternalAccounts(`移除失败：${error?.message || error}`);
+          renderExternalAccounts(t('移除失败：{msg}', { msg: error?.message || error }));
         }
       });
       actions.append(removeBtn);
@@ -103,7 +104,7 @@ import { buildRenameModelOptions } from './rename.js';
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'action primary';
-    saveBtn.textContent = '保存';
+    saveBtn.textContent = t('保存');
     const submit = async () => {
       const label = input.value.trim();
       if (!label) {
@@ -113,10 +114,10 @@ import { buildRenameModelOptions } from './rename.js';
       saveBtn.disabled = true;
       try {
         const response = await send('external.rename', { id: account.id, label });
-        if (!response?.ok) throw new Error(response?.error || '改名失败');
+        if (!response?.ok) throw new Error(response?.error || t('改名失败'));
         await refreshExternalStatus();
       } catch (error) {
-        renderExternalAccounts(`改名失败：${error?.message || error}`);
+        renderExternalAccounts(t('改名失败：{msg}', { msg: error?.message || error }));
       }
     };
     saveBtn.addEventListener('click', submit);
@@ -140,7 +141,7 @@ import { buildRenameModelOptions } from './rename.js';
     } catch (error) {
       // 状态拉取失败不阻塞其他区块，但保留错误提示
       console.warn('读取外部账户失败:', error);
-      if (!pageState.pageDestroyed) renderExternalAccounts('状态读取失败，请稍后刷新');
+      if (!pageState.pageDestroyed) renderExternalAccounts(t('状态读取失败，请稍后刷新'));
     }
   }
 
@@ -167,22 +168,22 @@ import { buildRenameModelOptions } from './rename.js';
       const provider = KimiExternalProviders.PROVIDERS[providerId];
       const key = keyInput.value.trim();
       if (!key) {
-        status.textContent = '请先粘贴 API Key';
+        status.textContent = t('请先粘贴 API Key');
         status.classList.add('err');
         return;
       }
       const button = event.currentTarget;
       button.disabled = true;
       status.classList.remove('err');
-      status.textContent = '正在验证…';
+      status.textContent = t('正在验证…');
       try {
         // 域名权限必须在用户手势里申请（optional_host_permissions）
         const granted = await chrome.permissions.request({ origins: [`${provider.origin}/*`] });
-        if (!granted) throw new Error('未授予域名访问权限');
+        if (!granted) throw new Error(t('未授予域名访问权限'));
         const response = await send('external.add', { provider: providerId, key });
-        if (!response?.ok) throw new Error(response?.error || '保存失败');
+        if (!response?.ok) throw new Error(response?.error || t('保存失败'));
         const result = formatExternalStatus(response.provider || {});
-        status.textContent = result.isError ? result.text : '已保存';
+        status.textContent = result.isError ? result.text : t('已保存');
         status.classList.toggle('err', result.isError);
         keyInput.value = '';
         await refreshExternalStatus();

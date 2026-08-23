@@ -410,6 +410,20 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   assert.match(wsSessionSource, /onTurnEnded\(sessionId\)/);
 });
 
+test('自动命名重试：busy/locked 等暂时性跳过放回重试集合，不消耗尝试次数', () => {
+  // 轮末 3 秒内用户已发下一条（busy）或他页持锁（locked）时，若留在
+  // triggeredThisPage 会永久错过本会话的自动命名；这类跳过应可重试
+  const renameContentSource = fs.readFileSync(
+    path.join(root, 'src', 'session-rename', 'rename-content.js'),
+    'utf8'
+  );
+  assert.match(renameContentSource, /const RETRYABLE_SKIP_REASONS = new Set\(\['busy', 'locked'\]\)/);
+  assert.match(
+    renameContentSource,
+    /result\.status === 'skipped' && RETRYABLE_SKIP_REASONS\.has\(result\.reason\)\) \{\s*\/\/ 暂时性跳过：放回去重集合但不消耗尝试次数\s*triggeredThisPage\.delete\(sessionId\);/
+  );
+});
+
 test('授权横幅小字：缩短为「授权后显示额度与预警」', () => {
   // 面板 DOM 模板已迁至 widget-structure.js
   const widgetSource = fs.readFileSync(path.join(root, 'src', 'content', 'widget-structure.js'), 'utf8');

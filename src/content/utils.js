@@ -32,7 +32,7 @@ export function progressClass(percentage) {
   return 'ksb-low';
 }
 
-// 面板状态文案：渲染层（状态灯/状态字）与宠物域（宠物状态、时钟切行）共用
+// 面板状态文案（键 → 中文原文，i18n 的 t() 以原文为键查英文表）
 export const STATUS_TEXT = {
   idle: '空闲',
   thinking: '思考中',

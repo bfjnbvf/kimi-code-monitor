@@ -71,6 +71,14 @@ Kimi Code Web 的侧边栏监控扩展。一只会反映工作状态的吉祥物
 
 需要 Chrome 120 或更高版本。
 
+**方式一（推荐）：下载构建好的 zip**
+
+从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载最新的 `kimi-code-monitor-v*.zip`，解压后在 `chrome://extensions` 开启开发者模式，加载解压目录即可。
+
+> 注意：GitHub 的「Code → Download ZIP」下载的是**源码包**（`kimi-code-monitor-main`），里面没有 `dist/` 产物，直接加载会报「无法为脚本加载 JavaScript dist/content.js」。不想自己构建的话请用 Releases 里的 zip。
+
+**方式二：源码构建**
+
 0. 首次使用先构建：`npm install && npm run build`（把 `src/` 打成 `dist/`；之后改了源码就再跑一次 `npm run build`）
 1. 在 `chrome://extensions` 开启开发者模式，加载本目录（或解压 zip 后加载）
 2. 打开 `kimi web` 启动的本地页面

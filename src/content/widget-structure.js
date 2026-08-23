@@ -22,6 +22,7 @@ import {
 } from './render.js';
 import { petStart, petHandleToggle, petSyncRendering } from './pet-panel.js';
 import { start as startWalkthrough } from './walkthrough.js';
+import { t } from '../i18n.js';
 
 export const MINI_STORAGE_KEY = 'kimi-statusbar.mini';
 export const ONBOARDED_STORAGE_KEY = 'kimi-statusbar.onboarded';
@@ -72,80 +73,80 @@ function quotaModuleHTML(prefix, label) {
 }
 
 const MODULE_HTML = {
-  input: `
+  input: () => `
     <div class="ksb-stat">
-      <span class="ksb-stat-label">输入</span>
+      <span class="ksb-stat-label">${t('输入')}</span>
       <span class="ksb-stat-value" id="ksb-input-tokens">0</span>
     </div>
     <svg class="ksb-spark ksb-spark-input" id="ksb-input-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>`,
-  cache: `
+  cache: () => `
     <div class="ksb-stat">
-      <span class="ksb-stat-label">缓存命中</span>
+      <span class="ksb-stat-label">${t('缓存命中')}</span>
       <span class="ksb-stat-value" id="ksb-cache-pct">--</span>
     </div>
     <svg class="ksb-spark ksb-spark-cache" id="ksb-cache-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>`,
-  output: `
+  output: () => `
     <div class="ksb-stat">
-      <span class="ksb-stat-label">输出</span>
+      <span class="ksb-stat-label">${t('输出')}</span>
       <span class="ksb-stat-value" id="ksb-output-tokens">0</span>
     </div>
     <svg class="ksb-spark ksb-spark-output" id="ksb-output-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>`,
-  speed: `
+  speed: () => `
     <div class="ksb-stat">
-      <span class="ksb-stat-label">速度<span class="ksb-stat-sub" id="ksb-duration-sub" hidden><span class="ksb-duration-word">上轮</span><span id="ksb-duration-val"></span></span></span>
+      <span class="ksb-stat-label">${t('速度')}<span class="ksb-stat-sub" id="ksb-duration-sub" hidden><span class="ksb-duration-word">${t('上轮')}</span><span id="ksb-duration-val"></span></span></span>
       <span class="ksb-stat-value" id="ksb-speed-val">--</span>
     </div>
     <svg class="ksb-spark ksb-spark-speed" id="ksb-speed-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>`,
-  duration: `
+  duration: () => `
     <div class="ksb-stat">
-      <span class="ksb-stat-label">上轮耗时</span>
+      <span class="ksb-stat-label">${t('上轮耗时')}</span>
       <span class="ksb-stat-value" id="ksb-duration-value">--</span>
     </div>
     <svg class="ksb-spark ksb-spark-duration" id="ksb-duration-spark" viewBox="0 0 100 28" preserveAspectRatio="none"></svg>`,
-  quota5h: quotaModuleHTML('5h', '5h'),
-  quotaWeek: quotaModuleHTML('week', '本周'),
+  quota5h: () => quotaModuleHTML('5h', '5h'),
+  quotaWeek: () => quotaModuleHTML('week', t('本周')),
   // quotaMonth: quotaModuleHTML('month', '本月'), —— 暂时下线，见 metrics.js 注释
-  pet: `
+  pet: () => `
     <div class="ksb-pet">
       <div class="ksb-pet-clip"><canvas class="ksb-pet-canvas" id="ksb-pet-canvas" width="112" height="112"></canvas></div>
       <div class="ksb-pet-stats">
         <div class="ksb-pet-total-row">
-          <span class="ksb-quota-label" id="ksb-pet-label">24h消耗</span>
+          <span class="ksb-quota-label" id="ksb-pet-label">${t('24h消耗')}</span>
           <span class="ksb-pet-total" id="ksb-pet-total">--</span>
         </div>
-        <span class="ksb-pet-status" id="ksb-pet-status" data-status="idle"><span id="ksb-pet-status-text">空闲</span><span class="ksb-pet-clock" id="ksb-pet-clock" hidden><span id="ksb-pet-clock-num"></span><span id="ksb-pet-ampm"></span></span></span>
+        <span class="ksb-pet-status" id="ksb-pet-status" data-status="idle"><span id="ksb-pet-status-text">${t('空闲')}</span><span class="ksb-pet-clock" id="ksb-pet-clock" hidden><span id="ksb-pet-clock-num"></span><span id="ksb-pet-ampm"></span></span></span>
       </div>
     </div>`,
-  usageChart: `
+  usageChart: () => `
     <div class="ksb-chart">
       <div class="ksb-chart-head">
-        <span class="ksb-quota-label" id="ksb-chart-label">本周消耗</span>
+        <span class="ksb-quota-label" id="ksb-chart-label">${t('本周消耗')}</span>
         <span class="ksb-chart-hit"><span class="ksb-chart-hit-full" id="ksb-chart-hit-full"></span><span class="ksb-chart-hit-short" id="ksb-chart-hit-short"></span></span>
       </div>
       <span class="ksb-chart-total" id="ksb-chart-total">--</span>
       <div class="ksb-chart-bars" id="ksb-chart-bars"></div>
     </div>
     <button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
-      <span>连接本地 CLI</span><small>开启7d、30d长期统计</small>
+      <span>${t('连接本地 CLI')}</span><small>${t('开启7d、30d长期统计')}</small>
     </button>`,
-  agents: `
+  agents: () => `
     <div class="ksb-agents">
       <div class="ksb-agents-head">
-        <span class="ksb-quota-label">代理</span>
-        <span class="ksb-agent-metric m-in">输入</span>
-        <span class="ksb-agent-metric m-out">输出</span>
-        <span class="ksb-agent-metric m-hit">命中</span>
+        <span class="ksb-quota-label">${t('代理')}</span>
+        <span class="ksb-agent-metric m-in">${t('输入')}</span>
+        <span class="ksb-agent-metric m-out">${t('输出')}</span>
+        <span class="ksb-agent-metric m-hit">${t('命中')}</span>
       </div>
       <div class="ksb-agents-list" id="ksb-agents-list"></div>
     </div>`,
-  external: `
+  external: () => `
     <div class="ksb-stat ksb-external-stat">
-      <span class="ksb-stat-label"><span id="ksb-external-title">外部账户</span><span class="ksb-stat-sub" id="ksb-external-sub" hidden></span></span>
+      <span class="ksb-stat-label"><span id="ksb-external-title">${t('外部账户')}</span><span class="ksb-stat-sub" id="ksb-external-sub" hidden></span></span>
       <span class="ksb-stat-value" id="ksb-external-value">--</span>
     </div>
     <div class="ksb-agents ksb-external-full">
       <div class="ksb-agents-head">
-        <span class="ksb-quota-label">外部账户</span>
+        <span class="ksb-quota-label">${t('外部账户')}</span>
       </div>
       <div class="ksb-external-list" id="ksb-external-list"></div>
     </div>`
@@ -157,9 +158,9 @@ function headerModuleHTML() {
   return `
     <div class="ksb-header">
       <span class="ksb-status-dot ksb-idle" id="ksb-status-dot"></span>
-      <span class="ksb-title" title="点击重置并重新拉取数据"><span class="ksb-title-long">Kimi Code</span><span class="ksb-title-brief">Kimi</span></span>
-      <span class="ksb-agent-status" id="ksb-agent-status">空闲</span>
-      ${panel.widgetConfig.modules.header.showBalance ? `<span class="ksb-balance" id="ksb-balance" title="${toConsole ? '打开 Kimi Code 控制台' : '查看 / 充值额度'}">余额 --</span>` : ''}
+      <span class="ksb-title" title="${t('点击重置并重新拉取数据')}"><span class="ksb-title-long">Kimi Code</span><span class="ksb-title-brief">Kimi</span></span>
+      <span class="ksb-agent-status" id="ksb-agent-status">${t('空闲')}</span>
+      ${panel.widgetConfig.modules.header.showBalance ? `<span class="ksb-balance" id="ksb-balance" title="${toConsole ? t('打开 Kimi Code 控制台') : t('查看 / 充值额度')}">${t('余额 --')}</span>` : ''}
     </div>`;
 }
 
@@ -167,7 +168,7 @@ function buildModule(id) {
   const module = document.createElement('div');
   module.className = 'ksb-module' + (panel.widgetConfig.modules[id]?.span === 2 ? ' ksb-span-2' : '');
   module.dataset.module = id;
-  module.innerHTML = `${id === 'header' ? headerModuleHTML() : MODULE_HTML[id]}<span class="ksb-module-badge" title="模块设置">≡</span>`;
+  module.innerHTML = `${id === 'header' ? headerModuleHTML() : MODULE_HTML[id]()}<span class="ksb-module-badge" title="${t('模块设置')}">≡</span>`;
   module.querySelector('.ksb-module-badge').addEventListener('click', (event) => {
     event.stopPropagation();
     if (editing) openModuleMenu(id);
@@ -212,11 +213,11 @@ function renderRegions(widget) {
   if (editing) {
     const tray = document.createElement('div');
     tray.className = 'ksb-region ksb-region-hidden';
-    tray.append(zoneLabel('隐藏区 · 不在面板显示，拖到下方启用'));
+    tray.append(zoneLabel(t('隐藏区 · 不在面板显示，拖到下方启用')));
     for (const id of panel.widgetConfig.orderHidden) tray.append(buildModule(id));
     widget.insertBefore(tray, full);
-    full.append(zoneLabel('展开区 · 展开时显示'));
-    mini.append(zoneLabel('固定区 · Mini 也保留'));
+    full.append(zoneLabel(t('展开区 · 展开时显示')));
+    mini.append(zoneLabel(t('固定区 · Mini 也保留')));
   }
   for (const id of panel.widgetConfig.orderFull) full.append(buildModule(id));
   for (const id of panel.widgetConfig.orderMini) mini.append(buildModule(id));
@@ -446,7 +447,7 @@ function toggleMini() {
     // localStorage 不可用时忽略，Mini 状态仅不持久化
   }
   applyModeClasses();
-  setConnectionHint(mini ? 'Mini 模式：点击下方区域展开' : 'Kimi Status 已连接');
+  setConnectionHint(mini ? t('Mini 模式：点击下方区域展开') : t('Kimi Status 已连接'));
 }
 
 /* ---------- 编辑模式：长按进入，拖拽排序，角标配置 ---------- */
@@ -476,7 +477,7 @@ export function enterEditMode() {
   panel.els.widget.classList.add('ksb-editing');
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
   renderWidgetStructure();
-  setConnectionHint('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成');
+  setConnectionHint(t('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成'));
   document.addEventListener('pointerdown', handleOutsidePointerDown, true);
   document.addEventListener('keydown', handleEditKeydown);
 }
@@ -518,35 +519,35 @@ function moduleMenuHTML(id) {
   if (id === 'header') {
     const header = panel.widgetConfig.modules.header;
     return `
-      <div class="ksb-menu-label">标题行 · 余额</div>
-      ${menuOpts('showBalance', [[true, '显示'], [false, '隐藏']], header.showBalance)}
-      <div class="ksb-menu-label">余额点击跳转</div>
-      ${menuOpts('balanceLink', [['subscription', '充值页'], ['console', '控制台']], header.balanceLink)}
+      <div class="ksb-menu-label">${t('标题行')} · ${t('余额')}</div>
+      ${menuOpts('showBalance', [[true, t('显示')], [false, t('隐藏')]], header.showBalance)}
+      <div class="ksb-menu-label">${t('余额点击跳转')}</div>
+      ${menuOpts('balanceLink', [['subscription', t('充值页')], ['console', t('控制台')]], header.balanceLink)}
     `;
   }
   const mod = panel.widgetConfig.modules[id];
   // 子代理列表模块内容是多行列表，不提供半宽；外部账户提供（半宽显示首个选中账户）
   const widthRow = id === 'agents'
     ? ''
-    : `<div class="ksb-menu-label">${MODULE_LABELS[id]} · 宽度</div>
-    ${menuOpts('span', [[1, '半宽'], [2, '整宽']], mod.span)}`;
+    : `<div class="ksb-menu-label">${t(MODULE_LABELS[id])} · ${t('宽度')}</div>
+    ${menuOpts('span', [[1, t('半宽')], [2, t('整宽')]], mod.span)}`;
   const agentsRow = id === 'agents'
-    ? `<div class="ksb-menu-label">显示代理</div>${agentVisibilityOpts()}`
+    ? `<div class="ksb-menu-label">${t('显示代理')}</div>${agentVisibilityOpts()}`
     : '';
   const externalRow = id === 'external'
-    ? `<div class="ksb-menu-label">显示账户</div>${externalVisibilityOpts()}`
+    ? `<div class="ksb-menu-label">${t('显示账户')}</div>${externalVisibilityOpts()}`
     : '';
   const rangeRow = id === 'usageChart'
-    ? `<div class="ksb-menu-label">统计范围</div>${menuOpts('chartRange', [['week', '7d'], ['month', '30d']], mod.chartRange)}`
+    ? `<div class="ksb-menu-label">${t('统计范围')}</div>${menuOpts('chartRange', [['week', '7d'], ['month', '30d']], mod.chartRange)}`
     : '';
   const paceRow = id.startsWith('quota')
-    ? `<div class="ksb-menu-label">匀速参照线</div>${menuOpts('pace', [[true, '显示'], [false, '隐藏']], mod.pace)}
-      <div class="ksb-menu-label">重置时间显示</div>${menuOpts('resetFormat', [['countdown', '倒计时'], ['absolute', '具体时间']], mod.resetFormat || 'countdown')}`
+    ? `<div class="ksb-menu-label">${t('匀速参照线')}</div>${menuOpts('pace', [[true, t('显示')], [false, t('隐藏')]], mod.pace)}
+      <div class="ksb-menu-label">${t('重置时间显示')}</div>${menuOpts('resetFormat', [['countdown', t('倒计时')], ['absolute', t('具体时间')]], mod.resetFormat || 'countdown')}`
     : '';
   const statRow = id === 'pet'
-    ? `<div class="ksb-menu-label">右侧数据</div>${menuOpts('stat', [['daily', '24h消耗'], ['input', '输入'], ['output', '输出'], ['cache', '缓存命中'], ['speed', '速度'], ['balance', '余额']], mod.stat)}
-      <div class="ksb-menu-label">点击小球跳转</div>${menuOpts('ballLink', [['none', '无跳转'], ['console', '控制台'], ['subscription', '充值页']], mod.ballLink || 'none')}
-      <div class="ksb-menu-label">侧栏改造（去 logo 上移）</div>${menuOpts('sidebarTidy', [[true, '开启'], [false, '关闭']], mod.sidebarTidy !== false)}`
+    ? `<div class="ksb-menu-label">${t('右侧数据')}</div>${menuOpts('stat', [['daily', t('24h消耗')], ['input', t('输入')], ['output', t('输出')], ['cache', t('缓存命中')], ['speed', t('速度')], ['balance', t('余额')]], mod.stat)}
+      <div class="ksb-menu-label">${t('点击小球跳转')}</div>${menuOpts('ballLink', [['none', t('无跳转')], ['console', t('控制台')], ['subscription', t('充值页')]], mod.ballLink || 'none')}
+      <div class="ksb-menu-label">${t('侧栏改造（去 logo 上移）')}</div>${menuOpts('sidebarTidy', [[true, t('开启')], [false, t('关闭')]], mod.sidebarTidy !== false)}`
     : '';
   return `
     ${widthRow}
@@ -562,7 +563,7 @@ function moduleMenuHTML(id) {
 function externalVisibilityOpts() {
   const hidden = panel.widgetConfig.modules.external?.hiddenAccounts || [];
   if (!panel.externalProviders.length) {
-    return '<div class="ksb-menu-opts"><span class="ksb-menu-opt">暂无已配置账户</span></div>';
+    return `<div class="ksb-menu-opts"><span class="ksb-menu-opt">${t('暂无已配置账户')}</span></div>`;
   }
   const opts = panel.externalProviders
     .map((account) => {
@@ -810,24 +811,24 @@ export function maybeShowGuide() {
   startWalkthrough({
     steps: [
       {
-        title: 'Mini 模式',
+        title: t('Mini 模式'),
         anchor: () => panel.els.widget.querySelector('.ksb-region-mini'),
-        bodyHTML: '<b>点最底部这一区域</b>把面板收成一行，再点一次展开。哪些模块留在 Mini 可在编辑模式里调整。'
+        bodyHTML: t('<b>点最底部这一区域</b>把面板收成一行，再点一次展开。哪些模块留在 Mini 可在编辑模式里调整。')
       },
       {
-        title: '宠物',
+        title: t('宠物'),
         anchor: () => panel.els.widget.querySelector('.ksb-module[data-module="pet"]'),
-        bodyHTML: '空闲时显示当前<b>时间</b>，工作时自动<b>计时</b>。点小球播一段动画。'
+        bodyHTML: t('空闲时显示当前<b>时间</b>，工作时自动<b>计时</b>。点小球播一段动画。')
       },
       {
-        title: '自定义布局',
+        title: t('自定义布局'),
         anchor: () => panel.els.widget,
-        doneLabel: '完成，进入编辑模式',
-        bodyHTML: '<span class="ksb-walk-hl">长按面板任意位置</span>进入编辑模式，拖动模块到不同区域改变显示方式；点模块右上角 <b>≡</b> 调宽度和专属设置。'
+        doneLabel: t('完成，进入编辑模式'),
+        bodyHTML: t('<span class="ksb-walk-hl">长按面板任意位置</span>进入编辑模式，拖动模块到不同区域改变显示方式；点模块右上角 <b>≡</b> 调宽度和专属设置。')
           + '<div class="ksb-walk-zones">'
-          + '<div class="ksb-walk-zone z-gray"><i></i><span>隐藏区（顶部）· 不在面板显示</span></div>'
-          + '<div class="ksb-walk-zone z-blue"><i></i><span>展开区（中间）· 展开时显示</span></div>'
-          + '<div class="ksb-walk-zone z-green"><i></i><span>固定区（底部）· Mini 也保留</span></div>'
+          + `<div class="ksb-walk-zone z-gray"><i></i><span>${t('隐藏区（顶部）· 不在面板显示')}</span></div>`
+          + `<div class="ksb-walk-zone z-blue"><i></i><span>${t('展开区（中间）· 展开时显示')}</span></div>`
+          + `<div class="ksb-walk-zone z-green"><i></i><span>${t('固定区（底部）· Mini 也保留')}</span></div>`
           + '</div>'
       }
     ],

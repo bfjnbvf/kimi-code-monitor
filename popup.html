@@ -11,11 +11,11 @@
         <div>
           <div class="usage-title">
             <select id="usage-metric" aria-label="统计指标">
+              <option value="heatmap" selected>活跃热力图</option>
               <option value="total">消耗量</option>
               <option value="input">输入</option>
               <option value="output">输出</option>
               <option value="cache">缓存命中</option>
-              <option value="heatmap">活跃热力图</option>
             </select>
             <span id="usage-day"></span>
           </div>
@@ -27,6 +27,9 @@
         <input type="date" id="usage-start" aria-label="起始日期">
         <span class="usage-dates-sep">–</span>
         <input type="date" id="usage-end" aria-label="结束日期">
+      </div>
+      <div class="usage-share-row">
+        <button type="button" class="action" id="share-card-btn">生成分享图</button>
       </div>
       <div class="status-row cli-auth-row" id="cli-connected-row">
         <span class="dot ok" id="cli-status-dot"></span>
@@ -83,6 +86,35 @@
     </div>
     <button type="button" class="action" id="ext-add-btn">+ 添加账户</button>
   </div>
+  <div id="roam-pet-section" class="feature-card">
+    <div class="section-head">
+      <div class="feature-title">
+        <span class="info-icon"><span class="info-tip">到 codexpet.top 或 petdex.dev 挑选喜欢的宠物，复制它的安装命令（那段 bash），回到这里点「+ 添加宠物」粘贴即可。<br><br>宠物素材来自社区分享，其权利归属与使用限制以各发布页面为准；本扩展仅提供本地播放功能，不持有也不担保素材的任何权利。</span></span>
+        <span class="usage-title">桌面宠物</span>
+      </div>
+      <label class="feature-toggle"><input type="checkbox" id="roam-pet-toggle" class="kswitch-input"><span class="kswitch"></span></label>
+    </div>
+    <div class="feature-body">
+      <div id="roam-pet-list"></div>
+      <div class="ext-row hidden" id="roam-pet-add">
+        <input type="text" id="roam-pet-input" placeholder="粘贴宠物安装 bash 命令" autocomplete="off" spellcheck="false">
+        <button type="button" class="action primary" id="roam-pet-install">安装</button>
+      </div>
+      <div class="pet-note" id="roam-pet-status" hidden></div>
+      <button type="button" class="action" id="roam-pet-add-btn">+ 添加宠物</button>
+      <div class="feature-divider"></div>
+      <div class="feature-option">
+        <span>宠物大小</span>
+        <span class="status-actions">
+          <button type="button" class="action" id="roam-pet-scale-reset">重置</button>
+          <button type="button" class="action" id="roam-pet-scale-up">放大</button>
+          <button type="button" class="action" id="roam-pet-scale-down">缩小</button>
+        </span>
+      </div>
+      <div class="feature-divider"></div>
+      <div class="pet-links">推荐画廊：<a href="https://codexpet.top/zh" target="_blank" rel="noopener">codexpet.top</a> · <a href="https://petdex.dev" target="_blank" rel="noopener">petdex.dev</a></div>
+    </div>
+  </div>
   <div id="rename-section" class="feature-card">
     <div class="section-head">
       <div class="feature-title">
@@ -98,44 +130,29 @@
       </div>
       <div class="feature-option">
         <span>标题带 emoji</span>
-        <label class="feature-toggle"><input type="checkbox" id="rename-emoji-toggle" class="kswitch-input"><span class="kswitch"></span></label>
+        <span class="status-actions">
+          <button type="button" class="action" id="rename-emoji-on">打开</button>
+          <button type="button" class="action" id="rename-emoji-off">关闭</button>
+        </span>
       </div>
       <div class="feature-divider"></div>
       <div id="rename-usage" class="rename-minor"></div>
     </div>
   </div>
-  <div id="roam-pet-section" class="feature-card">
-    <div class="section-head">
-      <div class="feature-title">
-        <span class="info-icon"><span class="info-tip">到 codexpet.top 挑选喜欢的宠物，复制它的安装命令（那段 bash），回到这里点「+ 添加宠物」粘贴即可。<br><br>宠物素材来自社区分享，其权利归属与使用限制以各发布页面为准；本扩展仅提供本地播放功能，不持有也不担保素材的任何权利。</span></span>
-        <span class="usage-title">桌面宠物</span>
-      </div>
-      <label class="feature-toggle"><input type="checkbox" id="roam-pet-toggle" class="kswitch-input"><span class="kswitch"></span></label>
-    </div>
-    <div class="feature-body">
-      <div id="roam-pet-list"></div>
-      <div class="ext-row hidden" id="roam-pet-add">
-        <input type="text" id="roam-pet-input" placeholder="粘贴宠物安装 bash 命令" autocomplete="off" spellcheck="false">
-        <button type="button" class="action primary" id="roam-pet-install">安装</button>
-      </div>
-      <div class="pet-note" id="roam-pet-status" hidden></div>
-      <button type="button" class="action" id="roam-pet-add-btn">+ 添加宠物</button>
-      <div class="feature-divider"></div>
-      <div class="feature-option">
-        <span>靠近时注视鼠标（仅v2版宠物支持）</span>
-        <label class="feature-toggle"><input type="checkbox" id="roam-pet-look" class="kswitch-input"><span class="kswitch"></span></label>
-      </div>
-      <div class="feature-option">
-        <span>宠物大小</span>
-        <span><input type="number" id="roam-pet-scale" class="pet-scale-input" min="50" max="150" step="5" value="100" inputmode="numeric"> <span style="color: var(--text-tertiary)">%</span></span>
-      </div>
-      <div class="feature-divider"></div>
-      <div class="pet-links">推荐画廊：<a href="https://codexpet.top/zh" target="_blank" rel="noopener">codexpet.top</a></div>
-    </div>
-  </div>
   <div class="footer">
     <span><a href="#" id="export-link">导出统计</a> · <a href="#" id="reset-layout-link">重置布局</a></span>
     <span>v<span id="version"></span> · <a href="https://github.com/bfjnbvf/kimi-code-monitor/releases" target="_blank" rel="noopener">检查更新</a></span>
+  </div>
+  <div id="share-card-overlay" class="hidden" role="dialog" aria-label="用量分享卡片预览">
+    <div class="share-card-dialog">
+      <img id="share-card-preview" alt="用量分享卡片预览">
+      <div class="share-card-actions">
+        <button type="button" class="action primary" id="share-card-download">下载 PNG</button>
+        <button type="button" class="action" id="share-card-copy">复制图片</button>
+        <button type="button" class="action" id="share-card-close">关闭</button>
+      </div>
+      <div class="share-card-status" id="share-card-status"></div>
+    </div>
   </div>
   <script src="dist/popup.js"></script>
 </body>

@@ -10,6 +10,7 @@ import {
   BLOB_URL_REVOKE_MS,
   pageState
 } from './shared.js';
+import { t } from '../i18n.js';
 
   const usageSection = document.getElementById('usage-section');
   const cliLock = document.getElementById('cli-lock');
@@ -60,7 +61,8 @@ import {
 
   let usageDaily = {};
   let cliConnected = false;
-  let usageMetric = 'total';
+  // 默认展示活跃热力图（140 天窗口）；用户切换后按 kimiPopupUsageMetric 持久化
+  let usageMetric = 'heatmap';
 
   // 活跃热力图：140 天（约 20 周）窗口；格子边长按实际列数算出（--heat-cell），
   // 严格正方形且精确铺满 212px 内容宽，版式与其他指标一致
@@ -103,7 +105,7 @@ import {
         cellEl.dataset.level = cell.level;
         cellEl.title = cell.total > 0
           ? `${cell.key.slice(5)} · ${formatTokenCount(cell.total)} tokens`
-          : `${cell.key.slice(5)} · 无记录`;
+          : t('{date} · 无记录', { date: cell.key.slice(5) });
         weekEl.append(cellEl);
       }
       for (let i = 0; i < padBottom; i += 1) weekEl.append(blankCell());
@@ -167,7 +169,7 @@ import {
       const sub = bucket?.sub;
       const subTokens = sub ? Number(sub.input || 0) + Number(sub.output || 0) : 0;
       if (usageMetric === 'total' && rawValue > 0 && subTokens > 0) {
-        label += `（主 ${formatTokenCount(rawValue - subTokens)} · 子 ${formatTokenCount(subTokens)}）`;
+        label += t('（主 {main} · 子 {sub}）', { main: formatTokenCount(rawValue - subTokens), sub: formatTokenCount(subTokens) });
       }
       // 列是满高的悬浮识别区，柱子只是底部的可见部分
       const col = document.createElement('span');
@@ -227,7 +229,7 @@ import {
     } catch (error) {
       // 读存储失败不阻塞授权状态展示，但给出可感知提示而非永久 '--'
       console.warn('读取用量统计失败:', error);
-      usageTokensEl.textContent = '读取失败';
+      usageTokensEl.textContent = t('读取失败');
     }
   }
 
@@ -248,7 +250,7 @@ import {
   usageStartEl.addEventListener('change', onRangeChange);
   usageEndEl.addEventListener('change', onRangeChange);
   usageMetricEl.addEventListener('change', () => {
-    usageMetric = isValidUsageMetric(usageMetricEl.value) ? usageMetricEl.value : 'total';
+    usageMetric = isValidUsageMetric(usageMetricEl.value) ? usageMetricEl.value : 'heatmap';
     chrome.storage.local.set({ [USAGE_METRIC_STORAGE_KEY]: usageMetric }).catch(() => {});
     usageDayEl.textContent = '';
     renderUsage();
@@ -304,9 +306,9 @@ import {
       // 个别内核同步回收过早，延迟释放 blob URL
       setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_REVOKE_MS);
     } catch (error) {
-      link.textContent = '导出失败';
+      link.textContent = t('导出失败');
       setTimeout(() => {
-        link.textContent = '导出统计';
+        link.textContent = t('导出统计');
       }, UI_MESSAGE_RESET_MS);
     }
   });
@@ -317,12 +319,12 @@ import {
     const link = event.currentTarget;
     try {
       await chrome.storage.local.remove('kimi-statusbar.config');
-      link.textContent = '已重置 ✓';
+      link.textContent = t('已重置 ✓');
     } catch (error) {
-      link.textContent = '重置失败';
+      link.textContent = t('重置失败');
     }
     setTimeout(() => {
-      link.textContent = '重置布局';
+      link.textContent = t('重置布局');
     }, UI_MESSAGE_RESET_MS);
   });
 
@@ -331,11 +333,11 @@ import {
   export function setCliPathHelp() {
     const platform = String(navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
     if (platform.includes('mac')) {
-      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>⌘⇧.</b> 显示隐藏目录。';
+      cliPathHelp.innerHTML = t('建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>⌘⇧.</b> 显示隐藏目录。');
     } else if (platform.includes('win')) {
-      cliPathHelp.innerHTML = '建议路径：<code>%USERPROFILE%\\.kimi-code</code><br>可按 <b>Ctrl+L</b> 后粘贴路径并回车。';
+      cliPathHelp.innerHTML = t('建议路径：<code>%USERPROFILE%\\.kimi-code</code><br>可按 <b>Ctrl+L</b> 后粘贴路径并回车。');
     } else {
-      cliPathHelp.innerHTML = '建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>Ctrl+H</b> 显示隐藏目录。';
+      cliPathHelp.innerHTML = t('建议路径：<code>~/.kimi-code</code><br>目录选择器中按 <b>Ctrl+H</b> 显示隐藏目录。');
     }
   }
 
@@ -380,18 +382,18 @@ import {
       usageDaily = {};
       cliConnectBtn.disabled = false;
       cliConnectBtn.textContent = state.permission === 'prompt' || state.permission === 'denied'
-        ? '授权本地 CLI'
-        : '连接本地 CLI';
+        ? t('授权本地 CLI')
+        : t('连接本地 CLI');
       return;
     }
     const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
     cliStatusDot.className = `dot ${state.error ? 'bad' : 'ok'}`;
     // 显示真实错误（截断），不再是泛化文案——网络盘断连等原因用户可直接定位
     cliStatusText.textContent = state.error
-      ? `读取失败：${String(state.error).slice(0, 80)}`
+      ? t('读取失败：{msg}', { msg: String(state.error).slice(0, 80) })
       : cliScanning
-      ? `正在读取本地记录 ${progress}%`
-      : '本地记录已授权';
+      ? t('正在读取本地记录 {pct}%', { pct: progress })
+      : t('本地记录已授权');
     cliReauthBtn.disabled = cliScanning;
     cliDisconnectBtn.disabled = cliScanning;
     if (cliScanning) startCliProgressPolling();
@@ -401,13 +403,13 @@ import {
   export async function refreshCliStatus({ refreshData = true } = {}) {
     try {
       const response = await send('cli.usage.status');
-      if (!response?.ok) throw new Error(response?.error || '状态读取失败');
+      if (!response?.ok) throw new Error(response?.error || t('状态读取失败'));
       setCliUi(response.connected, response);
       if (response.connected && refreshData && !response.scanning) refreshUsage();
     } catch (error) {
       setCliUi(false);
-      cliConnectBtn.textContent = '连接状态异常，请重试';
-      showCliError(error?.message || '连接状态异常，请重试');
+      cliConnectBtn.textContent = t('连接状态异常，请重试');
+      showCliError(error?.message || t('连接状态异常，请重试'));
     }
   }
 
@@ -415,7 +417,7 @@ import {
   async function scanCliUsage(force = false) {
     setCliUi(true, { scanning: true });
     const response = await send('cli.usage.refresh', { force });
-    if (!response?.ok) throw new Error(response?.error || '本地记录读取失败');
+    if (!response?.ok) throw new Error(response?.error || t('本地记录读取失败'));
     await refreshCliStatus();
   }
 
@@ -428,7 +430,7 @@ import {
       return;
     }
     if (typeof showDirectoryPicker !== 'function') {
-      cliConnectBtn.textContent = '当前 Chrome 不支持目录授权';
+      cliConnectBtn.textContent = t('当前 Chrome 不支持目录授权');
       return;
     }
     const wasConnected = cliConnected;
@@ -439,7 +441,7 @@ import {
       // 有句柄时先直接请求恢复权限，一次点击即可，不必重新选择目录
       const existing = await KimiCliUsage.getDirectoryHandle().catch(() => null);
       if (existing && typeof existing.requestPermission === 'function') {
-        cliConnectBtn.textContent = '正在恢复授权…';
+        cliConnectBtn.textContent = t('正在恢复授权…');
         const granted = await existing.requestPermission({ mode: 'read' }).catch(() => 'denied');
         if (granted === 'granted') {
           await scanCliUsage(true);
@@ -447,10 +449,10 @@ import {
         }
         // 未获权限则继续走目录选择器
       }
-      cliConnectBtn.textContent = '请选择 .kimi-code 文件夹…';
+      cliConnectBtn.textContent = t('请选择 .kimi-code 文件夹…');
       const handle = await showDirectoryPicker({ id: 'kimi-cli-sessions', mode: 'read' });
       if (handle.name !== '.kimi-code') {
-        throw new Error('目录选择错误：请选择 .kimi-code 文件夹。');
+        throw new Error(t('目录选择错误：请选择 .kimi-code 文件夹。'));
       }
       await KimiCliUsage.saveDirectoryHandle(handle);
       await scanCliUsage(true);
@@ -458,7 +460,7 @@ import {
       await refreshCliStatus();
       if (!wasConnected && !cliConnected) setCliUi(false);
       if (error?.name !== 'AbortError') {
-        showCliError(error?.message || '连接失败，请重试');
+        showCliError(error?.message || t('连接失败，请重试'));
       }
     } finally {
       cliConnectBtn.disabled = false;
@@ -474,7 +476,7 @@ import {
       showCliError();
       await refreshCliStatus();
     } catch (error) {
-      showCliError(error?.message || '断开失败，请重试');
+      showCliError(error?.message || t('断开失败，请重试'));
     } finally {
       cliDisconnectBtn.disabled = false;
     }

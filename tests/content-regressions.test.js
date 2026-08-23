@@ -100,7 +100,7 @@ test('宠物显示余额时即使其他额度模块隐藏也继续刷新', () =>
 });
 
 test('宠物 24h 消耗未授权时明确提示连接 CLI', () => {
-  assert.match(renderSource, /if \(!panel\.cliUsageConnected\) return '需连接 CLI';/);
+  assert.match(renderSource, /if \(!panel\.cliUsageConnected\) return t\('需连接 CLI'\);/);
 });
 
 test('宠物恢复 2.0.0 的命名动画架构，不再混用官网状态机', () => {
@@ -225,4 +225,8 @@ test('切换账户后面板先显示该账户缓存额度，再强制刷新', ()
   assert.match(source, /fetchQuota\(false, \{ allowStale: true \}\)/);
   assert.match(source, /fetchQuota\(true\)/);
   assert.match(quotaSource, /payload: \{ force, allowStale \}/);
+});
+
+test('侧栏改造开启时隐藏新建对话/搜索右端的快捷键提示（与收起按钮重叠）', () => {
+  assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.sidebar-actions \.ui-kbd \{\s*display: none/);
 });

@@ -23,13 +23,13 @@ import {
   escapeHtml,
   fmtDuration,
   progressClass,
-  STATUS_TEXT,
   PET_ANSWER_STATUSES
 } from './utils.js';
+import { t, statusText } from '../i18n.js';
 
 const STATUS_MIN_DISPLAY_MS = 1_500;
 const CHART_RANGE_DAYS = { week: 7, month: 30 };
-const CHART_RANGE_LABELS = { week: '7d消耗', month: '30d消耗' };
+const CHART_RANGE_LABELS = { week: t('7d消耗'), month: t('30d消耗') };
 
 // 窗口时长：5h 与 API 的 window.duration=300（分钟）一致；本周按 7 天
 const QUOTA_WINDOW_MS = { '5h': 300 * 60_000, week: 7 * 24 * 3_600_000 };
@@ -98,7 +98,7 @@ export function updateBalance(wallet) {
   const balanceYuan = boosterBalanceYuan(panel.lastWallet);
   panel.els.balance.textContent = balanceYuan != null
     ? `¥${balanceYuan.toFixed(2)}`
-    : '余额 --';
+    : t('余额 --');
 }
 
 export function updateTokenDisplay() {
@@ -145,7 +145,7 @@ let pendingStatusTimer = null;
 export function paintAgentStatus(display) {
   if (!panel.els) return;
   if (panel.els.statusDot) panel.els.statusDot.className = `ksb-status-dot ksb-${display}`;
-  if (panel.els.agentStatus) panel.els.agentStatus.textContent = STATUS_TEXT[display] || display;
+  if (panel.els.agentStatus) panel.els.agentStatus.textContent = statusText(display);
   hooks.petUpdateStatus?.(display);
   hooks.roamPetSetStatus?.(display);
 }
@@ -280,7 +280,7 @@ function renderSpark(svg, values, fmt, marks) {
       const fx = x.toFixed(1);
       const rx = Math.max(0, Math.min(W, x - spacing / 2));
       const rw = Math.max(1, Math.min(W, x + spacing / 2) - rx);
-      const label = pairs[i].turn ? `第${i + 1}步 · 本轮结束` : `第${i + 1}步`;
+      const label = pairs[i].turn ? t('第{n}步 · 本轮结束', { n: i + 1 }) : t('第{n}步', { n: i + 1 });
       return `<g class="ksb-spark-pt"><line class="ksb-spark-pt-line" x1="${fx}" y1="1" x2="${fx}" y2="27" stroke="url(#${svg.id}-linefade)"/>${dot(x, y, 2.6, 'ksb-spark-pt-dot')}<rect class="ksb-spark-hit" x="${rx.toFixed(1)}" y="0" width="${rw.toFixed(1)}" height="28" fill="transparent"><title>${escapeHtml(label)} · ${escapeHtml(fmt(pts[i]))}</title></rect></g>`;
     })
     .join('');
@@ -327,7 +327,7 @@ export function renderChart() {
   module?.classList.toggle('ksb-cli-required', !panel.cliUsageConnected);
   if (panel.els.cliLock) panel.els.cliLock.hidden = panel.cliUsageConnected;
   if (!panel.cliUsageConnected) {
-    panel.els.chartTotal.textContent = '需连接';
+    panel.els.chartTotal.textContent = t('需连接');
     if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = '';
     if (panel.els.chartHitShort) panel.els.chartHitShort.textContent = '';
     panel.els.chartBars.replaceChildren();
@@ -343,7 +343,7 @@ export function renderChart() {
   if (panel.els.chartLabel) panel.els.chartLabel.textContent = CHART_RANGE_LABELS[range] || CHART_RANGE_LABELS.week;
   panel.els.chartTotal.textContent = sum.totalTokens > 0 ? formatTokenCount(sum.totalTokens) : '--';
   const hitPct = sum.cacheHitRate != null ? `${formatPercentage(sum.cacheHitRate * 100)}%` : '';
-  if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = hitPct ? `缓存命中 ${hitPct}` : '';
+  if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = hitPct ? t('缓存命中 {pct}', { pct: hitPct }) : '';
   if (panel.els.chartHitShort) panel.els.chartHitShort.textContent = hitPct;
   panel.els.chartBars.replaceChildren();
   const keys = listDayKeysBetween(startKey, endKey);
@@ -363,7 +363,7 @@ export function renderChart() {
     const col = document.createElement('span');
     col.className = 'ksb-chart-col';
     col.title = subTokens > 0
-      ? `${key.slice(5)} · 主 ${formatTokenCount(mainTokens)} · 子 ${formatTokenCount(subTokens)}`
+      ? t('{date} · 主 {main} · 子 {sub}', { date: key.slice(5), main: formatTokenCount(mainTokens), sub: formatTokenCount(subTokens) })
       : `${key.slice(5)} · ${formatTokenCount(tokens)}`;
     const stack = document.createElement('span');
     stack.className = 'ksb-chart-stack';
@@ -434,7 +434,7 @@ export function renderAgents() {
     totals: agentTotals.main || emptyAgentMetric(),
     working: mainWorking,
     name: escapeHtml(mainModel),
-    title: `主代理${mainModel ? ` · ${mainModel}` : ''}`
+    title: `${t('主代理')}${mainModel ? ` · ${mainModel}` : ''}`
   });
   for (const [model, group] of groups) {
     pushRow({
@@ -442,8 +442,8 @@ export function renderAgents() {
       totals: group,
       working: group.working,
       // 模型名缺失（未授权 CLI 读不到次级模型名）时兜底为「子代理」，避免裸 ×N
-      name: escapeHtml(`${model || '子代理'}${group.count > 1 ? ` ×${group.count}` : ''}`),
-      title: `子代理${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
+      name: escapeHtml(`${model || t('子代理')}${group.count > 1 ? ` ×${group.count}` : ''}`),
+      title: `${t('子代理')}${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
     });
   }
   panel.els.agentsList.innerHTML = rows.join('');
@@ -454,13 +454,13 @@ export function renderAgents() {
 // 格式化单个账户的主数值与子数值：余额类「API余额 ¥4.46」；
 // 套餐类「5h 40.0% · 1w 12.0%」；半宽只取主数值 + 次要窗口做下角标
 function formatExternalValue(provider) {
-  if (provider.error) return { main: '获取失败', sub: '', note: provider.error };
+  if (provider.error) return { main: t('获取失败'), sub: '', note: provider.error };
   if (provider.kind === 'balance') {
     const main = `${provider.currency}${provider.total.toFixed(2)}`;
     return {
       main,
       sub: '',
-      note: `赠送 ${provider.currency}${provider.granted.toFixed(2)} · 充值 ${provider.currency}${provider.paid.toFixed(2)}`
+      note: t('赠送 {granted} · 充值 {paid}', { granted: `${provider.currency}${provider.granted.toFixed(2)}`, paid: `${provider.currency}${provider.paid.toFixed(2)}` })
     };
   }
   if (provider.windows?.length) {
@@ -469,12 +469,12 @@ function formatExternalValue(provider) {
     return {
       main: `${formatPercentage(first.pct)}%`,
       sub: second ? `${second.label} ${formatPercentage(second.pct)}%` : '',
-      note: [provider.plan, reset ? `重置 ${new Date(reset).toLocaleString()}` : '']
+      note: [provider.plan, reset ? t('重置 {time}', { time: new Date(reset).toLocaleString() }) : '']
         .filter(Boolean)
         .join(' · ')
     };
   }
-  return { main: provider.plan || '已启用', sub: '', note: '' };
+  return { main: provider.plan || t('已启用'), sub: '', note: '' };
 }
 
 export function renderExternal() {
@@ -484,7 +484,7 @@ export function renderExternal() {
   // 半宽：标题换成第一个选中账户的名称，大数字是它的余额/用量百分比
   if (panel.els?.externalTitle) {
     const first = visible[0];
-    panel.els.externalTitle.textContent = first ? first.name : '外部账户';
+    panel.els.externalTitle.textContent = first ? first.name : t('外部账户');
     if (!first) {
       panel.els.externalValue.textContent = '--';
       panel.els.externalSub.hidden = true;
@@ -501,23 +501,23 @@ export function renderExternal() {
   if (!panel.els?.externalList) return;
   if (!visible.length) {
     panel.els.externalList.innerHTML =
-      '<div class="ksb-external-empty">在扩展弹窗中配置 API Key</div>';
+      `<div class="ksb-external-empty">${t('在扩展弹窗中配置 API Key')}</div>`;
     return;
   }
   // 同一 provider 多个账户时，用 key 尾号区分
   const nameCounts = {};
   for (const p of visible) nameCounts[p.name] = (nameCounts[p.name] || 0) + 1;
   const valueHtml = (provider) => {
-    if (provider.error) return '获取失败';
+    if (provider.error) return t('获取失败');
     if (provider.kind === 'balance') {
-      return `<span class="ksb-external-kind">API余额</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
+      return `<span class="ksb-external-kind">${t('API余额')}</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
     }
     if (provider.windows?.length) {
       return provider.windows
         .map((w) => `<span class="ksb-external-kind">${escapeHtml(w.label)}</span> ${formatPercentage(w.pct)}%`)
         .join(' · ');
     }
-    return provider.plan ? escapeHtml(provider.plan) : '已启用';
+    return provider.plan ? escapeHtml(provider.plan) : t('已启用');
   };
   panel.els.externalList.innerHTML = visible
     .map((provider) => {
@@ -537,9 +537,9 @@ export function renderExternal() {
 // 宠物模块右侧数据：六种口径可选（≡ 菜单切换），标签与数值联动
 const PET_STAT_DEFS = {
   daily: {
-    label: '24h消耗',
+    label: t('24h消耗'),
     value: () => {
-      if (!panel.cliUsageConnected) return '需连接 CLI';
+      if (!panel.cliUsageConnected) return t('需连接 CLI');
       const bucket = panel.usageDailyCache[usageDayKey(new Date())];
       const total = bucket ? bucket.input + bucket.output : 0;
       return total > 0 ? formatTokenCount(total) : '--';
@@ -582,7 +582,7 @@ export function renderPetStats() {
 // 紧凑格式（额度行内）：45m / 2h30m / 3d5h，与 macOS 菜单栏应用同精度
 function fmtCountdown(diffMs) {
   const totalMin = Math.floor(diffMs / 60_000);
-  if (totalMin < 1) return '即将重置';
+  if (totalMin < 1) return t('即将重置');
   const hours = Math.floor(totalMin / 60);
   const minutes = totalMin % 60;
   if (hours < 1) return `${totalMin}m`;
@@ -595,7 +595,7 @@ function fmtCountdown(diffMs) {
 // 窄宽度下的单单位格式：45m / 2h / 3d
 function fmtCountdownShort(diffMs) {
   const totalMin = Math.floor(diffMs / 60_000);
-  if (totalMin < 1) return '即将重置';
+  if (totalMin < 1) return t('即将重置');
   const hours = Math.floor(totalMin / 60);
   if (hours < 1) return `${totalMin}m`;
   const days = Math.floor(hours / 24);
@@ -608,21 +608,21 @@ function fmtCountdownLong(diffMs, resetMs) {
   const totalMin = Math.floor(diffMs / 60_000);
   const date = new Date(resetMs);
   const abs = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  if (totalMin < 1) return '即将重置';
+  if (totalMin < 1) return t('即将重置');
   const hours = Math.floor(totalMin / 60);
   const minutes = totalMin % 60;
   const days = Math.floor(hours / 24);
   const text = days >= 1
-    ? `${days}天${hours % 24}小时后重置`
+    ? t('{days}天{hours}小时后重置', { days, hours: hours % 24 })
     : hours >= 1
-      ? `${hours}小时${minutes}分钟后重置`
-      : `${totalMin}分钟后重置`;
+      ? t('{hours}小时{minutes}分钟后重置', { hours, minutes })
+      : t('{totalMin}分钟后重置', { totalMin });
   return `${text}（${abs}）`;
 }
 
 // 具体时间格式（≡ 菜单可选）：当天只显示 HH:mm；跨天显示「周三17:45」，
 // 窄宽度降级为「周三」，更窄由 CSS 整体隐藏（container ≤155px）
-const RESET_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const RESET_WEEKDAYS = [t('周日'), t('周一'), t('周二'), t('周三'), t('周四'), t('周五'), t('周六')];
 function fmtResetAbsolute(resetMs, { short = false } = {}) {
   const date = new Date(resetMs);
   const now = new Date();
@@ -660,12 +660,12 @@ export function updateResetText(prefix, resetMs) {
   if (full) {
     full.textContent = diff > 0
       ? (useAbsolute ? fmtResetAbsolute(resetMs) : fmtCountdown(diff))
-      : '即将重置';
+      : t('即将重置');
   }
   if (short) {
     short.textContent = diff > 0
       ? (useAbsolute ? fmtResetAbsolute(resetMs, { short: true }) : fmtCountdownShort(diff))
-      : '即将重置';
+      : t('即将重置');
   }
   setResetTooltip(prefix, fmtCountdownLong(Math.max(diff, 0), resetMs));
   if (diff <= 0 && !resetRefetchTimer) {

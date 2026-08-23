@@ -7,6 +7,7 @@ import * as KimiSessionRenameModel from '../session-rename/rename-model.js';
 import * as KimiExternalProviders from '../providers.js';
 import { send, pageState } from './shared.js';
 import { getExternalAccountsCache } from './external.js';
+import { t } from '../i18n.js';
 
 const { formatTokenCount } = KimiMetrics;
 
@@ -17,7 +18,8 @@ const { formatTokenCount } = KimiMetrics;
   const RENAME_EXT_MODELS_STORAGE_KEY = 'sessionRenameExtModels';
   const renameShared = KimiSessionRename;
   const renameModelSelect = document.getElementById('rename-model-select');
-  const renameEmojiToggle = document.getElementById('rename-emoji-toggle');
+  const renameEmojiOn = document.getElementById('rename-emoji-on');
+  const renameEmojiOff = document.getElementById('rename-emoji-off');
   const renameAutoToggle = document.getElementById('rename-auto-toggle');
   const renameSection = document.getElementById('rename-section');
 
@@ -43,7 +45,7 @@ const { formatTokenCount } = KimiMetrics;
       const response = await send('rename.usage.get');
       const usage = response?.usage;
       renameUsage.textContent = usage?.calls > 0
-        ? `累计命名 ${usage.calls} 次 · 输入 ${formatTokenCount(usage.input)} · 输出 ${formatTokenCount(usage.output)} tokens`
+        ? t('累计命名 {calls} 次 · 输入 {input} · 输出 {output} tokens', { calls: usage.calls, input: formatTokenCount(usage.input), output: formatTokenCount(usage.output) })
         : '';
     } catch (error) {
       renameUsage.textContent = '';
@@ -151,7 +153,7 @@ const { formatTokenCount } = KimiMetrics;
         }
         chrome.storage.local.set({ sessionRenameModelV2: true }).catch(() => {});
       }
-      renameEmojiToggle.checked = renameSettings.emojiEnabled !== false;
+      renderRenameEmoji(renameSettings.emojiEnabled !== false);
       renameSectionSetOn(renameSettings.autoEnabled === true);
       buildRenameModelOptions();
       normalizeRenameModelSource();
@@ -213,10 +215,18 @@ const { formatTokenCount } = KimiMetrics;
     renameSettings.modelSource = valueToModelSource(renameModelSelect.value);
     saveRenameSettings();
   });
-  renameEmojiToggle.addEventListener('change', () => {
-    renameSettings.emojiEnabled = renameEmojiToggle.checked;
+  // 标题带 emoji：打开/关闭文字按钮，当前态蓝色高亮
+  function renderRenameEmoji(on) {
+    renameEmojiOn.classList.toggle('primary', on);
+    renameEmojiOff.classList.toggle('primary', !on);
+  }
+  function setRenameEmoji(on) {
+    renameSettings.emojiEnabled = on;
+    renderRenameEmoji(on);
     saveRenameSettings();
-  });
+  }
+  renameEmojiOn.addEventListener('click', () => setRenameEmoji(true));
+  renameEmojiOff.addEventListener('click', () => setRenameEmoji(false));
   renameAutoToggle.addEventListener('change', () => {
     renameSettings.autoEnabled = renameAutoToggle.checked;
     renameSectionSetOn(renameAutoToggle.checked);
