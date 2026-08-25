@@ -231,7 +231,7 @@ test('收藏页布局：内容列 760px 居中（同会话页 --read-max 逻辑�
 test('分组视图：组间分隔线清晰，组内行不再重复显示会话名', () => {
   // grouped 时行内省略会话名（组头已有），未分组时保留
   assert.match(source, /grouped \? '' : `<span class="kbm-item-session">/);
-  assert.match(source, /renderListItem\(row, groupBySession\)/);
+  assert.match(source, /renderListItem\(row, groupBySession, display\.indexOf\(row\)\)/);
   assert.match(source, /renderCardItem\(row, groupBySession\)/);
   // 组间分隔线只在列表视图（卡片视图分组为整行组块 + 嵌套网格，不出分隔线）
   assert.match(contentCss, /\.kbm-wrap \.kbm-group \+ \.kbm-group \{[\s\S]*?border-top: 1px solid var\(--kbm-line\)/);
@@ -316,15 +316,15 @@ test('卡片 hover 显示单条删除 ✕（与列表一致），且卡片 hover
   // 卡片非管理模式渲染删除按钮（复用列表的 .kbm-item-remove 样式与事件）
   assert.match(source, /kbm-item-remove kbm-card-remove/);
   assert.match(contentCss, /\.kbm-card:hover \.kbm-card-remove \{ opacity: 1/);
-  // hover 效果统一为灰底（不再只是边框加深）
-  assert.match(contentCss, /\.kbm-card:hover \{ background: var\(--kbm-hover\)/);
-  assert.doesNotMatch(contentCss, /\.kbm-card:hover \{ border-color/);
+  // hover 效果回到边框加深（卡片内部不变色），列表项与卡片一致
+  assert.match(contentCss, /\.kbm-card:hover \{ border-color: var\(--kbm-muted\)/);
+  assert.match(contentCss, /\.kbm-item:hover \{ border-color: var\(--kbm-muted\)/);
+  assert.doesNotMatch(contentCss, /\.kbm-card:hover \{ background/);
 });
 
 test('列表行删除 ✕ 绝对定位：不占布局空间，左右间距一致', () => {
   assert.match(contentCss, /\.kbm-item \{[\s\S]*?position: relative/);
   assert.match(contentCss, /\.kbm-item-remove \{[\s\S]*?position: absolute[\s\S]*?right: 12px/);
-  assert.match(contentCss, /\.kbm-item \{[\s\S]*?padding: 10px 12px;[\s\S]*?margin: 0 -12px/);
   assert.match(contentCss, /\.kbm-item-meta \{ padding-right: 20px/);
 });
 
@@ -333,4 +333,52 @@ test('打开收藏页时侧栏聚焦跳回工作区（pushState / + popstate，�
   assert.match(source, /history\.pushState\(null, '', '\/'\)/);
   assert.match(source, /window\.dispatchEvent\(new PopStateEvent\('popstate'\)\)/);
   assert.match(source, /if \(pageOpen\) \{\s*refocusSidebarToWorkspace\(\);/);
+});
+
+test('列表视图右侧快速目录：渲染、点击跳转、滚动高亮；卡片视图不渲染', () => {
+  // 仅列表视图且条目 >1 才渲染目录
+  assert.match(source, /if \(viewMode !== 'list' \|\| display\.length <= 1\) return '';/);
+  assert.match(source, /class="kbm-toc-row" data-toc-idx=/);
+  // 列表项带目录序号，点击平滑滚动 + 闪烁高亮
+  assert.ok(source.includes('data-toc-idx="${tocIdx}"'));
+  assert.match(source, /item\.scrollIntoView\(\{ block: 'start', behavior: 'smooth' \}\)/);
+  assert.match(source, /flashAnchor\(item\)/);
+  // 滚动跟随高亮（视口上部 30% 线）
+  assert.match(source, /function syncPageTocActive\(\)/);
+  assert.match(source, /body\.clientHeight \* 0\.3/);
+  // 官方目录同款交互：细条常态、hover 展开标题、激活态
+  assert.match(contentCss, /\.kbm-page-toc:hover \.kbm-toc-label \{[\s\S]*?max-width: 240px/);
+  assert.match(contentCss, /\.kbm-toc-row\.on \.kbm-toc-bar \{[\s\S]*?opacity: 1/);
+  assert.match(contentCss, /@media \(max-width: 900px\)[\s\S]*?\.kbm-page-toc \{ display: none/);
+  // 位置：垂直居中、贴 760 内容列右缘（与会话页目录一致），不贴视口最右
+  assert.match(contentCss, /\.kbm-page-toc \{[\s\S]*?top: 50%[\s\S]*?translateY\(-50%\)/);
+  assert.match(contentCss, /\.kbm-page-toc \{[\s\S]*?left: calc\(50% \+ 394px\)/);
+  assert.doesNotMatch(contentCss, /\.kbm-page-toc \{[\s\S]*?right: 14px/);
+});
+
+test('目录会话层级：分组时插入会话标题条目（灰条），收藏条目橙条，同一层级', () => {
+  assert.match(source, /kbm-toc-row kbm-toc-session/);
+  assert.match(source, /display\.indexOf\(group\.rows\[0\]\)/);
+  assert.match(contentCss, /\.kbm-toc-session \.kbm-toc-bar \{[\s\S]*?background: var\(--kbm-muted\)/);
+  assert.match(contentCss, /\.kbm-toc-bar \{[\s\S]*?background: var\(--kbm-mark\)/);
+});
+
+test('列表条目卡片化：与卡片视图同款边框圆角', () => {
+  assert.match(contentCss, /\.kbm-item \{[\s\S]*?border: 1px solid var\(--kbm-line\)[\s\S]*?border-radius: 12px/);
+  assert.match(contentCss, /\.kbm-item \{[\s\S]*?padding: 12px 16px/);
+});
+
+test('分组标题：大号标题 + 朴素计数（无胶囊底）；组间用空白而非分隔线', () => {
+  assert.match(contentCss, /\.kbm-group-head \{[\s\S]*?font-size: 15px/);
+  assert.doesNotMatch(contentCss, /\.kbm-group-head \.kbm-page-count/);
+  // 卡片化后组间不再用分隔线，用更大的空白隔开
+  assert.match(contentCss, /\.kbm-wrap \.kbm-group \+ \.kbm-group \{\s*margin-top: 28px;\s*\}/);
+});
+
+test('回归：列表项 hover 边框过渡与卡片同款，目录滚动条隐藏（官方一致）', () => {
+  assert.match(contentCss, /\.kbm-item \{[\s\S]*?transition: border-color 0\.15s ease/);
+  assert.match(contentCss, /\.kbm-card \{[\s\S]*?transition: border-color 0\.15s ease/);
+  // 官方 toc-scroll 同款：overflow-y auto + scrollbar-width none + ::-webkit-scrollbar 隐藏
+  assert.match(contentCss, /\.kbm-page-toc \{[\s\S]*?overflow-y: auto[\s\S]*?scrollbar-width: none/);
+  assert.match(contentCss, /\.kbm-page-toc::-webkit-scrollbar \{\s*display: none/);
 });

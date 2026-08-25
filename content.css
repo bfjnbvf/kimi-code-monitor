@@ -1730,13 +1730,16 @@ html[data-color-scheme="dark"] {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
-  margin: 0 -12px;
-  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 0 0 10px;
+  background: var(--kbm-bg);
+  border: 1px solid var(--kbm-line);
+  border-radius: 12px;
   cursor: pointer;
   font-size: 13px;
+  transition: border-color 0.15s ease;
 }
-.kbm-item:hover { background: var(--kbm-hover); }
+.kbm-item:hover { border-color: var(--kbm-muted); }
 .kbm-item .kbm-check { margin-top: 2px; flex: none; }
 .kbm-item-main { flex: 1; min-width: 0; }
 .kbm-item-meta {
@@ -1779,20 +1782,19 @@ html[data-color-scheme="dark"] {
 .kbm-item:hover .kbm-item-remove { opacity: 1; }
 .kbm-item-remove:hover { color: var(--kbm-danger); }
 
-/* 分组头（按会话分组时）：列表视图组间分隔线让分组边界一眼可辨 */
+/* 分组头（按会话分组时）：大号标题 + 计数胶囊 + 列表视图组间分隔线 */
 .kbm-group-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 16px 0 6px;
-  font-size: 13px;
+  padding: 20px 0 8px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--kbm-text);
 }
+
 .kbm-wrap .kbm-group + .kbm-group {
-  margin-top: 10px;
-  padding-top: 6px;
-  border-top: 1px solid var(--kbm-line);
+  margin-top: 28px;
 }
 
 /* 卡片视图：统一尺寸卡片网格（全宽铺开，不随列表的 760 居中列） */
@@ -1828,7 +1830,7 @@ html[data-color-scheme="dark"] {
   font-size: 13px;
   transition: border-color 0.15s ease;
 }
-.kbm-card:hover { background: var(--kbm-hover); }
+.kbm-card:hover { border-color: var(--kbm-muted); }
 .kbm-card .kbm-check {
   position: absolute;
   top: 10px;
@@ -1858,6 +1860,75 @@ html[data-color-scheme="dark"] {
 .kbm-card-text.kbm-clamped {
   -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+}
+
+/* 列表视图右侧快速目录：细条常态、hover 展开标题、当前位置高亮 */
+.kbm-page-toc {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  /* 贴 760 内容列的右缘（列半宽 380 + 间隙），与会话页目录一致 */
+  left: calc(50% + 394px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  z-index: 2;
+}
+.kbm-page-toc::-webkit-scrollbar {
+  display: none;
+}
+.kbm-toc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--kbm-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.kbm-toc-bar {
+  flex: none;
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--kbm-mark);
+  opacity: 0.3;
+  transition: opacity 0.12s, height 0.12s;
+}
+.kbm-page-toc:hover .kbm-toc-bar {
+  height: 18px;
+  opacity: 0.5;
+}
+.kbm-toc-session .kbm-toc-bar {
+  background: var(--kbm-muted);
+}
+.kbm-toc-row.on { color: var(--kbm-text); }
+.kbm-toc-row.on .kbm-toc-bar {
+  opacity: 1;
+  height: 18px;
+}
+.kbm-toc-label {
+  display: block;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  text-overflow: ellipsis;
+  transition: max-width 0.22s ease, opacity 0.12s;
+}
+.kbm-page-toc:hover .kbm-toc-label {
+  max-width: 240px;
+  opacity: 1;
+}
+@media (max-width: 900px) {
+  .kbm-page-toc { display: none; }
 }
 
 /* 卡片详情弹层：遮罩 + 居中卡片（参考搜索弹层：淡入 + 轻微上浮缩放的过渡） */

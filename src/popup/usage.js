@@ -216,14 +216,19 @@ import { t } from '../i18n.js';
         ? stored[USAGE_METRIC_STORAGE_KEY]
         : usageMetric;
       usageMetricEl.value = usageMetric;
-      // 可选范围：最早有记录的一天 ~ 今天；默认看今日
+      // 可选范围：最早有记录的一天 ~ 今天；默认最近一个月（结束日期为当天）
       const todayKey = usageDayKey(new Date());
       const firstKey = Object.keys(usageDaily).sort()[0] || todayKey;
       for (const input of [usageStartEl, usageEndEl]) {
         input.min = firstKey;
         input.max = todayKey;
       }
-      if (!usageStartEl.value) usageStartEl.value = todayKey;
+      if (!usageStartEl.value) {
+        const monthAgo = new Date();
+        monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1);
+        const monthAgoKey = usageDayKey(monthAgo);
+        usageStartEl.value = monthAgoKey < firstKey ? firstKey : monthAgoKey;
+      }
       if (!usageEndEl.value) usageEndEl.value = todayKey;
       renderUsage();
     } catch (error) {
@@ -311,21 +316,6 @@ import { t } from '../i18n.js';
         link.textContent = t('导出统计');
       }, UI_MESSAGE_RESET_MS);
     }
-  });
-
-  // 重置面板布局：只删模块配置键；CLI 授权、统计缓存和额度快照一概不动。
-  document.getElementById('reset-layout-link').addEventListener('click', async (event) => {
-    event.preventDefault();
-    const link = event.currentTarget;
-    try {
-      await chrome.storage.local.remove('kimi-statusbar.config');
-      link.textContent = t('已重置 ✓');
-    } catch (error) {
-      link.textContent = t('重置失败');
-    }
-    setTimeout(() => {
-      link.textContent = t('重置布局');
-    }, UI_MESSAGE_RESET_MS);
   });
 
 

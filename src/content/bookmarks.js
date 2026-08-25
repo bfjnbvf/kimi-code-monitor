@@ -463,10 +463,10 @@ function rowKey(sessionId, turnId) {
   return `${sessionId}/${turnId}`;
 }
 
-function renderListItem(row, grouped) {
+function renderListItem(row, grouped, tocIdx) {
   const key = rowKey(row.sessionId, row.turnId);
   return `
-    <div class="kbm-item" data-session-id="${escText(row.sessionId)}" data-turn-id="${escText(row.turnId)}" role="button" tabindex="0">
+    <div class="kbm-item" data-session-id="${escText(row.sessionId)}" data-turn-id="${escText(row.turnId)}"${tocIdx != null ? ` data-toc-idx="${tocIdx}"` : ''} role="button" tabindex="0">
       ${managing ? `<input type="checkbox" class="kbm-check" data-key="${escText(key)}"${selected.has(key) ? ' checked' : ''}>` : ''}
       <div class="kbm-item-main">
         <div class="kbm-item-meta">
@@ -508,9 +508,17 @@ function groupRows(rows) {
   return groups;
 }
 
+// 目录用的展示顺序（分组时按组展平）
+function displayRowsOf(rows) {
+  return groupBySession ? groupRows(rows).flatMap((g) => g.rows) : rows;
+}
+
 function renderRows(rows) {
+  const display = displayRowsOf(rows);
   const renderOne = (row) =>
-    viewMode === 'cards' ? renderCardItem(row, groupBySession) : renderListItem(row, groupBySession);
+    viewMode === 'cards'
+      ? renderCardItem(row, groupBySession)
+      : renderListItem(row, groupBySession, display.indexOf(row));
   if (!groupBySession) return rows.map(renderOne).join('');
   return groupRows(rows)
     .map(
@@ -521,6 +529,44 @@ function renderRows(rows) {
         </div>`
     )
     .join('');
+}
+
+// 列表视图的右侧快速目录（参考会话页 ConversationToc：细条 + hover 展开标题）。
+// 按会话分组时插入会话标题条目：同一层级不折叠，竖条用灰色（收藏条目用橙色）
+function renderPageToc(display, rows) {
+  if (viewMode !== 'list' || display.length <= 1) return '';
+  const rowBtn = (row) => {
+    const i = display.indexOf(row);
+    return `<button type="button" class="kbm-toc-row" data-toc-idx="${i}"><span class="kbm-toc-bar"></span><span class="kbm-toc-label">${escText(truncateTitle(row.title, 28) || t('AI 回复'))}</span></button>`;
+  };
+  let inner = '';
+  if (groupBySession) {
+    for (const group of groupRows(rows)) {
+      inner += `<button type="button" class="kbm-toc-row kbm-toc-session" data-toc-idx="${display.indexOf(group.rows[0])}"><span class="kbm-toc-bar"></span><span class="kbm-toc-label">${escText(truncateTitle(group.title, 28))}</span></button>`;
+      inner += group.rows.map(rowBtn).join('');
+    }
+  } else {
+    inner = display.map(rowBtn).join('');
+  }
+  return `<nav class="kbm-page-toc" aria-label="${t('收藏目录')}">${inner}</nav>`;
+}
+
+// 目录高亮跟随滚动：取视口上部 30% 线以上最后一条
+function syncPageTocActive() {
+  const page = document.getElementById('kbm-page');
+  const body = page?.querySelector('.kbm-page-body');
+  const toc = page?.querySelector('.kbm-page-toc');
+  if (!body || !toc) return;
+  const items = [...body.querySelectorAll('.kbm-item[data-toc-idx]')];
+  const line = body.scrollTop + body.clientHeight * 0.3;
+  let active = items[0];
+  for (const item of items) {
+    if (item.offsetTop <= line) active = item;
+    else break;
+  }
+  for (const row of toc.querySelectorAll('.kbm-toc-row')) {
+    row.classList.toggle('on', active != null && row.dataset.tocIdx === active.dataset.tocIdx);
+  }
 }
 
 // 旧收藏（html 为空）在当前会话 DOM 里能找到时，补采渲染后 HTML 并持久化，
@@ -574,9 +620,14 @@ function renderPage() {
     <div class="kbm-page-body"><div class="${rows.length === 0 ? 'kbm-wrap' : viewMode === 'cards' ? 'kbm-wide kbm-cards' : 'kbm-wrap'}">
       ${rows.length === 0 ? `<div class="kbm-empty">${t('暂无收藏内容。可在 AI 回复下方的操作栏中点击星标，将回复加入收藏。')}</div>` : ''}
       ${renderRows(rows)}
-    </div></div>`;
+    </div></div>
+  ${renderPageToc(displayRowsOf(rows), rows)}`;
   const nextBody = page.querySelector('.kbm-page-body');
-  if (nextBody) nextBody.scrollTop = prevScrollTop;
+  if (nextBody) {
+    nextBody.scrollTop = prevScrollTop;
+    nextBody.addEventListener('scroll', () => syncPageTocActive(), { passive: true });
+    syncPageTocActive();
+  }
 }
 
 function ensurePageDom() {
@@ -592,6 +643,15 @@ function ensurePageDom() {
 }
 
 function onPageClick(event) {
+  const tocRow = event.target.closest('.kbm-toc-row');
+  if (tocRow) {
+    const item = ensurePageDom().querySelector(`.kbm-item[data-toc-idx="${CSS.escape(tocRow.dataset.tocIdx)}"]`);
+    if (item) {
+      item.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      flashAnchor(item);
+    }
+    return;
+  }
   if (event.target.closest('.kbm-close')) {
     togglePage(false);
     return;

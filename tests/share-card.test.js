@@ -39,11 +39,12 @@ test('四张统计卡：输入/输出/缓存命中/总消耗，各带渐变折�
   assert.match(svg, /<polyline/);
 });
 
-test('主图堆叠柱：主蓝子绿，头部右上为大字总量 + 小号缓存命中，峰值有图注', () => {
+test('主图堆叠柱：主蓝子绿，头部右上为大字总量（缓存命中不重复），峰值有图注', () => {
   const svg = buildShareCardSvg({ daily: FIXTURE, startKey: '2026-08-20', endKey: '2026-08-22' });
   assert.match(svg, /每日消耗/);
   assert.doesNotMatch(svg, /每周消耗/);
-  assert.match(svg, /缓存命中 45\.7%/);
+  // 缓存命中在上方统计卡已有，柱图头部不再重复（统计卡只显示 45.7% 数值）
+  assert.doesNotMatch(svg, /缓存命中 45\.7%/);
   assert.match(svg, /#16c456/);
   assert.match(svg, /峰值 08\.21 · 2\.2M/);
 });

@@ -118,7 +118,10 @@ copyBtn.addEventListener('click', async () => {
   }
 });
 
-openBtn.addEventListener('click', openCard);
+openBtn.addEventListener('click', (event) => {
+  event.preventDefault();
+  openCard();
+});
 closeBtn.addEventListener('click', closeCard);
 overlay.addEventListener('click', (event) => {
   if (event.target === overlay) closeCard();

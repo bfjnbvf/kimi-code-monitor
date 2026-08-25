@@ -55,6 +55,12 @@ test('popup 只提供可按日期聚合的指标选择', () => {
   assert.match(usageSource, /USAGE_METRIC_STORAGE_KEY/);
 });
 
+test('默认日期范围：结束日期为当天，起始日期为一个月前（早于最早记录则取最早记录）', () => {
+  assert.match(usageSource, /monthAgo\.setUTCMonth\(monthAgo\.getUTCMonth\(\) - 1\)/);
+  assert.match(usageSource, /usageStartEl\.value = monthAgoKey < firstKey \? firstKey : monthAgoKey/);
+  assert.match(usageSource, /if \(!usageEndEl\.value\) usageEndEl\.value = todayKey/);
+});
+
 test('消耗量指标下主/子代理堆叠渲染（蓝底绿顶）', () => {
   assert.match(css, /\.usage-bar\.sub \{/);
   assert.match(usageSource, /usageMetric === 'total' && subTokens > 0 && maxValue > 0/);
@@ -173,7 +179,10 @@ test('新会话 AI 自动命名区块：模型下拉、开关与用量计数（�
 
 test('用量分享卡片：入口在消耗量板块内，构图纯函数与导出分离', () => {
   // 入口按钮在 .usage-data 内（CLI 未连接时随板块锁定隐藏），沿用按天统计的日期范围
-  assert.match(html, /id="share-card-btn">生成分享图/);
+  // 入口在 footer（替换原「重置布局」），文案为「分享用量」
+  assert.match(html, /id="share-card-btn">分享用量/);
+  assert.doesNotMatch(html, /reset-layout-link/);
+  assert.doesNotMatch(html, /usage-share-row/);
   assert.match(shareCardSource, /document\.getElementById\('usage-start'\)\.value/);
   assert.match(shareCardSource, /document\.getElementById\('usage-end'\)\.value/);
   // SVG 构图来自共享纯函数模块；导出为 PNG（canvas.toBlob）与剪贴板（ClipboardItem）

@@ -209,7 +209,7 @@ function statCard(x, w, label, value, items, pick, color) {
   const pairs = items.map((item, i) => ({ v: pick(item), key: item.key, i }));
   return (
     cardRect(x, y, w, ROW_STAT_H) +
-    `<text x="${x + 16}" y="${y + 42}" font-family="${SANS}" font-size="13" fill="${MUTED}">${esc(label)}</text>` +
+    `<text x="${x + 16}" y="${y + 30}" font-family="${SANS}" font-size="13" fill="${MUTED}">${esc(label)}</text>` +
     `<text x="${x + w - 16}" y="${y + 42}" text-anchor="end" font-family="${MONO}" font-size="30" font-weight="500" fill="${INK}">${esc(value)}</text>` +
     sparkline(x, y + 56, w, ROW_STAT_H - 56 - 26, pairs, color, { x, y, w, h: ROW_STAT_H }, y + ROW_STAT_H - 9)
   );
@@ -224,12 +224,9 @@ function barsCard(items, sum) {
   const h = ROW_BARS_H;
   let out =
     cardRect(x, y, w, h) +
-    cardLabel(x + 24, y + 44, t('每日消耗')) +
-    // 右上角：总量与统计卡数值同款字体字级，缓存命中相对小一号沉在下方
-    `<text x="${x + w - 24}" y="${y + 48}" text-anchor="end" font-family="${MONO}" font-size="30" font-weight="500" fill="${INK}">${esc(formatTokenCount(sum.totalTokens))}</text>` +
-    (sum.cacheHitRate != null
-      ? `<text x="${x + w - 24}" y="${y + 72}" text-anchor="end" font-family="${MONO}" font-size="13" fill="${MUTED}">${t('缓存命中 {pct}%', { pct: formatPercentage(sum.cacheHitRate * 100) })}</text>`
-      : '');
+    cardLabel(x + 24, y + 36, t('每日消耗')) +
+    // 右上角：总量与统计卡数值同款字体字级（缓存命中在上方统计卡已有，不重复）
+    `<text x="${x + w - 24}" y="${y + 48}" text-anchor="end" font-family="${MONO}" font-size="30" font-weight="500" fill="${INK}">${esc(formatTokenCount(sum.totalTokens))}</text>`;
 
   const n = items.length;
   const chartX = x + 24;
@@ -337,7 +334,7 @@ function summaryRow(x, y, w, label, value, withRule) {
 function summaryCard(x, y, w, h, rows) {
   let out = cardRect(x, y, w, h) + cardLabel(x + 24, y + 40, t('范围汇总'));
   // 数据行整体下对齐：与标题之间留出呼吸间距，行块贴卡片底部（留 24px 内边距）
-  const rowH = 48;
+  const rowH = 58;
   const blockTop = y + h - 24 - rows.length * rowH;
   rows.forEach((row, i) => {
     out += summaryRow(x + 24, blockTop + i * rowH + 22, w - 48, row[0], row[1], i < rows.length - 1);

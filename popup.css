@@ -445,12 +445,6 @@
     flex-shrink: 0;
   }
 
-  .usage-share-row {
-    margin-top: 6px;
-    display: flex;
-    justify-content: flex-end;
-  }
-
   /* 分享卡片预览弹层：遮罩 + 居中卡片图，弹窗与 options 标签页通用 */
   #share-card-overlay {
     position: fixed;
