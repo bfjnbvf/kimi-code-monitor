@@ -412,12 +412,25 @@ function positionPage() {
   page.style.left = `${left}px`;
 }
 
+function refocusSidebarToWorkspace() {
+  if (location.pathname === '/') return;
+  try {
+    history.pushState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch (error) {
+    // 路由不可用时保持现状（仅侧栏聚焦不跳）
+  }
+}
+
 function togglePage(force) {
   pageOpen = typeof force === 'boolean' ? force : !pageOpen;
   const page = ensurePageDom();
   positionPage();
   page.classList.toggle('open', pageOpen);
-  if (pageOpen) renderPage();
+  if (pageOpen) {
+    refocusSidebarToWorkspace();
+    renderPage();
+  }
 }
 
 function onWindowResize() {
@@ -464,6 +477,7 @@ function renderCardItem(row, grouped) {
         <span class="kbm-item-date">${dateFmt(row.createdAt)}</span>
       </div>
       <div class="kbm-card-text${text.length > CARD_CLAMP_CHARS ? ' kbm-clamped' : ''}">${escText(text)}</div>
+      ${managing ? '' : `<button type="button" class="kbm-item-remove kbm-card-remove" data-session-id="${escText(row.sessionId)}" data-turn-id="${escText(row.turnId)}" title="${t('取消收藏')}">✕</button>`}
     </div>`;
 }
 
@@ -498,6 +512,8 @@ function renderRows(rows) {
 
 function renderPage() {
   const page = ensurePageDom();
+  // 重渲染保留滚动位置：管理模式勾选/删除/切换视图时不弹回顶部
+  const prevScrollTop = page.querySelector('.kbm-page-body')?.scrollTop || 0;
   let rows = flattenBookmarks(store);
   if (sortAsc) rows = [...rows].reverse();
   const manageBar = managing
@@ -527,6 +543,8 @@ function renderPage() {
       ${rows.length === 0 ? `<div class="kbm-empty">${t('暂无收藏内容。可在 AI 回复下方的操作栏中点击星标，将回复加入收藏。')}</div>` : ''}
       ${renderRows(rows)}
     </div></div>`;
+  const nextBody = page.querySelector('.kbm-page-body');
+  if (nextBody) nextBody.scrollTop = prevScrollTop;
 }
 
 function ensurePageDom() {

@@ -71,6 +71,8 @@ export default [
         ClipboardItem: 'readonly',
         CSS: 'readonly',
         Node: 'readonly',
+        history: 'readonly',
+        PopStateEvent: 'readonly',
         sessionStorage: 'readonly',
         showDirectoryPicker: 'readonly'
       }

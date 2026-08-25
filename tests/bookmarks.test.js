@@ -288,3 +288,30 @@ test('回归：侧栏收藏入口与「新建对话/搜索」完全同款（8px 
   // 窄窗口侧栏消失时收藏页 left 重算
   assert.match(source, /window\.addEventListener\('resize', onWindowResize\)/);
 });
+
+test('回归：批量管理勾选/删除重渲染保留滚动位置，不弹回顶部', () => {
+  assert.match(source, /prevScrollTop = page\.querySelector\('\.kbm-page-body'\)\?\.scrollTop/);
+  assert.match(source, /nextBody\.scrollTop = prevScrollTop/);
+});
+
+test('卡片 hover 显示单条删除 ✕（与列表一致），且卡片 hover 为整面灰底', () => {
+  // 卡片非管理模式渲染删除按钮（复用列表的 .kbm-item-remove 样式与事件）
+  assert.match(source, /kbm-item-remove kbm-card-remove/);
+  assert.match(contentCss, /\.kbm-card:hover \.kbm-card-remove \{ opacity: 1/);
+  // hover 效果统一为灰底（不再只是边框加深）
+  assert.match(contentCss, /\.kbm-card:hover \{ background: var\(--kbm-hover\)/);
+  assert.doesNotMatch(contentCss, /\.kbm-card:hover \{ border-color/);
+});
+
+test('列表行删除 ✕ 绝对定位：不占布局空间，左右间距一致', () => {
+  assert.match(contentCss, /\.kbm-item \{[\s\S]*?position: relative/);
+  assert.match(contentCss, /\.kbm-item-remove \{[\s\S]*?position: absolute[\s\S]*?right: 8px/);
+  assert.match(contentCss, /\.kbm-item-meta \{ padding-right: 16px/);
+});
+
+test('打开收藏页时侧栏聚焦跳回工作区（pushState / + popstate，失败静默降级）', () => {
+  assert.match(source, /function refocusSidebarToWorkspace\(\)/);
+  assert.match(source, /history\.pushState\(null, '', '\/'\)/);
+  assert.match(source, /window\.dispatchEvent\(new PopStateEvent\('popstate'\)\)/);
+  assert.match(source, /if \(pageOpen\) \{\s*refocusSidebarToWorkspace\(\);/);
+});

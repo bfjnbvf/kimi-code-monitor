@@ -1728,6 +1728,7 @@ html[data-color-scheme="dark"] {
 
 /* 列表视图：每条 = 元信息行（会话 + 日期）+ 完整内容 */
 .kbm-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -1762,7 +1763,9 @@ html[data-color-scheme="dark"] {
   line-height: 1.55;
 }
 .kbm-item-remove {
-  flex: none;
+  position: absolute;
+  right: 8px;
+  top: 10px;
   appearance: none;
   border: none;
   background: transparent;
@@ -1773,6 +1776,8 @@ html[data-color-scheme="dark"] {
   font-size: 11px;
   opacity: 0;
 }
+/* 元信息行给 ✕ 留位，正文不受影响 */
+.kbm-item-meta { padding-right: 16px; }
 .kbm-item:hover .kbm-item-remove { opacity: 1; }
 .kbm-item-remove:hover { color: var(--kbm-danger); }
 
@@ -1825,12 +1830,17 @@ html[data-color-scheme="dark"] {
   font-size: 13px;
   transition: border-color 0.15s ease;
 }
-.kbm-card:hover { border-color: var(--kbm-muted); }
+.kbm-card:hover { background: var(--kbm-hover); }
 .kbm-card .kbm-check {
   position: absolute;
   top: 10px;
   right: 10px;
 }
+.kbm-card-remove {
+  top: 8px;
+  right: 8px;
+}
+.kbm-card:hover .kbm-card-remove { opacity: 1; }
 .kbm-card-meta {
   display: flex;
   align-items: baseline;
