@@ -32,6 +32,25 @@ test('存储归一化：坏数据回退空收藏夹，合法数据保留', () =>
   assert.equal(normalized.sessions.s2.items.t2.createdAt, 0);
 });
 
+test('会话标题清理：剥掉侧栏时间徽标，不误伤标题里的时间词', () => {
+  const state = normalizeBookmarkStore({
+    sessions: {
+      s1: { title: '历史上的今天 5m', items: {} },
+      s2: { title: '插件开发 2h', items: {} },
+      s3: { title: '读 3m 攻略', items: {} }
+    }
+  });
+  assert.equal(state.sessions.s1.title, '历史上的今天');
+  assert.equal(state.sessions.s2.title, '插件开发');
+  // 时间词不在结尾时不剥
+  assert.equal(state.sessions.s3.title, '读 3m 攻略');
+});
+
+test('侧栏标题抓取：只取会话行的 .t 标题元素，不抓 .ts 时间徽标', () => {
+  assert.match(source, /row\?\.querySelector\('\.t'\)/);
+  assert.match(source, /titleEl\?\.textContent \|\| row\?\.textContent/);
+});
+
 test('标题截断：压缩空白，超限加省略号', () => {
   assert.equal(truncateTitle('  多\n行\t文本  '), '多 行 文本');
   const long = 'a'.repeat(80);

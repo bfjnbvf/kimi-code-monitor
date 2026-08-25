@@ -81,6 +81,11 @@ const selected = new Set();
 /* ---------- 纯函数（可单测） ---------- */
 
 // 存储结构归一化：坏数据一律回退为空收藏夹
+// 会话标题清理：早期版本从侧栏整行 textContent 抓标题，会带上时间徽标（如「历史上的今天 5m」），载入时剥掉
+function cleanSessionTitle(title) {
+  return String(title || '').replace(/\s+\d+[smhdw]$/, '').trim();
+}
+
 export function normalizeBookmarkStore(raw) {
   const sessions = {};
   const src = raw && typeof raw === 'object' ? raw.sessions : null;
@@ -99,7 +104,7 @@ export function normalizeBookmarkStore(raw) {
       };
     }
     sessions[sessionId] = {
-      title: typeof entry.title === 'string' ? entry.title : '',
+      title: cleanSessionTitle(entry.title),
       items
     };
   }
@@ -151,7 +156,9 @@ async function persist() {
 
 function currentSessionTitle(sessionId) {
   const row = document.querySelector(`[data-session-id="${CSS.escape(sessionId)}"]`);
-  const text = row?.textContent?.replace(/\s+/g, ' ').trim();
+  // 侧栏会话行里 .t 是标题、.ts 是时间徽标（如 5m）：只取标题，不把时间抓进来
+  const titleEl = row?.querySelector('.t');
+  const text = (titleEl?.textContent || row?.textContent || '').replace(/\s+/g, ' ').trim();
   return text ? truncateTitle(text, 40) : '';
 }
 
