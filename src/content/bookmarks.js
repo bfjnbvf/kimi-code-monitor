@@ -53,8 +53,10 @@ const JUMP_RETRY_LIMIT = 14;
 const JUMP_RETRY_MS = 700;
 // 内容摘录上限：收藏本质是本地快照；卡片详情弹层要展示近似全文，给到 4000
 const CONTENT_LIMIT = 4000;
-// 渲染后 HTML 摘录上限（详情弹层按 markdown 还原用）；超出则不存 HTML，回退纯文本
-const HTML_LIMIT = 8000;
+// 渲染后 HTML 摘录上限：app 的渲染产物层层包裹（node-slot/node-content + data-v），
+// 一个普通回答通常 20-60KB，长回答 100KB+。存 HTML 才谈得上 markdown 还原，
+// 给 150KB；超出则不存 HTML，回退轻量 markdown 渲染。
+const HTML_LIMIT = 150_000;
 // 卡片内容超过这个长度加截断渐隐（配合 CSS 固定 6 行内容区）
 const CARD_CLAMP_CHARS = 400;
 
@@ -202,7 +204,18 @@ function sanitizeHtml(node) {
       if (isEvent || isJsUrl) el.removeAttribute(attr.name);
     }
   }
-  return clone.innerHTML;
+  // 体积收敛：删 <!----> 注释节点（app 渲染产物里占大头）。
+  // 不用 NodeIterator（其 currentNode 行为在不同环境有差异，曾导致收藏点击整个静默失败）
+  stripComments(clone);
+  return clone.innerHTML.replace(/>\s+</g, '><');
+}
+
+// 递归删除注释节点（childNodes 遍历，无 API 环境差异）
+function stripComments(node) {
+  for (const child of [...node.childNodes]) {
+    if (child.nodeType === 8) child.remove();
+    else stripComments(child);
+  }
 }
 
 // 正文的渲染后 HTML；超长不存（回退纯文本摘录）
@@ -460,7 +473,7 @@ function renderListItem(row, grouped) {
           ${grouped ? '' : `<span class="kbm-item-session">${escText(row.sessionTitle || t('未命名会话'))}</span>`}
           <span class="kbm-item-date">${dateFmt(row.createdAt)}</span>
         </div>
-        <div class="kbm-item-text">${escText(row.title || t('AI 回复'))}</div>
+        ${row.html ? `<div class="msg kbm-item-text kbm-md">${row.html}</div>` : `<div class="kbm-item-text">${escText(row.title || t('AI 回复'))}</div>`}
       </div>
       ${managing ? '' : `<button type="button" class="kbm-item-remove" data-session-id="${escText(row.sessionId)}" data-turn-id="${escText(row.turnId)}" title="${t('取消收藏')}">✕</button>`}
     </div>`;
@@ -476,7 +489,7 @@ function renderCardItem(row, grouped) {
         ${grouped ? '' : `<span class="kbm-item-session">${escText(row.sessionTitle || t('未命名会话'))}</span>`}
         <span class="kbm-item-date">${dateFmt(row.createdAt)}</span>
       </div>
-      <div class="kbm-card-text${text.length > CARD_CLAMP_CHARS ? ' kbm-clamped' : ''}">${escText(text)}</div>
+      ${row.html ? `<div class="msg kbm-card-text kbm-md${text.length > CARD_CLAMP_CHARS ? ' kbm-clamped' : ''}">${row.html}</div>` : `<div class="kbm-card-text${text.length > CARD_CLAMP_CHARS ? ' kbm-clamped' : ''}">${escText(text)}</div>`}
       ${managing ? '' : `<button type="button" class="kbm-item-remove kbm-card-remove" data-session-id="${escText(row.sessionId)}" data-turn-id="${escText(row.turnId)}" title="${t('取消收藏')}">✕</button>`}
     </div>`;
 }
@@ -510,17 +523,36 @@ function renderRows(rows) {
     .join('');
 }
 
+// 旧收藏（html 为空）在当前会话 DOM 里能找到时，补采渲染后 HTML 并持久化，
+// 让列表/卡片/详情都能按 markdown 还原
+function backfillHtml(rows) {
+  let dirty = false;
+  for (const row of rows) {
+    if (row.html || row.sessionId !== deps.getSessionId()) continue;
+    const anchor = turnAnchor(row.turnId);
+    if (!anchor) continue;
+    const html = turnHtml(anchor);
+    if (!html) continue;
+    const entry = store.sessions[row.sessionId]?.items?.[row.turnId];
+    if (!entry) continue;
+    entry.html = html;
+    row.html = html;
+    dirty = true;
+  }
+  if (dirty) persist();
+}
+
 function renderPage() {
   const page = ensurePageDom();
   // 重渲染保留滚动位置：管理模式勾选/删除/切换视图时不弹回顶部
   const prevScrollTop = page.querySelector('.kbm-page-body')?.scrollTop || 0;
   let rows = flattenBookmarks(store);
+  backfillHtml(rows);
   if (sortAsc) rows = [...rows].reverse();
   const manageBar = managing
     ? `<div class="kbm-manage-bar"><div class="kbm-wrap kbm-manage-in">
         <button type="button" class="kbm-delete"${selected.size === 0 ? ' disabled' : ''}>${t('删除所选（{n}）', { n: selected.size })}</button>
         <label class="kbm-select-all"><input type="checkbox" class="kbm-check-all"${selected.size > 0 && selected.size === rows.length ? ' checked' : ''}> ${t('全选')}</label>
-        <button type="button" class="kbm-manage-done">${t('完成')}</button>
       </div></div>`
     : '';
   page.innerHTML = `
@@ -535,7 +567,7 @@ function renderPage() {
       <span class="kbm-toolbar-right">
         <button type="button" class="kbm-view-btn kbm-group-btn${groupBySession ? ' on' : ''}">${t('按会话分组')}</button>
         <button type="button" class="kbm-view-btn kbm-sort-btn">${sortAsc ? t('最早在前') : t('最新在前')}</button>
-        <button type="button" class="kbm-manage">${managing ? t('取消') : t('批量管理')}</button>
+        <button type="button" class="kbm-manage">${managing ? t('完成') : t('批量管理')}</button>
       </span>
     </div></div>
     ${manageBar}
@@ -585,12 +617,6 @@ function onPageClick(event) {
   }
   if (event.target.closest('.kbm-manage')) {
     managing = !managing;
-    selected.clear();
-    renderPage();
-    return;
-  }
-  if (event.target.closest('.kbm-manage-done')) {
-    managing = false;
     selected.clear();
     renderPage();
     return;

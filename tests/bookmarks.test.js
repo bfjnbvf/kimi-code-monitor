@@ -134,10 +134,12 @@ test('收藏页：列表/卡片双视图 + 分组排序 + 批量管理', () => {
   assert.match(source, /暂无收藏内容。可在 AI 回复下方的操作栏中点击星标，将回复加入收藏。/);
   assert.match(source, /rows\.length === 0 \? 'kbm-wrap'/);
   assert.match(contentCss, /\.kbm-cards \.kbm-empty \{[\s\S]*?grid-column: 1 \/ -1/);
-  // 批量管理：管理模式、全选、删除所选
+  // 批量管理：管理模式、全选、删除所选；管理条没有「完成」，工具条按钮切换为「完成」
   assert.match(source, /kbm-check-all/);
   assert.match(source, /function deleteSelected\(\)/);
   assert.match(source, /t\('删除所选（\{n\}）', \{ n: selected\.size \}\)/);
+  assert.match(source, /\$\{managing \? t\('完成'\) : t\('批量管理'\)\}/);
+  assert.doesNotMatch(source, /kbm-manage-done/);
 });
 
 test('侧栏入口与整页收藏页面', () => {
@@ -179,9 +181,12 @@ test('详情弹层 markdown 还原：收藏时存渲染后 HTML（消毒），�
   assert.match(source, /javascript:/i);
   // 超长不存 HTML（回退纯文本）
   assert.match(source, /html\.length > HTML_LIMIT \? '' : html/);
+  // 注释节点用 childNodes 递归删除（曾因 NodeIterator.currentNode 环境差异导致点击静默失败）
+  assert.match(source, /function stripComments\(node\)/);
+  assert.doesNotMatch(source, /createNodeIterator/);
   // 展示：有 HTML 走 .msg 包裹的 markdown 还原，无则纯文本兜底
   assert.match(source, /<div class="msg kbm-detail-text kbm-md">/);
-  assert.match(contentCss, /\.kbm-detail-text\.kbm-md \{[\s\S]*?white-space: normal/);
+  assert.match(contentCss, /\.kbm-detail-text\.kbm-md,[\s\S]*?white-space: normal/);
 });
 
 test('生命周期：装配进 content.js，storage 变化联动，销毁清理全部注入物', () => {
@@ -289,6 +294,19 @@ test('回归：侧栏收藏入口与「新建对话/搜索」完全同款（8px 
   assert.match(source, /window\.addEventListener\('resize', onWindowResize\)/);
 });
 
+test('列表与卡片按 HTML 还原 markdown（无 HTML 回退纯文本），旧收藏 DOM 可回填', () => {
+  // 渲染分支：row.html 存在时包 .msg.kbm-md 渲染
+  assert.match(source, /row\.html \? `<div class="msg kbm-item-text kbm-md">/);
+  assert.match(source, /row\.html \? `<div class="msg kbm-card-text kbm-md/);
+  // 短内容不渐隐，长内容才 clamp
+  assert.match(source, /kbm-md\$\{text\.length > CARD_CLAMP_CHARS \? ' kbm-clamped'/);
+  // 回填：当前会话的旧收藏从 DOM 补采 HTML 并持久化
+  assert.match(source, /function backfillHtml\(rows\)/);
+  assert.match(source, /if \(dirty\) persist\(\);/);
+  // markdown 容器交还块级排版
+  assert.match(contentCss, /\.kbm-item-text\.kbm-md,[\s\S]*?white-space: normal/);
+});
+
 test('回归：批量管理勾选/删除重渲染保留滚动位置，不弹回顶部', () => {
   assert.match(source, /prevScrollTop = page\.querySelector\('\.kbm-page-body'\)\?\.scrollTop/);
   assert.match(source, /nextBody\.scrollTop = prevScrollTop/);
@@ -305,8 +323,9 @@ test('卡片 hover 显示单条删除 ✕（与列表一致），且卡片 hover
 
 test('列表行删除 ✕ 绝对定位：不占布局空间，左右间距一致', () => {
   assert.match(contentCss, /\.kbm-item \{[\s\S]*?position: relative/);
-  assert.match(contentCss, /\.kbm-item-remove \{[\s\S]*?position: absolute[\s\S]*?right: 8px/);
-  assert.match(contentCss, /\.kbm-item-meta \{ padding-right: 16px/);
+  assert.match(contentCss, /\.kbm-item-remove \{[\s\S]*?position: absolute[\s\S]*?right: 12px/);
+  assert.match(contentCss, /\.kbm-item \{[\s\S]*?padding: 10px 12px;[\s\S]*?margin: 0 -12px/);
+  assert.match(contentCss, /\.kbm-item-meta \{ padding-right: 20px/);
 });
 
 test('打开收藏页时侧栏聚焦跳回工作区（pushState / + popstate，失败静默降级）', () => {

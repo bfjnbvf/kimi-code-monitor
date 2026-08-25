@@ -1654,8 +1654,7 @@ html[data-color-scheme="dark"] {
 .kbm-view-btn,
 .kbm-manage,
 .kbm-select-all,
-.kbm-delete,
-.kbm-manage-done {
+.kbm-delete {
   appearance: none;
   border: none;
   background: transparent;
@@ -1671,8 +1670,7 @@ html[data-color-scheme="dark"] {
 }
 .kbm-view-btn:hover,
 .kbm-manage:hover,
-.kbm-select-all:hover,
-.kbm-manage-done:hover { background: var(--kbm-hover); }
+.kbm-select-all:hover { background: var(--kbm-hover); }
 .kbm-view-btn.on { color: var(--kbm-accent); font-weight: 500; }
 .kbm-delete { color: var(--kbm-danger); }
 .kbm-delete:hover { background: var(--kbm-hover); }
@@ -1732,8 +1730,8 @@ html[data-color-scheme="dark"] {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 8px;
-  margin: 0 -8px;
+  padding: 10px 12px;
+  margin: 0 -12px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -1764,7 +1762,7 @@ html[data-color-scheme="dark"] {
 }
 .kbm-item-remove {
   position: absolute;
-  right: 8px;
+  right: 12px;
   top: 10px;
   appearance: none;
   border: none;
@@ -1777,7 +1775,7 @@ html[data-color-scheme="dark"] {
   opacity: 0;
 }
 /* 元信息行给 ✕ 留位，正文不受影响 */
-.kbm-item-meta { padding-right: 16px; }
+.kbm-item-meta { padding-right: 20px; }
 .kbm-item:hover .kbm-item-remove { opacity: 1; }
 .kbm-item-remove:hover { color: var(--kbm-danger); }
 
@@ -1952,8 +1950,25 @@ html[data-color-scheme="dark"] {
   word-break: break-word;
 }
 /* markdown 还原模式：交还给 app 自己的正文样式（标题/加粗/代码块等） */
-.kbm-detail-text.kbm-md {
+.kbm-detail-text.kbm-md,
+.kbm-item-text.kbm-md,
+.kbm-card-text.kbm-md {
   white-space: normal;
+}
+/* 列表/卡片里的 markdown 适当收敛字号，避免标题过大撑破布局 */
+.kbm-item-text.kbm-md :is(h1, h2, h3, h4),
+.kbm-card-text.kbm-md :is(h1, h2, h3, h4) {
+  font-size: 1.1em;
+  margin: 0.5em 0 0.3em;
+}
+.kbm-item-text.kbm-md p,
+.kbm-card-text.kbm-md p {
+  margin: 0.35em 0;
+}
+.kbm-item-text.kbm-md pre,
+.kbm-card-text.kbm-md pre {
+  max-width: 100%;
+  overflow-x: auto;
 }
 .kbm-detail-foot {
   display: flex;
