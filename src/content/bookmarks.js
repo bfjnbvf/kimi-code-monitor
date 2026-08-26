@@ -596,16 +596,19 @@ function renderPage() {
   backfillHtml(rows);
   if (sortAsc) rows = [...rows].reverse();
   const manageBar = managing
-    ? `<div class="kbm-manage-bar"><div class="kbm-wrap kbm-manage-in">
-        <button type="button" class="kbm-delete"${selected.size === 0 ? ' disabled' : ''}>${t('删除所选（{n}）', { n: selected.size })}</button>
-        <label class="kbm-select-all"><input type="checkbox" class="kbm-check-all"${selected.size > 0 && selected.size === rows.length ? ' checked' : ''}> ${t('全选')}</label>
+    ? `<div class="kbm-manage-bar"><div class="kbm-manage-in">
+        <span class="kbm-manage-right">
+          <button type="button" class="kbm-delete"${selected.size === 0 ? ' disabled' : ''}>${t('删除所选（{n}）', { n: selected.size })}</button>
+          <button type="button" class="kbm-export">${t('导出收藏')}</button>
+          <label class="kbm-select-all"><input type="checkbox" class="kbm-check-all"${selected.size > 0 && selected.size === rows.length ? ' checked' : ''}> ${t('全选')}</label>
+        </span>
       </div></div>`
     : '';
   page.innerHTML = `
-    <div class="kbm-page-head"><div class="kbm-wrap">
+    <div class="kbm-page-head">
       <span class="kbm-page-title">${t('收藏')}<span class="kbm-page-count">${rows.length}</span></span>
-    </div></div>
-    <div class="kbm-toolbar"><div class="kbm-wrap kbm-toolbar-in">
+    </div>
+    <div class="kbm-toolbar"><div class="kbm-toolbar-in">
       <span class="kbm-seg">
         <button type="button" class="kbm-seg-btn${viewMode === 'list' ? ' on' : ''}" data-view="list">${t('列表')}</button>
         <button type="button" class="kbm-seg-btn${viewMode === 'cards' ? ' on' : ''}" data-view="cards">${t('卡片')}</button>
@@ -687,6 +690,10 @@ function onPageClick(event) {
     selected.clear();
     if (!all) for (const row of rows) selected.add(rowKey(row.sessionId, row.turnId));
     renderPage();
+    return;
+  }
+  if (event.target.closest('.kbm-export')) {
+    exportBookmarks();
     return;
   }
   if (event.target.closest('.kbm-delete')) {
@@ -796,6 +803,48 @@ async function removeBookmark(sessionId, turnId) {
   if (Object.keys(entry.items).length === 0) delete store.sessions[sessionId];
   await persist();
   syncAll();
+}
+
+// 导出收藏为 Markdown：按会话分组，每条 = 日期 + 用户提问 + 回复全文
+function exportBookmarks() {
+  const all = flattenBookmarks(store);
+  const rows = selected.size > 0 ? all.filter((r) => selected.has(rowKey(r.sessionId, r.turnId))) : all;
+  if (!rows.length) return;
+  const today = new Date();
+  const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const lines = [
+    `# ${t('收藏导出')}`,
+    '',
+    t('导出于 {date} · 共 {n} 条', { date: stamp, n: rows.length }),
+    ''
+  ];
+  // 导出固定按会话分组（与当前视图是否分组无关）
+  const groups = [];
+  for (const row of rows) {
+    let group = groups.find((g) => g.sessionId === row.sessionId);
+    if (!group) {
+      group = { title: row.sessionTitle || t('未命名会话'), rows: [] };
+      groups.push(group);
+    }
+    group.rows.push(row);
+  }
+  for (const group of groups) {
+    lines.push(`## ${group.title}`, '');
+    for (const row of group.rows) {
+      lines.push(`### ${dateFmt(row.createdAt)}`, '');
+      if (row.question) {
+        lines.push(`**${t('用户提问')}**`, '', row.question.split('\n').map((l) => `> ${l}`).join('\n'), '');
+      }
+      lines.push(`**${t('AI 回复')}**`, '', row.title || t('AI 回复'), '', '---', '');
+    }
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `kimi-bookmarks-${stamp}.md`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function deleteSelected() {

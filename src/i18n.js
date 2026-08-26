@@ -257,6 +257,9 @@ const EN = {
   '（收藏时未记录提问）': '(question not recorded when bookmarked)',
   '跳转到原文 →': 'Jump to original →',
   '收藏目录': 'Bookmark outline',
+  '导出收藏': 'Export bookmarks',
+  '收藏导出': 'Bookmark export',
+  '导出于 {date} · 共 {n} 条': 'Exported {date} · {n} items',
   // 分享卡片 SVG
   'Kimi Code 用量': 'Kimi Code Usage',
   '每日消耗': 'Daily usage',

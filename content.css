@@ -1590,7 +1590,7 @@ html[data-color-scheme="dark"] {
 #kbm-page.open { display: flex; }
 
 .kbm-page-head {
-  padding: 20px 0 0;
+  padding: 20px 24px 0;
 }
 /* 内容列与会话页同宽逻辑：760px 上限居中，窄窗口随宽度收缩 */
 .kbm-wrap {
@@ -1615,7 +1615,7 @@ html[data-color-scheme="dark"] {
 
 /* 工具条：左侧显示相关（视图分段控件 + 分组 + 排序），右侧操作（管理） */
 .kbm-toolbar {
-  padding: 10px 0;
+  padding: 10px 24px;
   border-bottom: 1px solid var(--kbm-line);
 }
 .kbm-toolbar-in {
@@ -1654,7 +1654,8 @@ html[data-color-scheme="dark"] {
 .kbm-view-btn,
 .kbm-manage,
 .kbm-select-all,
-.kbm-delete {
+.kbm-delete,
+.kbm-export {
   appearance: none;
   border: none;
   background: transparent;
@@ -1670,7 +1671,8 @@ html[data-color-scheme="dark"] {
 }
 .kbm-view-btn:hover,
 .kbm-manage:hover,
-.kbm-select-all:hover { background: var(--kbm-hover); }
+.kbm-select-all:hover,
+.kbm-export:hover { background: var(--kbm-hover); }
 .kbm-view-btn.on { color: var(--kbm-accent); font-weight: 500; }
 .kbm-delete { color: var(--kbm-danger); }
 .kbm-delete:hover { background: var(--kbm-hover); }
@@ -1696,8 +1698,12 @@ html[data-color-scheme="dark"] {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding: 8px 24px;
+}
+.kbm-manage-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .kbm-check,
 .kbm-check-all {

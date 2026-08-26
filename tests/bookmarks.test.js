@@ -225,7 +225,7 @@ test('回归：星标与复制按钮完全同款（14px、70% 透明、hover 灰
 
 test('收藏页布局：内容列 760px 居中（同会话页 --read-max 逻辑）', () => {
   assert.match(contentCss, /\.kbm-wrap \{[\s\S]*?max-width: 760px[\s\S]*?margin: 0 auto/);
-  assert.match(source, /<div class="kbm-wrap/);
+  assert.match(source, /rows\.length === 0 \? 'kbm-wrap'/);
 });
 
 test('分组视图：组间分隔线清晰，组内行不再重复显示会话名', () => {
@@ -241,7 +241,7 @@ test('分组视图：组间分隔线清晰，组内行不再重复显示会话�
 
 test('页头分组：无右上角叉号；视图用分段控件；分组/排序/批量管理右列对齐', () => {
   // 页头只有标题与计数
-  assert.match(source, /<div class="kbm-page-head"><div class="kbm-wrap">\s*<span class="kbm-page-title">\$\{t\('收藏'\)\}/);
+  assert.match(source, /<div class="kbm-page-head">\s*<span class="kbm-page-title">\$\{t\('收藏'\)\}/);
   assert.doesNotMatch(source, /kbm-page-actions/);
   // 分段控件（列表/卡片二选一的观感）
   assert.match(source, /class="kbm-seg-btn\$\{viewMode === 'list' \? ' on' : ''\}"/);
@@ -249,8 +249,8 @@ test('页头分组：无右上角叉号；视图用分段控件；分组/排序/
   assert.match(contentCss, /\.kbm-seg-btn\.on \{[\s\S]*?background: var\(--kbm-bg\)/);
   // 分组/排序/批量管理在右侧操作列
   assert.match(source, /kbm-toolbar-right[\s\S]*?按会话分组[\s\S]*?kbm-sort-btn[\s\S]*?批量管理/);
-  // 管理模式条统一右对齐（与「批量管理」同一右缘，两种视图位置一致）
-  assert.match(source, /<div class="kbm-wrap kbm-manage-in">/);
+  // 管理模式条与工具条同宽，按钮统一右对齐
+  assert.match(source, /<div class="kbm-manage-in">/);
   assert.match(contentCss, /\.kbm-manage-in \{[\s\S]*?justify-content: flex-end/);
 });
 
@@ -381,4 +381,29 @@ test('回归：列表项 hover 边框过渡与卡片同款，目录滚动条隐�
   // 官方 toc-scroll 同款：overflow-y auto + scrollbar-width none + ::-webkit-scrollbar 隐藏
   assert.match(contentCss, /\.kbm-page-toc \{[\s\S]*?overflow-y: auto[\s\S]*?scrollbar-width: none/);
   assert.match(contentCss, /\.kbm-page-toc::-webkit-scrollbar \{\s*display: none/);
+});
+
+test('批量管理条：左侧导出收藏（Markdown），右侧删除所选与全选', () => {
+  // 布局：删除所选 · 导出收藏 · 全选，统一在右侧
+  assert.match(source, /kbm-manage-right[\s\S]*?kbm-delete[\s\S]*?kbm-export[\s\S]*?kbm-select-all/);
+  assert.match(contentCss, /\.kbm-manage-in \{[\s\S]*?justify-content: flex-end/);
+  // 范围：勾了选导出所选，未选导出全部
+  assert.match(source, /selected\.size > 0 \? all\.filter/);
+  // Markdown 结构：会话分组标题 + 日期 + 提问引用块 + 回复
+  assert.match(source, /lines\.push\(`## \$\{group\.title\}`/);
+  assert.match(source, /\*\*\$\{t\('用户提问'\)\}\*\*/);
+  assert.match(source, /map\(\(l\) => `> \$\{l\}`\)/);
+  assert.match(source, /kimi-bookmarks-\$\{stamp\}\.md/);
+  assert.match(source, /type: 'text\/markdown'/);
+});
+
+test('头部布局：标题行与工具条全宽（靠最左/最右），内容列保持居中', () => {
+  // head/toolbar 不再包 760 容器
+  assert.match(source, /<div class="kbm-page-head">\s*<span class="kbm-page-title">/);
+  assert.match(source, /<div class="kbm-toolbar"><div class="kbm-toolbar-in">/);
+  assert.match(contentCss, /\.kbm-page-head \{[\s\S]*?padding: 20px 24px 0/);
+  assert.match(contentCss, /\.kbm-toolbar \{[\s\S]*?padding: 10px 24px/);
+  // 内容列逻辑不变：列表 760 居中、卡片全宽
+  assert.match(contentCss, /\.kbm-wrap \{[\s\S]*?max-width: 760px/);
+  assert.match(source, /kbm-wide kbm-cards/);
 });
