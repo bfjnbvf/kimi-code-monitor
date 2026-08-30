@@ -1,6 +1,7 @@
 /**
  * background 共享基础设施：存储互斥锁 / 原子更新 / 超时 fetch / 标签页中转 / 结构化错误。
  */
+import { queryKimiWebTabs } from './dynamic-hosts.js';
 
 const storageLocks = new Map();
 
@@ -42,9 +43,7 @@ export async function fetchWithTimeout(url, options = {}, ms = 15_000) {
 
 
 export async function relayToKimiWebTab(type, payload) {
-  const tabs = await chrome.tabs
-    .query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] })
-    .catch(() => []);
+  const tabs = await queryKimiWebTabs();
   if (!tabs.length) return failure(new Error('没有打开的 Kimi Code Web 页面'), 'NO_WEB_TAB');
   const target = tabs.find((tab) => tab.active) || tabs[0];
   try {

@@ -1,4 +1,4 @@
-/* 会话智能命名：内容脚本管线（127.0.0.1 / localhost 页面）。
+/* 会话智能命名：内容脚本管线（本机/LAN/Remote Control 页面）。
  * 职责：读 localStorage 凭据、拉会话/消息、取样、守卫、写回标题。
  * 模型调用不在此——取好的上下文发 background（rename.model），由 background 按所选模型请求。
  * 触发入口：content.js 在 turn.ended 后 import { onTurnEnded } 直接调用，
@@ -6,6 +6,7 @@
 'use strict';
 
 import * as shared from './rename-shared.js';
+import { rcApiPrefix, localApiAuthHeaders } from '../content/utils.js';
 
 const CREDENTIAL_STORAGE_KEY = 'kimi-web.server-credential';
 const RENAME_LOG_STORAGE_KEY = 'sessionRenameLog';
@@ -40,8 +41,9 @@ function readCredential() {
 }
 
 async function apiGet(path) {
-  const response = await fetch(path, {
-    headers: { Authorization: `Bearer ${readCredential()}` },
+  // RC 页面需带 /devices/<id> 前缀；空凭据时不发 Authorization（中继回源注入）
+  const response = await fetch(`${rcApiPrefix()}${path}`, {
+    headers: localApiAuthHeaders(readCredential()),
     signal: AbortSignal.timeout(15_000)
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -49,10 +51,10 @@ async function apiGet(path) {
 }
 
 async function writeTitle(sessionId, title) {
-  const response = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/profile`, {
+  const response = await fetch(`${rcApiPrefix()}/api/v1/sessions/${encodeURIComponent(sessionId)}/profile`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${readCredential()}`,
+      ...localApiAuthHeaders(readCredential()),
       'content-type': 'application/json'
     },
     body: JSON.stringify({ title }),

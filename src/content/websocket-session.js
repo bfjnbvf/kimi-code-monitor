@@ -11,7 +11,7 @@ import { normalizeUsage } from '../metrics.js';
 import { setAgentStatus, renderAll } from './render.js';
 import { onTurnEnded } from '../session-rename/rename-content.js';
 import { petBeginTurn, petCompleteTurn } from './pet-panel.js';
-import { toNumber } from './utils.js';
+import { toNumber, rcApiPrefix, isRemoteControl } from './utils.js';
 import { t } from '../i18n.js';
 import {
   panel,
@@ -101,7 +101,8 @@ export function createWebSocketSession(deps) {
     if (isDisposed()) return;
     const token = getToken();
     const sessionId = getSessionId();
-    if (!token || !sessionId) return;
+    // RC 中继由云端鉴权，页面侧没有凭据也允许连接（与本页 web UI 一致）
+    if ((!token && !isRemoteControl()) || !sessionId) return;
     if (ws) {
       // 已有连接（或正在建立）：CONNECTING 状态超时未打开视为假死，主动关闭后由 onclose 重连
       if (ws.readyState === WebSocket.CONNECTING && Date.now() - wsConnectingSince > WS_CONNECTING_TIMEOUT_MS) {
@@ -117,10 +118,11 @@ export function createWebSocketSession(deps) {
       return;
     }
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${location.host}/api/v1/ws?client_id=kimi-statusbar`;
+    const url = `${protocol}//${location.host}${rcApiPrefix()}/api/v1/ws?client_id=kimi-statusbar`;
 
     try {
-      ws = new WebSocket(url, [`kimi-code.bearer.${token}`]);
+      // 空凭据（RC）不带子协议，由中继在回源时注入本机 token
+      ws = new WebSocket(url, token ? [`kimi-code.bearer.${token}`] : undefined);
       wsConnectingSince = Date.now();
     } catch (error) {
       console.warn('[Kimi Status] WebSocket 创建失败', error);

@@ -4,6 +4,7 @@
  */
 
 import { withStorageLock, updateStorage, failure, fetchWithTimeout } from './store.js';
+import { queryKimiWebTabs } from './dynamic-hosts.js';
 import { encryptSecret, decryptSecret } from './vault.js';
 
 // 额度域注入的失效回调（账户变更时清理额度缓存与预警状态）
@@ -131,15 +132,11 @@ async function pollDeviceAuthorization() {
 }
 
 // 通知所有 Kimi Code Web 页面：授权已完成，立即刷新额度
-function broadcastAuthState(type) {
-  chrome.tabs
-    .query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] })
-    .then((tabs) => {
-      for (const tab of tabs) {
-        chrome.tabs.sendMessage(tab.id, { type }).catch(() => {});
-      }
-    })
-    .catch(() => {});
+async function broadcastAuthState(type) {
+  const tabs = await queryKimiWebTabs();
+  for (const tab of tabs) {
+    chrome.tabs.sendMessage(tab.id, { type }).catch(() => {});
+  }
 }
 
 

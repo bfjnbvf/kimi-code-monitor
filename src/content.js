@@ -101,7 +101,8 @@ function readCredential() {
 }
 
 function getSessionId() {
-  return location.pathname.match(/^\/sessions\/([^/?#]+)/)?.[1] || '';
+  // 不带 ^ 锚：RC（kimi rc）页面的路径是 /devices/<id>/sessions/<sid>
+  return location.pathname.match(/\/sessions\/([^/?#]+)/)?.[1] || '';
 }
 
 /* ---------- 交互：手动刷新 ---------- */
@@ -366,8 +367,13 @@ function init() {
   }).catch((error) => console.warn('[Kimi Status] 收藏功能初始化失败', error));
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init, { once: true });
-} else {
-  init();
+// 防御重复注入：动态注册与历史版本的即时注入叠加、或同一文档被注册两次时，
+// 重复 init 会产生双份监听器与双面板，用 window 标记去重。
+if (!window.__kimiCodeMonitorLoaded) {
+  window.__kimiCodeMonitorLoaded = true;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
 }

@@ -272,7 +272,15 @@ const EN = {
   '日均消耗': 'Daily average',
   '{v} / 天': '{v} / day',
   '峰值日': 'Peak day',
-  '总消耗': 'Total'
+  '总消耗': 'Total',
+  /* ---------- 动态站点授权 ---------- */
+  '此站点未启用面板': 'Panel not enabled on this site',
+  '已在此站点启用面板': 'Panel enabled on this site',
+  '在此站点启用': 'Enable on this site',
+  '重新启用': 'Re-enable',
+  '未授予站点访问权限': 'Site access not granted',
+  '启用失败': 'Failed to enable',
+  '取消失败': 'Failed to disable'
 };
 
 export function getLocale() {

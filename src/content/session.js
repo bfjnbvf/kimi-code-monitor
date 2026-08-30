@@ -11,7 +11,7 @@
 import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metrics.js';
 import * as KimiCliUsage from '../cli-usage.js';
 import { panel, clearSessionHistory, resetMetrics } from './panel-state.js';
-import { toNumber, PET_ANSWER_STATUSES } from './utils.js';
+import { toNumber, PET_ANSWER_STATUSES, rcApiPrefix, isRemoteControl, localApiAuthHeaders } from './utils.js';
 import { renderAll, setAgentStatus, resetAgentStatusThrottle } from './render.js';
 import {
   petCancelTurn,
@@ -170,12 +170,13 @@ export async function refreshSessionSeedFromScan() {
 }
 
 async function loadSessionSnapshot(targetSessionId, targetToken, requestId, sessionChanged, hasLocalState = false) {
-  if (deps.isDisposed() || !targetSessionId || !targetToken) return;
+  // RC 中继回源时注入本机 token，页面侧空凭据也可拉快照
+  if (deps.isDisposed() || !targetSessionId || (!targetToken && !isRemoteControl())) return;
   const stale = () =>
     requestId !== sessionRequestId || targetSessionId !== currentSessionId || targetToken !== currentToken;
   try {
-    const response = await fetch(`/api/v1/sessions/${encodeURIComponent(targetSessionId)}`, {
-      headers: { Authorization: `Bearer ${targetToken}` },
+    const response = await fetch(`${rcApiPrefix()}/api/v1/sessions/${encodeURIComponent(targetSessionId)}`, {
+      headers: localApiAuthHeaders(targetToken),
       signal: AbortSignal.timeout(15_000)
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -307,7 +308,8 @@ export async function startSession(nextSessionId) {
     deps.conn.resetCursors();
   }
   currentSessionId = nextSessionId;
-  if (!currentSessionId || !currentToken) {
+  // RC 中继由云端鉴权，空凭据是正常状态，不阻断会话启动
+  if (!currentSessionId || (!currentToken && !isRemoteControl())) {
     if (requestId === sessionRequestId) sessionSnapshotPending = false;
     resetMetrics();
     renderAll();

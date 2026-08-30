@@ -4,6 +4,7 @@
  */
 import { initMode } from './popup/shared.js';
 import { initPopupLocale, applyPopupI18n } from './i18n.js';
+import { initHostsSection } from './popup/hosts.js';
 import { setCliPathHelp, refreshCliStatus } from './popup/usage.js';
 import { refreshStatus } from './popup/accounts.js';
 import { buildExternalSection, refreshExternalStatus } from './popup/external.js';
@@ -24,6 +25,7 @@ kick(
   (async () => {
     await initPopupLocale();
     applyPopupI18n(document);
+    kick(initHostsSection());
     kick(refreshStatus());
     setCliPathHelp();
     kick(refreshCliStatus());

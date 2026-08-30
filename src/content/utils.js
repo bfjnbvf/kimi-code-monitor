@@ -1,5 +1,5 @@
 /**
- * 通用小工具：纯函数，不依赖 DOM / chrome API。
+ * 通用小工具：纯函数为主，仅 rcApiPrefix 等 RC 适配读取 location。
  * content / render / websocket-session / pet 各域共用。
  */
 
@@ -50,6 +50,23 @@ export const PET_ANSWER_STATUSES = ['thinking', 'executing', 'replying', 'subage
 
 export const CONSOLE_URL = 'https://www.kimi.com/code/console';
 export const SUBSCRIPTION_URL = 'https://www.kimi.com/membership/subscription?tab=quota';
+
+/* ---------- Remote Control（kimi rc）适配 ----------
+ * RC 页面挂在云端中继（code-rc.kimi.com）的 /devices/<id>/ 前缀下，
+ * REST/WS 必须带此前缀才会被路由回本机服务器；本机/LAN 直连时为空串。
+ * RC 由云端鉴权、回源时注入本机 token，页面 localStorage 里没有凭据，
+ * 因此空凭据时应省略 Authorization 头 / WS 子协议（与中继自带的 web UI 一致）。 */
+export function rcApiPrefix() {
+  return location.pathname.match(/^\/devices\/[^/?#]+/)?.[0] || '';
+}
+
+export function isRemoteControl() {
+  return rcApiPrefix() !== '';
+}
+
+export function localApiAuthHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export function parseResetTime(value) {
   const time = Date.parse(value || '');

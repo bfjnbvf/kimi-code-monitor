@@ -46,6 +46,12 @@ import {
   openCliUsageSettings,
   recoverInterruptedCliScan
 } from './background/cli-scan.js';
+import {
+  listExtraWebHosts,
+  grantExtraWebHost,
+  revokeExtraWebHost,
+  syncExtraWebHosts
+} from './background/dynamic-hosts.js';
 
 // 授权域不反向依赖额度域：账户变更时的额度缓存/预警清理由回调完成
 initOAuth({
@@ -83,7 +89,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     'rename.usage.get': getRenameUsage,
     'rename.models.list': listRenameModels,
     'rename.external.models.list': listExternalRenameModels,
-    'pet.asset.active': getActivePetAsset
+    'pet.asset.active': getActivePetAsset,
+    'hosts.list': listExtraWebHosts,
+    'hosts.grant': (payload) => grantExtraWebHost(payload?.origin),
+    'hosts.revoke': (payload) => revokeExtraWebHost(payload?.origin)
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -109,3 +118,8 @@ loadPendingAuthorization()
 
 // SW 被回收后重启：若 storage 里还残留 scanning:true，说明上次扫描中断，标记为失败
 recoverInterruptedCliScan();
+
+// 安装/更新时对齐动态站点授权的内容脚本注册与 CSP 规则
+chrome.runtime.onInstalled.addListener(() => {
+  syncExtraWebHosts().catch((error) => console.warn('[Kimi Status] 同步动态站点授权失败', error));
+});

@@ -5,6 +5,7 @@
 
 import * as KimiCliUsage from '../cli-usage.js';
 import { withStorageLock, updateStorage, failure } from './store.js';
+import { queryKimiWebTabs } from './dynamic-hosts.js';
 
 /* ---------- 本地 Kimi CLI 长期用量 ----------
  * 目录选择必须在 popup/options 的用户点击中完成；后台只读取已存入 IndexedDB
@@ -140,12 +141,9 @@ export async function openCliUsageSettings() {
 }
 
 function broadcastCliUsageState(type) {
-  chrome.tabs
-    .query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] })
-    .then((tabs) => {
-      for (const tab of tabs) chrome.tabs.sendMessage(tab.id, { type }).catch(() => {});
-    })
-    .catch(() => {});
+  queryKimiWebTabs().then((tabs) => {
+    for (const tab of tabs) chrome.tabs.sendMessage(tab.id, { type }).catch(() => {});
+  });
 }
 
 
