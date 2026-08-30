@@ -4,7 +4,7 @@
 
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
-Kimi Code Web 的侧边栏监控扩展。一只会反映工作状态的吉祥物，一只兼容 Codex 画廊的桌面宠物，一套完整的用量分析与分享，一个随时回看的 AI 回复收藏夹——全部本地运行，数据不上传。
+Kimi Code Web 的侧边栏监控扩展。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
 
 ![面板完整模式与 Mini 模式对比](docs/screenshots/hero.png)
 
