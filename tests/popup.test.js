@@ -140,7 +140,7 @@ test('扩展功能卡片：收藏、自动归档与自动命名（复制提示�
   assert.match(html, /id="rename-copy-prompt"/);
   assert.doesNotMatch(html, /rename-auto-toggle|rename-model-select|rename-emoji-on|rename-usage/);
   assert.match(html, /官方实验「AI session titles」/);
-  assert.match(html, /完成后运行 \/reload 生效/);
+  assert.match(html, /已改由官方实验「AI session titles」实现，未开启时点击复制提示词/);
   assert.match(css, /\.kswitch::after/);
   // 子块一：收藏开关（默认开，关闭时内容侧停星标与收藏页）
   assert.match(html, /id="ext-bookmarks-block"/);
@@ -157,7 +157,6 @@ test('扩展功能卡片：收藏、自动归档与自动命名（复制提示�
   // 功能介绍不占行：统一放在卡片 ⓘ hover 弹层（悬浮即读，与开关状态无关）
   assert.match(html, /AI 回复收藏：点击 AI 回复下方的星标即可收藏/);
   assert.match(html, /自动归档不活跃对话：按静默天数/);
-  assert.match(html, /完成后运行 \/reload 生效/);
   assert.match(css, /\.ext-block-sub \{[^}]*font-size: 11px/);
   // 子块标题与「账户 1」(.ext-name) 同规范：11px、不加粗
   assert.match(css, /\.ext-block-head \.usage-title \{[^}]*font-size: 11px/);
