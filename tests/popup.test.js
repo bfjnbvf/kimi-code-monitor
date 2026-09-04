@@ -10,11 +10,12 @@ const css = fs.readFileSync(path.join(__dirname, '..', 'popup.css'), 'utf8');
 const usageSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'usage.js'), 'utf8');
 const accountsSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'accounts.js'), 'utf8');
 const externalSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'external.js'), 'utf8');
+const renameSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'rename.js'), 'utf8');
 const tidySource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'tidy.js'), 'utf8');
 const petsSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'pets.js'), 'utf8');
 const shareCardSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'share-card.js'), 'utf8');
 // 全板块拼接：供「任何地方都不许出现」类断言使用
-const allPopupSource = [usageSource, accountsSource, externalSource, tidySource, petsSource, shareCardSource].join('\n');
+const allPopupSource = [usageSource, accountsSource, externalSource, renameSource, tidySource, petsSource, shareCardSource].join('\n');
 const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'background.js'), 'utf8');
 
 test('本地记录授权提供路径提示、选错目录报错及重新授权和取消入口', () => {
@@ -131,16 +132,15 @@ test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => 
   assert.match(accountsSource, /badge\.textContent = t\('当前'\)/);
 });
 
-test('扩展功能卡片：收藏开关与自动归档两子块，自动命名子块移除并附官方教程', () => {
+test('扩展功能卡片：收藏、自动归档与自动命名（复制提示词引导）三个子块', () => {
   assert.match(html, /id="extensions-section"/);
   assert.match(html, /扩展功能/);
-  // 自动命名子块整体移除：标题自动生成由官方实验 auto_session_title 承担，
-  // 卡片 ⓘ 弹层内附 CLI 开启教程
-  assert.doesNotMatch(html, /ext-rename-block|rename-auto-toggle/);
-  assert.doesNotMatch(html, /rename-model-select|rename-emoji-on|rename-usage/);
-  assert.match(html, /KIMI_CODE_EXPERIMENTAL_FLAG=1/);
-  assert.match(html, /auto_session_title/);
-  assert.match(html, /小教程 · 会话标题自动生成/);
+  // 自动命名子块：复制提示词引导（无扩展端开关/管线），教程即提示词本身
+  assert.match(html, /id="ext-rename-block"/);
+  assert.match(html, /id="rename-copy-prompt"/);
+  assert.doesNotMatch(html, /rename-auto-toggle|rename-model-select|rename-emoji-on|rename-usage/);
+  assert.match(html, /官方实验「AI session titles」/);
+  assert.match(html, /完成后运行 \/reload 生效/);
   assert.match(css, /\.kswitch::after/);
   // 子块一：收藏开关（默认开，关闭时内容侧停星标与收藏页）
   assert.match(html, /id="ext-bookmarks-block"/);
@@ -157,9 +157,8 @@ test('扩展功能卡片：收藏开关与自动归档两子块，自动命名�
   // 功能介绍不占行：统一放在卡片 ⓘ hover 弹层（悬浮即读，与开关状态无关）
   assert.match(html, /AI 回复收藏：点击 AI 回复下方的星标即可收藏/);
   assert.match(html, /自动归档不活跃对话：按静默天数/);
-  assert.match(html, /小教程 · 会话标题自动生成：该能力由 Kimi CLI 官方实验/);
-  assert.doesNotMatch(html, /ext-block-sub/);
-  assert.doesNotMatch(css, /\.ext-block-sub/);
+  assert.match(html, /完成后运行 \/reload 生效/);
+  assert.match(css, /\.ext-block-sub \{[^}]*font-size: 11px/);
   // 子块标题与「账户 1」(.ext-name) 同规范：11px、不加粗
   assert.match(css, /\.ext-block-head \.usage-title \{[^}]*font-size: 11px/);
   assert.match(css, /\.ext-block-head \.usage-title \{[^}]*font-weight: 400/);
@@ -172,8 +171,10 @@ test('扩展功能卡片：收藏开关与自动归档两子块，自动命名�
   assert.doesNotMatch(allPopupSource, /rename\.batch\./);
   assert.doesNotMatch(allPopupSource, /collectCustomTitleSessionIds/);
   assert.doesNotMatch(backgroundSource, /rename\.batch\./);
-  // 自动命名子块已移除：popup 不再有任何命名配置入口或存储引用
-  assert.doesNotMatch(html, /rename-auto-toggle|新会话自动命名/);
+  // 复制提示词模块：提示词全文与剪贴板降级都在 rename.js，扩展端无生成管线
+  assert.match(renameSource, /auto_session_title = true/);
+  assert.match(renameSource, /KIMI_CODE_HOME/);
+  assert.match(renameSource, /navigator\.clipboard\.writeText/);
   assert.doesNotMatch(allPopupSource, /sessionRenameSettings/);
   // tidy 设置与候选/整理走 background 中继；解锁门控在 popup 侧
   assert.match(tidySource, /'kimiTidySettings'/);

@@ -842,6 +842,12 @@
     text-transform: none;
     color: inherit;
   }
+  .ext-block-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin: 2px 0 0;
+    line-height: 1.5;
+  }
   .ext-block:not(.on) .tidy-config { display: none; }
 
   /* 自动整理配置行 */
@@ -876,6 +882,14 @@
     font-size: 11px;
     color: var(--text-secondary);
   }
+  /* 自动命名：复制提示词入口（蓝色文字，视觉上不是按钮） */
+  button.copy-prompt-link {
+    padding: 0; margin-top: 6px; border: none; background: none;
+    color: var(--accent); font-size: 11px; cursor: pointer; text-align: left;
+  }
+  button.copy-prompt-link:hover { color: var(--accent-hover); }
+  button.copy-prompt-link:disabled { color: var(--text-tertiary); cursor: default; }
+
   /* 首跑面板（一次性 dry run）：条数 + 具体会话名列表 + 解锁/清理入口 */
   .tidy-candidates { margin-top: 8px; }
   .tidy-first-list { margin-top: 4px; }

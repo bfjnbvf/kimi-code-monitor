@@ -9,6 +9,7 @@ import { setCliPathHelp, refreshCliStatus } from './popup/usage.js';
 import { refreshStatus } from './popup/accounts.js';
 import { buildExternalSection, refreshExternalStatus } from './popup/external.js';
 import { loadTidySettings, loadBookmarksFeature } from './popup/tidy.js';
+import './popup/rename.js';
 import './popup/pets.js';
 import './popup/share-card.js';
 

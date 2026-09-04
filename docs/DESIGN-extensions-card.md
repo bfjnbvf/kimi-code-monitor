@@ -114,11 +114,11 @@ popup 现有「宠物」卡片保留独立；新增「扩展功能」卡片承�
 
 ## 3. 自动命名（终态：整体移除）
 
-> **终态（2026-09-05，用户确认方案 A）**：用户 CLI 的 /experiments 显示官方实验
-> auto_session_title 已 enabled（KIMI_CODE_EXPERIMENTAL_FLAG 锁定，第一轮即自动
-> 生成）——扩展端任何补充生成都会造成标题抖动。popup 子块、触发管线
-> （rename-content.js）、websocket-session 接线整体移除/注释保留；卡片 ⓘ 弹层
-> 附官方实验开启教程。
+> **终态（2026-09-05，两轮迭代）**：官方实验 auto_session_title（KIMI_CODE_EXPERIMENTAL_FLAG
+> 锁定，经 config.experimental 下发，web 第一轮即自动生成）已覆盖此能力，扩展端
+> 生成管线整体退役（代码注释保留）。popup 保留「新会话自动命名」入口作为引导：
+> 点击复制提示词 → 粘贴到 kimi web 对话框 → kimi 修改 ~/.kimi-code/config.toml
+> 开启官方实验（副本编辑 + kimi doctor config 校验 + 时间戳备份替换）→ /reload 生效。
 
 ### 3.1 方案（按当前构建落地）
 
