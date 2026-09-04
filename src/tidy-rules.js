@@ -26,10 +26,15 @@ function normalizeThresholds(thresholds) {
     if (!Number.isFinite(number)) return fallback;
     return Math.min(365, Math.max(1, Math.round(number)));
   };
+  // 每档规则可独立启停（勾选框）：undefined/true 视为启用，仅显式 false 停用
+  const flag = (value) => value !== false;
   return {
     singleDayIdleDays: clamp(thresholds?.singleDayIdleDays, defaults.singleDayIdleDays),
     multiDayIdleDays: clamp(thresholds?.multiDayIdleDays, defaults.multiDayIdleDays),
-    allIdleDays: clamp(thresholds?.allIdleDays, defaults.allIdleDays)
+    allIdleDays: clamp(thresholds?.allIdleDays, defaults.allIdleDays),
+    singleDayEnabled: flag(thresholds?.singleDayEnabled),
+    multiDayEnabled: flag(thresholds?.multiDayEnabled),
+    allEnabled: flag(thresholds?.allEnabled)
   };
 }
 
@@ -96,11 +101,11 @@ export function classifyTidyCandidates(sessions, now, thresholds) {
     const spanDays = (session.updatedAt - session.createdAt) / DAY_MS;
     const idleDays = (nowMs - session.updatedAt) / DAY_MS;
     let rule = null;
-    if (spanDays < SINGLE_DAY_SPAN_DAYS && idleDays >= limits.singleDayIdleDays) {
+    if (limits.singleDayEnabled && spanDays < SINGLE_DAY_SPAN_DAYS && idleDays >= limits.singleDayIdleDays) {
       rule = 'single-day';
-    } else if (spanDays >= SINGLE_DAY_SPAN_DAYS && idleDays >= limits.multiDayIdleDays) {
+    } else if (limits.multiDayEnabled && spanDays >= SINGLE_DAY_SPAN_DAYS && idleDays >= limits.multiDayIdleDays) {
       rule = 'multi-day';
-    } else if (idleDays >= limits.allIdleDays) {
+    } else if (limits.allEnabled && idleDays >= limits.allIdleDays) {
       rule = 'all';
     }
     if (!rule) continue;

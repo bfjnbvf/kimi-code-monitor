@@ -179,3 +179,24 @@ test('批量输入：候选与总数解耦，输出按输入顺序', () => {
   );
   assert.deepEqual(candidates.map((c) => c.id), ['b', 'c']);
 });
+
+
+test('规则启停：勾选标志为 false 的档位不参与判定，缺省视为启用', () => {
+  // 单日档停用：跨度小、静默 4 天的会话不再命中（多日需 14 天、所有需 30 天）
+  const noSingle = classifyTidyCandidates(
+    [session({ createdAtDaysAgo: 5, updatedAtDaysAgo: 4 })],
+    NOW,
+    { singleDayEnabled: false }
+  );
+  assert.deepEqual(noSingle.candidates, []);
+  // 三档全停用：什么都不归档
+  const none = classifyTidyCandidates(
+    [session({ createdAtDaysAgo: 60, updatedAtDaysAgo: 40 })],
+    NOW,
+    { singleDayEnabled: false, multiDayEnabled: false, allEnabled: false }
+  );
+  assert.deepEqual(none.candidates, []);
+  // 未传启停标志（旧调用方）行为不变
+  const legacy = classifyTidyCandidates([session({ createdAtDaysAgo: 5, updatedAtDaysAgo: 4 })], NOW);
+  assert.equal(legacy.candidates.length, 1);
+});

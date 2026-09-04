@@ -875,6 +875,9 @@
     background: var(--fill-1);
     color: inherit;
   }
+  .tidy-row.off { opacity: 0.45; }
+  .tidy-row label { cursor: pointer; }
+  .tidy-row input[type="checkbox"] { flex-shrink: 0; }
   .tidy-row .status-actions {
     display: inline-flex;
     align-items: center;
@@ -884,7 +887,8 @@
   }
   /* 自动命名：复制提示词入口（蓝色文字，视觉上不是按钮） */
   button.copy-prompt-link {
-    padding: 0; margin-top: 6px; border: none; background: none;
+    display: block; align-self: center; appearance: none; -webkit-appearance: none;
+    padding: 0; border: none; background: none; line-height: 1.5;
     color: var(--accent); font-size: 11px; cursor: pointer; text-align: left;
   }
   button.copy-prompt-link:hover { color: var(--accent-hover); }

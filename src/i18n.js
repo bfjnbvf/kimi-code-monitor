@@ -293,6 +293,8 @@ const EN = {
   '天后归档': 'days → archive',
   '没有符合条件的对话': 'No sessions match the rules',
   '点击解锁自动归档': 'Click to unlock auto-archive',
+  '三条规则相互独立：勾选即启用、去掉即停用，天数可随时调整。之后每 24 小时按勾选的规则在后台自动归档。点击其他位置关闭本说明。': 'The three rules are independent: tick to enable, untick to disable; the day thresholds are adjustable. Archives run every 24 hours for the ticked rules. Click anywhere else to close this note.',
+  '知道了': 'Got it',
   '已改由官方实验「AI session titles」实现，未开启时点击复制提示词，发给 Kimi 即可开启。': 'Now powered by the official Kimi CLI experiment "AI session titles". If it is not enabled yet, click Copy prompt and send it to Kimi to switch on.',
   '复制提示词': 'Copy prompt',
   '已复制，粘贴到 kimi 对话框发送即可': 'Copied — paste it into the kimi chat and send',

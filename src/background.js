@@ -114,7 +114,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     'tidy.settings.updated': async () => {
       await syncTidyAutoAlarm();
       return runTidyAutoIfDue();
-    }
+    },
+    // 官方自动命名实验状态：内容脚本读 /meta 判定，popup 据此隐藏引导子块
+    'rename.official.status': () => relayToKimiWebTab('rename.official.status.fetch', {})
   };
   const handler = handlers[message?.type];
   if (!handler) return false;

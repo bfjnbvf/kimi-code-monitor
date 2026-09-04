@@ -5,10 +5,15 @@
  * 即自动生成，右键「生成标题」可手动触发）。本板块不再自行生成——点击
  * 「复制提示词」把一段交给 kimi 执行的配置提示词复制到剪贴板，用户粘贴到
  * kimi web 对话框发送，由 kimi 修改 ~/.kimi-code/config.toml 并提示 /reload。
+ *
+ * 官方实验已开启时（内容脚本经 /api/v1/meta 探测），本子块整体隐藏，
+ * 不再常驻弹窗。
  */
+import { send } from './shared.js';
 import { t } from '../i18n.js';
 
 const copyBtn = document.getElementById('rename-copy-prompt');
+const extRenameBlock = document.getElementById('ext-rename-block');
 
 // 交给 kimi 执行的提示词（用户审定文本，勿改动措辞）
 const PROMPT = [
@@ -52,4 +57,15 @@ async function copyPrompt() {
   }
 }
 
+// 探测官方实验状态：已开启则隐藏整个子块（每次打开弹窗实时探测一次；
+// 探测失败——如没有打开的 Kimi 页面——保持显示，避免误隐藏）
+async function refreshOfficialStatus() {
+  if (!extRenameBlock) return;
+  try {
+    const response = await send('rename.official.status');
+    if (response?.ok && response.enabled) extRenameBlock.classList.add('hidden');
+  } catch { /* 无打开页面：保持显示 */ }
+}
+
 if (copyBtn) copyBtn.addEventListener('click', copyPrompt);
+refreshOfficialStatus();

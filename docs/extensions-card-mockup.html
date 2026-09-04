@@ -31,7 +31,8 @@
   .ext-block:not(.on) .tidy-config { display: none; }
 
   .tidy-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; min-height: 24px; }
-  .tidy-row label { font-size: 11px; color: var(--text-secondary, #555); white-space: nowrap; }
+  .tidy-row label { font-size: 11px; color: var(--text-secondary, #555); white-space: nowrap; cursor: pointer; }
+  .tidy-row input[type="checkbox"] { flex-shrink: 0; }
   .tidy-row input[type="number"] {
     width: 44px; padding: 2px 4px; font-size: 11px; text-align: center;
     border: 1px solid var(--fill-2, #ddd); border-radius: 6px; background: var(--fill-1, #f5f5f5); color: inherit;
@@ -86,15 +87,15 @@
             </div>
             <button type="button" class="action tidy-unlock-btn" style="margin-top:6px;">清理并解锁自动归档</button>
             <div class="tidy-row">
-              <label>单日对话，静默</label>
+              <label><input type="checkbox" checked> 单日对话，静默</label>
               <span class="status-actions"><input type="number" value="3" min="1" max="365"> 天后归档</span>
             </div>
             <div class="tidy-row">
-              <label>多日对话，静默</label>
+              <label><input type="checkbox" checked> 多日对话，静默</label>
               <span class="status-actions"><input type="number" value="14" min="1" max="365"> 天后归档</span>
             </div>
             <div class="tidy-row">
-              <label>所有对话，静默</label>
+              <label><input type="checkbox" checked> 所有对话，静默</label>
               <span class="status-actions"><input type="number" value="30" min="1" max="365"> 天后归档</span>
             </div>
           </div>
@@ -167,15 +168,15 @@
             </div>
             <p class="tidy-hint" style="margin-top:8px;">每 24 小时后台自动归档一次</p>
             <div class="tidy-row">
-              <label>单日对话，静默</label>
+              <label><input type="checkbox" checked> 单日对话，静默</label>
               <span class="status-actions"><input type="number" value="3" min="1" max="365"> 天后归档</span>
             </div>
             <div class="tidy-row">
-              <label>多日对话，静默</label>
+              <label><input type="checkbox" checked> 多日对话，静默</label>
               <span class="status-actions"><input type="number" value="14" min="1" max="365"> 天后归档</span>
             </div>
             <div class="tidy-row">
-              <label>所有对话，静默</label>
+              <label><input type="checkbox" checked> 所有对话，静默</label>
               <span class="status-actions"><input type="number" value="30" min="1" max="365"> 天后归档</span>
             </div>
             <p class="tidy-hint">上次自动归档：9 月 4 日 12:00，归档 5 个对话</p>

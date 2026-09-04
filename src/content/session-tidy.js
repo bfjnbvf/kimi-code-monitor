@@ -153,7 +153,21 @@ function handleRuntimeMessage(message, _sender, sendResponse) {
     'tidy.candidates.fetch': computeTidyCandidates,
     'tidy.apply': () => applyTidyArchive(message.payload),
     'tidy.lab.ensure': ensureLabSidebarTabs,
-    'tidy.auto.run': runTidyAuto
+    'tidy.auto.run': runTidyAuto,
+    // 官方自动命名实验（auto_session_title）是否已启用：popup 据此隐藏/显示
+    // 「新会话自动命名」引导子块。权威来源 /api/v1/meta 的 experimental_flags
+    //（环境变量主开关），config.experimental 为配置文件路径的兜底。
+    'rename.official.status.fetch': async () => {
+      const meta = await apiGet('/api/v1/meta').catch(() => null);
+      const flags = meta?.experimental_flags ?? meta?.data?.experimental_flags;
+      if (flags && typeof flags === 'object') {
+        return { ok: true, enabled: flags.auto_session_title === true };
+      }
+      const config = await apiGet('/api/v1/config').catch(() => null);
+      const data = config?.data && typeof config.data === 'object' ? config.data : config;
+      const experimental = data?.experimental && typeof data.experimental === 'object' ? data.experimental : {};
+      return { ok: true, enabled: experimental.auto_session_title === true };
+    }
   };
   const handler = handlers[message?.type];
   if (!handler) return false;

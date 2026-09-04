@@ -151,6 +151,9 @@ test('扩展功能卡片：收藏、自动归档与自动命名（复制提示�
   assert.match(html, /id="tidy-toggle"/);
   assert.doesNotMatch(html, /tidy-mode-select|tidy-mode-auto|tidy-candidates-btn/);
   assert.match(html, /id="tidy-candidates"/);
+  assert.match(html, /id="tidy-rule-single"/);
+  assert.match(html, /id="tidy-rule-multi"/);
+  assert.match(html, /id="tidy-rule-all"/);
   assert.match(html, /id="tidy-t1"/);
   assert.match(html, /id="tidy-t2"/);
   assert.match(html, /id="tidy-t3"/);
@@ -195,6 +198,10 @@ test('扩展功能卡片：收藏、自动归档与自动命名（复制提示�
   assert.match(tidySource, /TIDY_MANUAL_DONE_STORAGE_KEY\]: Date\.now/);
   assert.match(tidySource, /TIDY_LAST_RUN_STORAGE_KEY\]: \{ at: Date\.now\(\)/);
   assert.match(tidySource, /renderTidyPhase/);
+  // 三档规则勾选框 + 一次性引导（解锁后展示一次，点击其他位置关闭）
+  assert.match(tidySource, /kimiTidyGuideShown/);
+  assert.match(tidySource, /renderTidyGuide/);
+  assert.match(tidySource, /三条规则相互独立/);
   assert.match(tidySource, /runFirstRunPanel/);
   assert.doesNotMatch(tidySource, /tidyModeSelect|tidy-candidates-btn/);
   assert.match(backgroundSource, /'tidy\.candidates':/);
