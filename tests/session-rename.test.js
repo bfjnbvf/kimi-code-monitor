@@ -407,10 +407,9 @@ test('接线：manifest 与 build.sh 登记新文件，命名 v2 走系统「生
   assert.match(renameBgSource, /recordRenameUsage\(result\.usage\)/);
   assert.match(renameBgSource, /const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage'/);
 
-  // turn.ended 钩子直接 import 后注入 websocket-session.js，不再走 globalThis 兜底
-  // 渲染层拆分后由 websocket-session 直接 import onTurnEnded，不再经 content.js 注入
-  assert.match(wsSessionSource, /import \{ onTurnEnded \} from '\.\.\/session-rename\/rename-content\.js';/);
-  assert.match(wsSessionSource, /onTurnEnded\(sessionId\)/);
+  // v3.4.0 末：自动命名整体移除（官方实验 auto_session_title 已覆盖），
+  // websocket-session 不再接线 onTurnEnded
+  assert.doesNotMatch(wsSessionSource, /onTurnEnded/);
 });
 
 test('自动命名重试：busy/locked 等暂时性跳过放回重试集合，不消耗尝试次数', () => {

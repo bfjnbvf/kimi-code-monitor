@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<!-- 扩展功能卡片 视觉稿（v3.4.0 popup 改版预览）
-     复用真实 popup.css，仅新增样式集中在下方 <style>——实现时照搬进 popup.css。
-     左：三功能全开（自动整理=手动确认，有候选）；右：命名/整理关闭时的收起态。 -->
+<!-- 扩展功能卡片 视觉稿（v3.4.0 popup 改版预览 · 最终态：收藏 + 自动归档两个子块）
+     复用真实 popup.css，仅新增样式集中在下方 <style>。
+     自动命名已移除（官方实验 auto_session_title 承担），开启教程在卡片 ⓘ 弹层。 -->
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
 <title>扩展功能卡片 · 视觉稿</title>
 <link rel="stylesheet" href="../popup.css">
 <style>
-  /* ---- 以下为新增样式（实现时并入 popup.css） ---- */
+  /* ---- 以下为新增样式（已并入 popup.css） ---- */
   .mock-stage { display: flex; gap: 40px; padding: 32px; align-items: flex-start; }
   .mock-col { width: 260px; }
   .mock-label { font: 13px system-ui; color: #666; margin: 0 0 10px 2px; }
@@ -20,54 +20,50 @@
     border-radius: 12px; box-shadow: 0 10px 34px rgba(0,0,0,.18);
   }
 
-  /* 新卡片容器：与 #roam-pet-section 同款 */
+  /* 卡片容器：与 #roam-pet-section 同款 */
   #extensions-section {
     padding: 10px; border-radius: 8px; background: var(--fill-1); margin-bottom: 10px;
   }
 
-  /* 子块头：功能名 + 开关（比 section-head 紧凑，卡片内复用） */
   .ext-block { padding: 2px 0; }
   .ext-block-head { display: flex; align-items: center; justify-content: space-between; min-height: 24px; }
   .ext-block-head .usage-title { font-size: 11px; font-weight: 400; letter-spacing: normal; text-transform: none; color: inherit; }
-  .ext-block-sub { font-size: 11px; color: var(--text-tertiary, #999); margin: 2px 0 0; line-height: 1.5; }
-  .ext-block-head + .ext-block-sub { margin-top: 2px; }
+  .ext-block:not(.on) .tidy-config { display: none; }
 
-  /* 自动整理配置行 */
   .tidy-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; min-height: 24px; }
-  .tidy-row label { font-size: 12px; color: var(--text-secondary, #555); white-space: nowrap; }
+  .tidy-row label { font-size: 11px; color: var(--text-secondary, #555); white-space: nowrap; }
   .tidy-row input[type="number"] {
-    width: 44px; padding: 2px 4px; font-size: 12px; text-align: center;
-    border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg-input, #fff);
+    width: 44px; padding: 2px 4px; font-size: 11px; text-align: center;
+    border: 1px solid var(--fill-2, #ddd); border-radius: 6px; background: var(--fill-1, #f5f5f5); color: inherit;
   }
   .tidy-row .status-actions { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary, #555); }
+  button.action.tidy-unlock-btn { color: var(--accent, #0a6cff); }
+  button.action.tidy-unlock-btn:hover { color: var(--accent-hover, #0a6cff); }
   .tidy-first-item {
     font-size: 11px; color: var(--text-secondary, #555);
     padding: 1px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .tidy-first-more { color: var(--text-tertiary, #999); }
-  button.action.tidy-unlock-btn { color: var(--accent, #0a6cff); }
-  button.action.tidy-unlock-btn:hover { color: var(--accent-hover, #0a6cff); }
   .tidy-hint { font-size: 11px; color: var(--text-tertiary, #999); margin-top: 6px; line-height: 1.5; }
-  select:disabled { opacity: .5; }
 </style>
 </head>
-<body class="is-popup-page">
+<body>
 <div class="mock-stage">
 
-  <!-- 状态 A：三功能全开 -->
+  <!-- 状态 A：首次开启（dry run） -->
   <div class="mock-col">
     <p class="mock-label">状态 A · 首次开启（dry run：5 条待归档）</p>
     <div class="is-popup">
       <div id="extensions-section" class="feature-card on">
         <div class="section-head">
           <div class="feature-title">
-            <span class="info-icon"><span class="info-tip">扩展功能的统一开关区：AI 回复收藏、自动归档不活跃对话与新会话自动命名。各自独立开关，关闭后对应功能与配置一并收起。</span></span>
+            <span class="info-icon"><span class="info-tip">AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。<br><br>小教程 · 会话标题自动生成：该能力由 Kimi CLI 官方实验「AI session titles」提供。开启方法：在启动 kimi 的环境里设置环境变量 KIMI_CODE_EXPERIMENTAL_FLAG=1（如写入 ~/.zshrc 后重启终端），再用 /experiments 确认 auto_session_title 为 enabled；手动生成可右键会话选「生成标题」。</span></span>
             <span class="usage-title">扩展功能</span>
           </div>
         </div>
         <div class="feature-body">
 
-          <div class="ext-block">
+          <div class="ext-block on">
             <div class="ext-block-head">
               <span class="usage-title">AI 回复收藏</span>
               <label class="feature-toggle"><input type="checkbox" checked class="kswitch-input"><span class="kswitch"></span></label>
@@ -76,7 +72,7 @@
 
           <div class="feature-divider"></div>
 
-          <div class="ext-block">
+          <div class="ext-block on">
             <div class="ext-block-head">
               <span class="usage-title">自动归档不活跃对话</span>
               <label class="feature-toggle"><input type="checkbox" checked class="kswitch-input"><span class="kswitch"></span></label>
@@ -103,34 +99,25 @@
             </div>
           </div>
 
-          <div class="feature-divider"></div>
-
-          <div class="ext-block">
-            <div class="ext-block-head">
-              <span class="usage-title">新会话自动命名</span>
-              <label class="feature-toggle"><input type="checkbox" checked class="kswitch-input"><span class="kswitch"></span></label>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 状态 B：命名/整理关闭，收藏保留 -->
+  <!-- 状态 B：归档关闭，收藏保留 -->
   <div class="mock-col">
-    <p class="mock-label">状态 B · 命名、归档关闭（配置收起），收藏保留</p>
+    <p class="mock-label">状态 B · 归档关闭（配置收起），收藏保留</p>
     <div class="is-popup">
       <div id="extensions-section" class="feature-card on">
         <div class="section-head">
           <div class="feature-title">
-            <span class="info-icon"><span class="info-tip">扩展功能的统一开关区：AI 回复收藏、自动归档不活跃对话与新会话自动命名。各自独立开关，关闭后对应功能与配置一并收起。</span></span>
+            <span class="info-icon"><span class="info-tip">AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。</span></span>
             <span class="usage-title">扩展功能</span>
           </div>
         </div>
         <div class="feature-body">
 
-          <div class="ext-block">
+          <div class="ext-block on">
             <div class="ext-block-head">
               <span class="usage-title">AI 回复收藏</span>
               <label class="feature-toggle"><input type="checkbox" checked class="kswitch-input"><span class="kswitch"></span></label>
@@ -146,33 +133,24 @@
             </div>
           </div>
 
-          <div class="feature-divider"></div>
-
-          <div class="ext-block">
-            <div class="ext-block-head">
-              <span class="usage-title">新会话自动命名</span>
-              <label class="feature-toggle"><input type="checkbox" class="kswitch-input"><span class="kswitch"></span></label>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 状态 C：自动模式已解锁 -->
+  <!-- 状态 C：已解锁，自动阶段 -->
   <div class="mock-col">
     <p class="mock-label">状态 C · 已完成首次归档，自动阶段</p>
     <div class="is-popup">
       <div id="extensions-section" class="feature-card on">
         <div class="section-head">
           <div class="feature-title">
-            <span class="info-icon"><span class="info-tip">扩展功能集合。</span></span>
+            <span class="info-icon"><span class="info-tip">AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。</span></span>
             <span class="usage-title">扩展功能</span>
           </div>
         </div>
         <div class="feature-body">
-          <div class="ext-block">
+          <div class="ext-block on">
             <div class="ext-block-head">
               <span class="usage-title">自动归档不活跃对话</span>
               <label class="feature-toggle"><input type="checkbox" checked class="kswitch-input"><span class="kswitch"></span></label>

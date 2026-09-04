@@ -260,7 +260,17 @@ tidyToggle.addEventListener('change', async () => {
   }
 });
 
+let thresholdSaveTimer = null;
+
 for (const key of Object.keys(thresholdInputs)) {
+  // input 即时防抖保存：改完数字立刻关弹窗也不会丢（change 只在失焦/回车触发）
+  thresholdInputs[key].addEventListener('input', () => {
+    const clamped = clampThreshold(thresholdInputs[key].value);
+    if (clamped == null) return;
+    tidySettings[key] = clamped;
+    clearTimeout(thresholdSaveTimer);
+    thresholdSaveTimer = setTimeout(saveTidySettings, 400);
+  });
   thresholdInputs[key].addEventListener('change', () => {
     const clamped = clampThreshold(thresholdInputs[key].value);
     if (clamped == null) {

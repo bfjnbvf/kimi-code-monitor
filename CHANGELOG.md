@@ -13,9 +13,11 @@
 - 归档走会话 `:archive` 接口，可在 Kimi Web 的「已归档会话」管理页随时恢复
 - 判定为纯本地计算：只用列表接口的创建/更新时间，不读取对话内容
 
-### 变更：自动命名 v2
+### 移除：新会话自动命名
 
-命名执行改调 Kimi Code Web 系统的「生成标题」（与右键菜单同一通路，需登录托管账号），不再使用外部模型——popup 不再需要配置模型和 API Key。触发时机与保护不变：第 3 轮对话后触发、手动改过的名字永不覆盖、失败静默。旧的模型调用管线代码注释保留（见 `docs/DESIGN-extensions-card.md`）。
+会话标题的自动生成已由 Kimi CLI 官方实验「AI session titles」（auto_session_title）承担：实验开启时第一轮对话结束即自动生成，右键菜单的「生成标题」随时可用。扩展端重复生成会造成标题抖动，故整个移除（含 popup 子块与触发管线，代码注释保留）。
+
+开启官方实验：在启动 kimi 的环境设置环境变量 `KIMI_CODE_EXPERIMENTAL_FLAG=1`（如写入 ~/.zshrc 后重启终端），再用 /experiments 确认 auto_session_title 为 enabled；扩展功能卡片的 ⓘ 提示里也附有此教程。
 
 ### 变更：popup「扩展功能」卡片
 

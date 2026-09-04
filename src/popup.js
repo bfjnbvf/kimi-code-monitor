@@ -8,7 +8,6 @@ import { initHostsSection } from './popup/hosts.js';
 import { setCliPathHelp, refreshCliStatus } from './popup/usage.js';
 import { refreshStatus } from './popup/accounts.js';
 import { buildExternalSection, refreshExternalStatus } from './popup/external.js';
-import { loadRenameSettings } from './popup/rename.js';
 import { loadTidySettings, loadBookmarksFeature } from './popup/tidy.js';
 import './popup/pets.js';
 import './popup/share-card.js';
@@ -32,7 +31,6 @@ kick(
     kick(refreshCliStatus());
     buildExternalSection();
     kick(refreshExternalStatus());
-    kick(loadRenameSettings());
     kick(loadTidySettings());
     kick(loadBookmarksFeature());
   })()

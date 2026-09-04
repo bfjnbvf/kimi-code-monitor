@@ -1,11 +1,10 @@
-/* 会话智能命名：内容脚本管线（本机/LAN/Remote Control 页面）。
- * 职责：读 localStorage 凭据、守卫（手动标题保护/去重/并发锁）、触发与记录。
- * v3.4.0 起执行端改为系统「生成标题」：POST /api/v1/sessions/{id}/title/generate
- * （服务端生成并写回，与右键菜单同一通路，需登录 Kimi Code 托管账号）。
- * 扩展自己的模型调用管线（取样→组 prompt→rename.model）整体注释保留，
+/*
+ * 会话智能命名：内容脚本管线。
+ * ⚠ v3.4.0 起整体退役：官方实验 auto_session_title（KIMI_CODE_EXPERIMENTAL_FLAG）
+ * 已在第一轮自动生成标题，扩展端重复生成会造成标题抖动；websocket-session 的
+ * onTurnEnded 接线与本模块一并停用。代码保留备查，
  * 恢复方法见 docs/DESIGN-extensions-card.md §3.2。
- * 触发入口：content.js 在 turn.ended 后 import { onTurnEnded } 直接调用，
- * 第 3 轮对话结束后命名（首轮内容太少不足以概括）。 */
+ */
 'use strict';
 
 import * as shared from './rename-shared.js';

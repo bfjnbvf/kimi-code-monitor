@@ -112,7 +112,13 @@ popup 现有「宠物」卡片保留独立；新增「扩展功能」卡片承�
 - 自动整理完成后发一条桌面通知（归档 N 条；0 条不打扰）。
 - 列表分页拉取（`page_size=100` 循环 `page_token`），全量「进行中」会话。
 
-## 3. 自动命名 v2（改造现有功能）
+## 3. 自动命名（终态：整体移除）
+
+> **终态（2026-09-05，用户确认方案 A）**：用户 CLI 的 /experiments 显示官方实验
+> auto_session_title 已 enabled（KIMI_CODE_EXPERIMENTAL_FLAG 锁定，第一轮即自动
+> 生成）——扩展端任何补充生成都会造成标题抖动。popup 子块、触发管线
+> （rename-content.js）、websocket-session 接线整体移除/注释保留；卡片 ⓘ 弹层
+> 附官方实验开启教程。
 
 ### 3.1 方案（按当前构建落地）
 

@@ -9,7 +9,6 @@
 
 import { normalizeUsage } from '../metrics.js';
 import { setAgentStatus, renderAll } from './render.js';
-import { onTurnEnded } from '../session-rename/rename-content.js';
 import { petBeginTurn, petCompleteTurn } from './pet-panel.js';
 import { toNumber, rcApiPrefix, isRemoteControl } from './utils.js';
 import { t } from '../i18n.js';
@@ -434,8 +433,6 @@ export function createWebSocketSession(deps) {
           // 折线图：本轮最后一个 step 样本加常驻大节点，区分轮内调用与整轮结束
           markLastSampleTurnEnd();
           petCompleteTurn();
-          // 会话智能命名（session-rename/rename-content.js）：开关关闭时内部直接返回
-          onTurnEnded(sessionId);
         }
         renderAll();
         scheduleCliUsageRefresh();

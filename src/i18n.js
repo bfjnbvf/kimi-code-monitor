@@ -284,10 +284,9 @@ const EN = {
   '取消失败': 'Failed to disable',
   /* ---------- 扩展功能卡片（收藏开关 / 自动归档 / 自动命名） ---------- */
   '扩展功能': 'Extensions',
-  'AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。<br><br>新会话自动命名：新会话到第 3 轮对话后，自动调用系统「生成标题」；手动改过的名字不会被覆盖。': 'AI reply bookmarks: click the star below an AI reply to bookmark it and revisit from the sidebar; content stays on this device.<br><br>Auto-archive inactive chats: moves inactive sessions to "Done" after their idle days threshold, keeping the "Open" list clean.<br><br>Auto-rename new sessions: after the 3rd turn of a new session, the built-in "Generate title" is called automatically; manually renamed titles are never overwritten.',
+  'AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。<br><br>小教程 · 会话标题自动生成：该能力由 Kimi CLI 官方实验「AI session titles」提供。开启方法：在启动 kimi 的环境里设置环境变量 KIMI_CODE_EXPERIMENTAL_FLAG=1（如写入 ~/.zshrc 后重启终端），再用 /experiments 确认 auto_session_title 为 enabled；手动生成可右键会话选「生成标题」。': 'AI reply bookmarks: click the star below an AI reply to bookmark it and revisit from the sidebar; content stays on this device.<br><br>Auto-archive inactive chats: moves inactive sessions to "Done" after their idle days threshold, keeping the "Open" list clean.<br><br>Mini guide · auto session titles: provided by the official Kimi CLI experiment "AI session titles". To enable: set the environment variable KIMI_CODE_EXPERIMENTAL_FLAG=1 where you launch kimi (e.g. in ~/.zshrc, then restart the terminal) and confirm auto_session_title is enabled via /experiments; you can always right-click a session and choose "Generate title".',
   'AI 回复收藏': 'AI reply bookmarks',
   '自动归档不活跃对话': 'Auto-archive inactive chats',
-  '新会话自动命名': 'Auto-rename new sessions',
   '单日对话，静默': 'Single-day, idle for',
   '多日对话，静默': 'Multi-day, idle for',
   '所有对话，静默': 'Any session, idle for',
