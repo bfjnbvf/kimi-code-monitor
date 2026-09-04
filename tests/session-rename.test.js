@@ -345,7 +345,7 @@ test('模型清单过滤：只留 managed:kimi-code，display_name 缺省回退 
   assert.deepEqual(shared.kimiCodeModelsFromResponse(null), []);
 });
 
-test('接线：manifest 与 build.sh 登记新文件，background/content 挂接 rename 管线', () => {
+test('接线：manifest 与 build.sh 登记新文件，命名 v2 走系统「生成标题」', () => {
   const contentScripts = manifest.content_scripts[0].js;
   // ESM 迁移后 rename-content 被打包进 dist/content.js，manifest 不再单独列出 session-rename 脚本
   assert.ok(contentScripts.includes('dist/content.js'));
@@ -361,19 +361,23 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   // background.js 改为 ESM import，不再用 importScripts
   assert.match(renameBgSource, /from '\.\.\/session-rename\/rename-shared\.js'/);
   assert.match(renameBgSource, /from '\.\.\/session-rename\/rename-model\.js'/);
-  assert.match(backgroundSource, /'rename\.model': renameModelCall/);
+  // v3.4.0 起命名改走系统「生成标题」（content 直调 title/generate）：
+  // 旧模型中转消息整组注释停用，代码保留备恢复
+  assert.match(backgroundSource, /v2 停用：命名旧模型管线的中转消息/);
+  assert.match(backgroundSource, /\/\/ 'rename\.model': renameModelCall,/);
+  assert.match(backgroundSource, /\/\/ 'rename\.usage\.get': getRenameUsage,/);
   // 批量功能已移除：background 不再注册 rename.batch.*
   assert.doesNotMatch(backgroundSource, /rename\.batch\./);
-  // 模型清单中转：popup → background → content 同源拉 /api/v1/models
-  assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
-  assert.match(renameBgSource, /relayToKimiWebTab\('rename\.models\.fetch'\)/);
   const renameContentSource = fs.readFileSync(
     path.join(root, 'src', 'session-rename', 'rename-content.js'),
     'utf8'
   );
-  assert.match(renameContentSource, /apiGet\('\/api\/v1\/models'\)/);
-  assert.match(renameContentSource, /kimiCodeModelsFromResponse/);
-  assert.match(renameContentSource, /message\?\.type === 'rename\.models\.fetch'/);
+  // v2 执行端：系统「生成标题」直调；旧取样/模型清单/写回代码注释保留
+  assert.match(renameContentSource, /callSystemTitleGenerate\(session\.id\)/);
+  assert.match(renameContentSource, /title\/generate/);
+  assert.match(renameContentSource, /v2 停用：旧管线的手动写回标题/);
+  assert.match(renameContentSource, /v2 停用：旧管线的消息取样/);
+  assert.match(renameContentSource, /v2 停用：Kimi Code 内置模型清单拉取/);
   // content 无批量管线与诊断日志
   assert.doesNotMatch(renameContentSource, /rename\.batch\.|debugLog|sessionRenameDebug/);
 
@@ -397,10 +401,9 @@ test('接线：manifest 与 build.sh 登记新文件，background/content 挂接
   assert.match(renameContentSource, /hasEnoughTurns/);
   assert.doesNotMatch(renameContentSource, /usage\?\.turn_count/);
 
-  // 用量提取：Anthropic 与 OpenAI 两种 usage 形状，随成功调用累计到 sessionRenameUsage
+  // 用量提取：Anthropic 与 OpenAI 两种 usage 形状（rename.js 保留代码，停用中）
   assert.match(modelSource, /usage\.input_tokens \?\? usage\.prompt_tokens/);
   assert.match(modelSource, /usage\.output_tokens \?\? usage\.completion_tokens/);
-  assert.match(backgroundSource, /'rename\.usage\.get': getRenameUsage/);
   assert.match(renameBgSource, /recordRenameUsage\(result\.usage\)/);
   assert.match(renameBgSource, /const RENAME_USAGE_STORAGE_KEY = 'sessionRenameUsage'/);
 

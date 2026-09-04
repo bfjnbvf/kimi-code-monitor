@@ -216,6 +216,9 @@
   .info-icon:hover {
     color: var(--accent);
     border-color: var(--accent);
+    /* transform 使 .info-icon 自成图层上下文，tooltip 的 z-index 被困在其中；
+       hover 时提升自身层级，保证弹层浮在后面的开关按钮之上 */
+    z-index: 60;
   }
 
   .info-tip {
@@ -811,4 +814,86 @@
 
   .footer a:hover {
     color: var(--accent-hover);
+  }
+
+  /* ---------- 扩展功能卡片（v3.4.0：自动命名 / 收藏 / 自动整理 三子块） ---------- */
+  #extensions-section {
+    padding: 10px;
+    border-radius: 8px;
+    background: var(--fill-1);
+    margin-bottom: 10px;
+  }
+
+  /* 子块：功能名 + 开关，说明文字用注释字号；关闭时配置收起 */
+  .ext-block { padding: 2px 0; }
+  .ext-block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 24px;
+  }
+  .ext-block-head .usage-title {
+    margin-bottom: 0;
+    /* 与「账户 1」(.ext-name) 同规范：11px、不加粗、正文同色；
+       覆盖 .usage-title 的 10px 大写标签风格 */
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: inherit;
+  }
+  .ext-block:not(.on) .tidy-config { display: none; }
+
+  /* 自动整理配置行 */
+  .tidy-config { margin-top: 6px; }
+  .tidy-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    min-height: 24px;
+  }
+  .tidy-row label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .tidy-row input[type="number"] {
+    width: 44px;
+    padding: 2px 4px;
+    font-size: 11px;
+    text-align: center;
+    border: 1px solid var(--fill-2);
+    border-radius: 6px;
+    background: var(--fill-1);
+    color: inherit;
+  }
+  .tidy-row .status-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  /* 首跑面板（一次性 dry run）：条数 + 具体会话名列表 + 解锁/清理入口 */
+  .tidy-candidates { margin-top: 8px; }
+  .tidy-first-list { margin-top: 4px; }
+  .tidy-first-item {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 1px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tidy-first-more { color: var(--text-tertiary); }
+  .tidy-candidates .tidy-unlock-btn { margin-top: 6px; }
+  button.action.tidy-unlock-btn { color: var(--accent); }
+  button.action.tidy-unlock-btn:hover { color: var(--accent-hover); }
+  .tidy-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    line-height: 1.5;
   }

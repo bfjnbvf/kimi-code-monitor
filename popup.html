@@ -121,28 +121,56 @@
       <div class="pet-links">推荐画廊：<a href="https://codexpet.top/zh" target="_blank" rel="noopener">codexpet.top</a> · <a href="https://petdex.dev" target="_blank" rel="noopener">petdex.dev</a></div>
     </div>
   </div>
-  <div id="rename-section" class="feature-card">
+  <div id="extensions-section" class="feature-card on">
     <div class="section-head">
       <div class="feature-title">
-        <span class="info-icon"><span class="info-tip">读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。<br><br>开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。</span></span>
-        <span class="usage-title">新会话 AI 自动命名</span>
+        <span class="info-icon"><span class="info-tip">AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。<br><br>新会话自动命名：新会话到第 3 轮对话后，自动调用系统「生成标题」；手动改过的名字不会被覆盖。</span></span>
+        <span class="usage-title">扩展功能</span>
       </div>
-      <label class="feature-toggle"><input type="checkbox" id="rename-auto-toggle" class="kswitch-input"><span class="kswitch"></span></label>
     </div>
     <div class="feature-body">
-      <div class="ext-row">
-        <span class="ext-label">使用模型</span>
-        <select id="rename-model-select" aria-label="命名模型"></select>
+
+      <div class="ext-block on" id="ext-bookmarks-block">
+        <div class="ext-block-head">
+          <span class="usage-title">AI 回复收藏</span>
+          <label class="feature-toggle"><input type="checkbox" id="bookmarks-toggle" class="kswitch-input" checked><span class="kswitch"></span></label>
+        </div>
       </div>
-      <div class="feature-option">
-        <span>标题带 emoji</span>
-        <span class="status-actions">
-          <button type="button" class="action" id="rename-emoji-on">打开</button>
-          <button type="button" class="action" id="rename-emoji-off">关闭</button>
-        </span>
-      </div>
+
       <div class="feature-divider"></div>
-      <div id="rename-usage" class="rename-minor"></div>
+
+      <div class="ext-block" id="ext-tidy-block">
+        <div class="ext-block-head">
+          <span class="usage-title">自动归档不活跃对话</span>
+          <label class="feature-toggle"><input type="checkbox" id="tidy-toggle" class="kswitch-input"><span class="kswitch"></span></label>
+        </div>
+        <div class="tidy-config">
+          <div id="tidy-candidates" class="tidy-candidates hidden"></div>
+          <div class="tidy-row">
+            <label>单日对话，静默</label>
+            <span class="status-actions"><input type="number" id="tidy-t1" min="1" max="365" value="3"> 天后归档</span>
+          </div>
+          <div class="tidy-row">
+            <label>多日对话，静默</label>
+            <span class="status-actions"><input type="number" id="tidy-t2" min="1" max="365" value="14"> 天后归档</span>
+          </div>
+          <div class="tidy-row">
+            <label>所有对话，静默</label>
+            <span class="status-actions"><input type="number" id="tidy-t3" min="1" max="365" value="30"> 天后归档</span>
+          </div>
+          <div class="tidy-hint" id="tidy-hint" hidden></div>
+        </div>
+      </div>
+
+      <div class="feature-divider"></div>
+
+      <div class="ext-block on" id="ext-rename-block">
+        <div class="ext-block-head">
+          <span class="usage-title">新会话自动命名</span>
+          <label class="feature-toggle"><input type="checkbox" id="rename-auto-toggle" class="kswitch-input"><span class="kswitch"></span></label>
+        </div>
+      </div>
+
     </div>
   </div>
   <div class="footer">

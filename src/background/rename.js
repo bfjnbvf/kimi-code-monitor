@@ -1,6 +1,10 @@
 /**
  * 会话智能命名域：命名模型调用中转（Kimi Code 内置/外部 provider）、用量累计、
  * 模型清单拉取。经 relayToKimiWebTab 与 content script 同源通讯。
+ *
+ * ⚠ v3.4.0 起整体停用：命名改走系统「生成标题」（content 直调
+ * title/generate），本模块不再被 background.js 引用，代码保留备恢复。
+ * 恢复步骤见 docs/DESIGN-extensions-card.md §3.2。
  */
 
 import * as KimiExternalProviders from '../providers.js';

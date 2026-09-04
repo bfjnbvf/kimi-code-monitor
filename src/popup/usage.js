@@ -390,13 +390,24 @@ import { t } from '../i18n.js';
     else stopCliProgressPolling();
   }
 
+  let cliStatusRetried = false;
+
   export async function refreshCliStatus({ refreshData = true } = {}) {
     try {
       const response = await send('cli.usage.status');
       if (!response?.ok) throw new Error(response?.error || t('状态读取失败'));
+      cliStatusRetried = false;
       setCliUi(response.connected, response);
       if (response.connected && refreshData && !response.scanning) refreshUsage();
     } catch (error) {
+      // SW 冷启动等瞬态失败自动重试一次（仅一次，避免循环重试）
+      console.warn('[Kimi Status] CLI 状态读取失败', error);
+      if (!cliStatusRetried) {
+        cliStatusRetried = true;
+        setTimeout(() => { refreshCliStatus({ refreshData }).catch(() => {}); }, 1_500);
+        return;
+      }
+      cliStatusRetried = false;
       setCliUi(false);
       cliConnectBtn.textContent = t('连接状态异常，请重试');
       showCliError(error?.message || t('连接状态异常，请重试'));

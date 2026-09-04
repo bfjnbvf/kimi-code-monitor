@@ -13,10 +13,11 @@ VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.j
 OUT="kimi-code-monitor-v${VERSION}.zip"
 
 rm -f "$OUT"
+# web-token.js 未在 manifest 注册（月额度通路停用备用），不进发行包
 zip -r "$OUT" \
   manifest.json \
   dist \
-  content.css popup.css web-token.js \
+  content.css popup.css \
   rive \
   rules \
   popup.html \

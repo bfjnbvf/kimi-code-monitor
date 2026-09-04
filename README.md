@@ -37,6 +37,7 @@ Kimi Code Web 的侧边栏监控扩展。一套完整的用量分析与分享 + 
 - 侧栏「收藏」入口打开整页收藏页：**列表 / 卡片双视图**、按会话分组与时间排序、批量管理（全选 / 删除所选）
 - 点开任意一条弹出详情卡：上一轮用户提问 + Markdown 完整还原的回复全文 + 跳转原文按钮
 - 支持跨会话跳转；收藏数据只存在本地
+- 弹窗「扩展功能」卡片提供总开关（默认开），关闭后星标与收藏页一并隐藏，数据保留
 
 ![收藏页：列表视图（会话 / 日期 / 完整内容）](docs/screenshots/bookmarks.png)
 
@@ -64,11 +65,17 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 ![编辑模式三区域示意](docs/screenshots/edit-mode.png)
 
-### 新会话 AI 自动命名
+### 自动整理「已完成」（实验性）
 
-新会话聊到第 3 轮时，自动生成一个简短标题（可带 emoji）写回侧边栏，不再用首条消息原文凑数。手动改过的名字永远不会被覆盖。
+按静默天数把不活跃的对话自动移入侧栏「已完成」，保持「进行中」列表干净。三档规则独立可调：单日对话静默 3 天、多日对话静默 14 天、所有对话静默 30 天；正在工作、等待交互、子会话、创建不满 24 小时与空会话绝不整理。
 
-用哪个模型由你挑：Kimi Code 内置模型，或你的 DeepSeek / Kimi API 账户——可选模型实时从服务商获取，永远是最新列表。弹窗里可随时开关，并查看命名累计消耗的 token。
+默认「手动确认」：在弹窗的待确认列表里勾选后一键归档；完成一次手动整理后才解锁「自动移动」（每 24 小时后台执行一次，结果桌面通知）。归档完全可逆，Kimi Web 的「已归档会话」管理页可随时恢复。判定只用列表接口的创建/更新时间，纯本地计算，不读取对话内容。开启时自动打开 Kimi Web 实验性「多标签页侧栏」。
+
+### 新会话自动命名
+
+新会话聊到第 3 轮时，自动调用 Kimi Code Web 系统的「生成标题」（与右键菜单同一通路）写回侧边栏，不再用首条消息原文凑数。手动改过的名字永远不会被覆盖。
+
+无需配置模型和 API Key，登录 Kimi Code 托管账号即可。弹窗「扩展功能」卡片里可随时开关。
 
 ### 中英文双语
 
@@ -109,12 +116,15 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 - 默认不持久化 WebSocket 会话历史；输入、输出、缓存、速度和折线图只维护当前页面数据
 - 未连接本地 CLI 时，24h、7天、30天长期统计保持锁定，其他实时功能不受影响
-- 连接本地 CLI 后，只读取 `sessions/**/agents/*/wire.jsonl`，仅提取 `usage.record`；不保存或上传对话原文、工具参数和回答内容
+- 连接本地 CLI 后，只读取 `sessions/**/agents/*/wire.jsonl`，仅提取 `usage.record` 用量记录和 `config.update` 中的模型名；授权 `~/.kimi-code` 根目录时另读 `config.toml` 的 `[secondary_model]` 模型名。不保存或上传对话原文、工具参数和回答内容
+- 自动整理只读会话列表接口的元数据（创建/更新时间、标题、活动状态），判定与归档均为显式 API 调用；不读取对话内容
 - 输入 = 未缓存输入 + 缓存读取 + 缓存创建；缓存命中率 = 缓存读取 ÷ 总输入
 - CLI 统计缓存只保存文件读取位置和最近90天的按天数字，可随时断开并清除后重新生成
 - 收藏功能只保存在本地扩展存储（turnId + 内容摘录 + 渲染后片段，不含任何上传）；删除收藏或卸载扩展即清除
 - 首次连接显示真实读取百分比；后续只增量读取新增记录，并限制自动刷新频率
 - 额度与缓存命中率统一显示一位小数；真实值不足100%时不会提前显示为100.0%
+- 后台消息路由校验来源：扩展弹窗全量放行；内容脚本仅限本机回环与已授权站点，且只能使用面板功能所需的消息类型（`src/background/sender-guard.js`）
+- Rive 动画资产经 `web_accessible_resources` 对所有 http(s) 页面可见（动态授权的站点无法在 manifest 里静态列举，只能全量放开），理论上可被网页用于探测本机是否安装了本扩展；除此之外扩展不向任意网页暴露资源或接口
 
 ## 项目结构
 
@@ -123,14 +133,15 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 三个运行面各自一个目录，共享模块在 `src/` 根部：
 
 - `src/content.js` + `src/content/`：页面内面板——`content.js`（编排入口与生命周期）、`panel-state.js`（共享状态容器）、`render.js`（渲染层）、`widget-structure.js`（DOM 结构与编辑模式）、`websocket-session.js`（WS 状态机）、`session.js`（会话与快照）、`quota.js`（额度与授权）、`usage-daily.js`（CLI 长期统计与外部账户）、`pet-panel.js`（Rive 吉祥物与桌面宠物驱动）、`bookmarks.js`（AI 回复收藏：星标、目录交错行、收藏页与详情弹层、跨会话跳转）、`utils.js` / `walkthrough.js`
-- `src/background/`：后台域模块——`store.js`（存储锁/fetch/中转）、`vault.js`（密钥库）、`oauth.js`（授权与账户）、`quota.js`（额度/预警/快照）、`external.js`（外部 provider）、`rename.js`（会话命名）、`pet.js`、`cli-scan.js`；`src/background.js` 是消息路由入口
-- `src/popup/`：弹窗板块——`shared.js`、`usage.js`、`accounts.js`、`external.js`、`rename.js`、`pets.js`、`share-card.js`（分享卡片取数/预览/导出）；`src/popup.js` 是装配入口，样式在 `popup.css`
+- `src/background/`：后台域模块——`store.js`（存储锁/fetch/中转）、`vault.js`（密钥库）、`oauth.js`（授权与账户）、`quota.js`（额度/预警/快照）、`external.js`（外部 provider）、`rename.js`（会话命名，v2 已停用保留）、`pet.js`、`cli-scan.js`、`dynamic-hosts.js`（动态站点授权）、`sender-guard.js`（消息来源守卫）、`tidy.js`（自动整理调度）；`src/background.js` 是消息路由入口
+- `src/popup/`：弹窗板块——`shared.js`、`usage.js`、`accounts.js`、`external.js`、`rename.js`（命名开关）、`tidy.js`（扩展功能卡片：整理配置/待确认列表/收藏开关）、`pets.js`、`share-card.js`（分享卡片取数/预览/导出）；`src/popup.js` 是装配入口，样式在 `popup.css`
 - `src/share-card.js`：分享卡片构图（纯函数，输入按天数据输出 SVG）
 - `src/i18n.js`：中英文案（gettext 风格，跟随 Kimi Web 语言设置）
 - `src/metrics.js`：共享纯函数（用量解析、日期汇总、配置归一化）
+- `src/tidy-rules.js`：自动整理判定纯函数（三档规则 + 护栏，输入列表元数据输出候选）
 - `src/cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
 - `src/providers.js`：外部 provider 的端点与解析
 - `src/pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）
-- `src/session-rename/`：新会话 AI 自动命名（模型调用、命名策略与共享工具）
+- `src/session-rename/`：新会话自动命名（v2 触发策略与共享工具；触发后调系统「生成标题」，旧模型管线注释保留）
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）
 - `web-token.js`：已停用的网页端 token 中继（保留备用，未在 manifest 注册）

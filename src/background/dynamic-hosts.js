@@ -61,6 +61,10 @@ async function syncCspRules(registry) {
   const removeRuleIds = existing
     .map((rule) => rule.id)
     .filter((id) => id >= CSP_RULE_ID_BASE);
+  // 只放行主文档：扩展（无 all_frames）从不在子框架运行，摘子框架 CSP
+  // 只有风险没有收益。远程 origin 摘整页 CSP 本就是重斧——放行 WASM 编译
+  // 无法在 DNR 里按指令粒度改写（append 只会更严），删头是保页面不坏的
+  // 唯一可行操作，因此把作用面压到最小。
   const addRules = registry.map((pattern, index) => ({
     id: CSP_RULE_ID_BASE + index,
     priority: 1,
@@ -70,7 +74,7 @@ async function syncCspRules(registry) {
     },
     condition: {
       urlFilter: patternToUrlFilter(pattern),
-      resourceTypes: ['main_frame', 'sub_frame']
+      resourceTypes: ['main_frame']
     }
   }));
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
@@ -89,6 +93,23 @@ async function reloadOpenTabs(patterns) {
 // 本机回环 + 已授权 origin 的完整匹配表，供各处 tabs.query 使用
 export async function kimiWebUrlPatterns() {
   return [...BASE_URL_PATTERNS, ...(await loadRegistry())];
+}
+
+// 消息来源守卫用：该 URL 是否属于「静态注入的回环页面」或「已动态授权的站点」。
+// 内容脚本只可能出现在这两类 origin 上；其余一律视为不可信来源。
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost']);
+
+export async function isAuthorizedContentUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url || ''));
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (LOOPBACK_HOSTNAMES.has(parsed.hostname)) return true;
+  const registry = await loadRegistry();
+  return registry.includes(`${parsed.protocol}//${parsed.host}/*`);
 }
 
 export async function queryKimiWebTabs() {
@@ -111,6 +132,10 @@ function assertOriginPattern(pattern) {
 
 export async function grantExtraWebHost(originPattern) {
   assertOriginPattern(originPattern);
+  // 后台复核权限：登记/CSP 规则只应发生在浏览器 optional host 权限真正授予
+  // 之后（popup 已在用户手势里 request，这里防的是绕过 popup 直接发消息）。
+  const granted = await chrome.permissions.contains({ origins: [originPattern] });
+  if (!granted) throw new Error('未授予站点访问权限');
   const registry = await loadRegistry();
   if (!registry.includes(originPattern)) {
     registry.push(originPattern);

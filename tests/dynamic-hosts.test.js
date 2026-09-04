@@ -46,6 +46,7 @@ function installChromeStub() {
       reload: async (tabId, opts) => calls.tabsReload.push({ tabId, opts })
     },
     permissions: {
+      contains: async (req) => stubState.permissionsGranted !== false,
       onRemoved: {
         addListener: (fn) => {
           listeners.permissionsRemoved = fn;
@@ -82,6 +83,9 @@ test('授权：登记 origin、注册内容脚本、补 CSP 规则、刷新已�
   assert.equal(dnr.addRules.length, 1);
   assert.equal(dnr.addRules[0].condition.urlFilter, '|http://192.168.1.5:3000/');
   assert.equal(dnr.addRules[0].action.responseHeaders[0].header, 'content-security-policy');
+  // CSP 放行只作用于主文档：扩展（无 all_frames）从不在子框架运行，
+  // 摘子框架 CSP 只有风险没有收益
+  assert.deepEqual(dnr.addRules[0].condition.resourceTypes, ['main_frame']);
 
   // 已开标签页：按 origin 找到后整页刷新（bypassCache 让 DNR 摘掉 CSP）
   assert.deepEqual(calls.tabsQuery.at(-1), { url: [pattern] });
@@ -110,6 +114,27 @@ test('非法 origin pattern 直接拒绝', async () => {
   await assert.rejects(() => hosts.grantExtraWebHost('192.168.1.5'), /无效的站点地址/);
   await assert.rejects(() => hosts.grantExtraWebHost(undefined), /无效的站点地址/);
   await assert.rejects(() => hosts.revokeExtraWebHost('ftp://x/*'), /无效的站点地址/);
+});
+
+test('后台复核 optional host 权限：未授权的 origin 不登记、不补 CSP 规则', async () => {
+  stubState.permissionsGranted = false;
+  try {
+    await assert.rejects(() => hosts.grantExtraWebHost('http://192.168.5.5:9000/*'), /未授予站点访问权限/);
+    assert.deepEqual(await hosts.listExtraWebHosts(), ['http://192.168.1.5:3000/*']);
+  } finally {
+    stubState.permissionsGranted = true;
+  }
+});
+
+test('isAuthorizedContentUrl：回环直接放行，其余按登记表匹配', async () => {
+  assert.equal(await hosts.isAuthorizedContentUrl('http://127.0.0.1:3000/sessions/x'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://localhost/sessions/x'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3000/sessions/x'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3001/sessions/x'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('https://evil.example.com/'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('chrome-extension://abc/popup.html'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('not a url'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl(undefined), false);
 });
 
 test('queryKimiWebTabs 合并本机与已授权 origin 查询标签页', async () => {

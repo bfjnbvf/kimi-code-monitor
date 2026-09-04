@@ -10,7 +10,7 @@
     },
     "condition": {
       "requestDomains": ["127.0.0.1", "localhost"],
-      "resourceTypes": ["main_frame", "sub_frame"]
+      "resourceTypes": ["main_frame"]
     }
   }
 ]

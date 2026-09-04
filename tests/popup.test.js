@@ -11,10 +11,11 @@ const usageSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', '
 const accountsSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'accounts.js'), 'utf8');
 const externalSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'external.js'), 'utf8');
 const renameSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'rename.js'), 'utf8');
+const tidySource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'tidy.js'), 'utf8');
 const petsSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'pets.js'), 'utf8');
 const shareCardSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'share-card.js'), 'utf8');
 // 全板块拼接：供「任何地方都不许出现」类断言使用
-const allPopupSource = [usageSource, accountsSource, externalSource, renameSource, petsSource, shareCardSource].join('\n');
+const allPopupSource = [usageSource, accountsSource, externalSource, renameSource, tidySource, petsSource, shareCardSource].join('\n');
 const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'background.js'), 'utf8');
 
 test('本地记录授权提供路径提示、选错目录报错及重新授权和取消入口', () => {
@@ -131,50 +132,76 @@ test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => 
   assert.match(accountsSource, /badge\.textContent = t\('当前'\)/);
 });
 
-test('新会话 AI 自动命名区块：模型下拉、开关与用量计数（仅自动命名，无批量入口）', () => {
-  assert.match(html, /id="rename-section"/);
-  assert.match(html, /新会话 AI 自动命名/);
-  // 总开关在标题行右侧（iOS 风格胶囊开关，对齐 Kimi Web ui-switch 规格）
+test('扩展功能卡片：自动命名 v2 开关、收藏开关与自动整理配置三子块', () => {
+  assert.match(html, /id="extensions-section"/);
+  assert.match(html, /扩展功能/);
+  // 子块一：自动命名 v2 仅总开关（模型下拉/emoji/用量计数随旧管线移除）
+  assert.match(html, /id="ext-rename-block"/);
   assert.match(html, /<input type="checkbox" id="rename-auto-toggle" class="kswitch-input"><span class="kswitch">/);
   assert.match(css, /\.kswitch::after/);
-  // 卡片说明不占行：标题右侧 ⓘ hover 气泡，含命名时机与 token 消耗说明
-  assert.match(html, /class="info-icon"/);
-  assert.match(html, /输入约 1500~2500 tokens/);
-  assert.match(html, /第 3 轮对话结束后才命名/);
-  assert.match(html, /手动改过的名字不会被覆盖/);
-  assert.doesNotMatch(html, /ext-desc/);
-  assert.match(html, /id="rename-model-select"/);
-  // 标题带 emoji：打开/关闭文字按钮（与宠物卡片同款），当前态蓝色高亮
-  assert.match(html, /<button type="button" class="action" id="rename-emoji-on">打开<\/button>/);
-  assert.match(html, /<button type="button" class="action" id="rename-emoji-off">关闭<\/button>/);
-  assert.doesNotMatch(html, /rename-emoji-toggle/);
   assert.match(html, /id="rename-auto-toggle"/);
-  // 模型选择框带「使用模型」前缀标签
-  assert.match(html, /<span class="ext-label">使用模型<\/span>/);
+  assert.doesNotMatch(html, /rename-model-select|rename-emoji-on|rename-usage/);
+  assert.match(html, /自动调用系统「生成标题」/);
+  assert.match(html, /手动改过的名字不会被覆盖/);
+  // 子块二：收藏开关（默认开，关闭时内容侧停星标与收藏页）
+  assert.match(html, /id="ext-bookmarks-block"/);
+  assert.match(html, /id="bookmarks-toggle"/);
+  // 子块三：自动归档——首跑一次性流程（dry run 条数 + 清理并解锁），
+  // 无模式下拉、无常驻待确认入口；三档阈值常驻
+  assert.match(html, /id="ext-tidy-block"/);
+  assert.match(html, /id="tidy-toggle"/);
+  assert.doesNotMatch(html, /tidy-mode-select|tidy-mode-auto|tidy-candidates-btn/);
+  assert.match(html, /id="tidy-candidates"/);
+  assert.match(html, /id="tidy-t1"/);
+  assert.match(html, /id="tidy-t2"/);
+  assert.match(html, /id="tidy-t3"/);
+  // 功能介绍不占行：统一放在卡片 ⓘ hover 弹层（悬浮即读，与开关状态无关）
+  assert.match(html, /AI 回复收藏：点击 AI 回复下方的星标即可收藏/);
+  assert.match(html, /自动归档不活跃对话：按静默天数/);
+  assert.match(html, /新会话自动命名：新会话到第 3 轮对话后/);
+  assert.doesNotMatch(html, /ext-block-sub/);
+  assert.doesNotMatch(css, /\.ext-block-sub/);
+  // 子块标题与「账户 1」(.ext-name) 同规范：11px、不加粗
+  assert.match(css, /\.ext-block-head \.usage-title \{[^}]*font-size: 11px/);
+  assert.match(css, /\.ext-block-head \.usage-title \{[^}]*font-weight: 400/);
+  // ⓘ 弹层 hover 时提升自身层级，不被后面的开关按钮盖住
+  assert.match(css, /\.info-icon:hover \{[^}]*z-index/);
+  // 首跑的「清理并解锁自动归档」/「点击解锁自动归档」都用主题蓝，表明可点击
+  assert.match(css, /button\.action\.tidy-unlock-btn \{ color: var\(--accent\)/);
   // 批量功能已移除：无天数选择/开始按钮/状态行/诊断日志链接
   assert.doesNotMatch(html, /rename-days|rename-start-btn|rename-status|rename-debug-link/);
   assert.doesNotMatch(allPopupSource, /rename\.batch\./);
   assert.doesNotMatch(allPopupSource, /collectCustomTitleSessionIds/);
   assert.doesNotMatch(backgroundSource, /rename\.batch\./);
-  // 注释行降级：10px 灰字的 rename-minor（用量计数等注释内容沉底）
-  assert.match(html, /class="rename-minor"/);
-  assert.match(css, /\.rename-minor \{[\s\S]*?font-size: 10px[\s\S]*?var\(--text-tertiary\)/);
-  // 开关与模型选择持久化；modelSource 为 {kind, model|accountId+model} 新结构
+  // 命名开关持久化沿用 sessionRenameSettings；v2 只关心 autoEnabled
   assert.match(renameSource, /'sessionRenameSettings'/);
-  assert.match(renameSource, /normalizeModelSource/);
-  assert.match(renameSource, /kind === 'external'\s*\?\s*`ext:\$\{source\.accountId\}:\$\{source\.model \|\| ''\}`/);
-  // 分组下拉：Kimi Code 一组；外部账户每家一个 optgroup，组内为 provider 实时模型
-  assert.match(renameSource, /optgroup/);
-  assert.match(renameSource, /kimiGroup\.label = 'Kimi Code'/);
-  // 模型清单：缓存渲染 + 经 background 中继后台刷新；外部模型由 background 直连 provider
-  assert.match(renameSource, /'sessionRenameModels'/);
-  assert.match(renameSource, /send\('rename\.models\.list'\)/);
-  assert.match(backgroundSource, /'rename\.models\.list': listRenameModels/);
-  assert.match(renameSource, /send\('rename\.external\.models\.list'\)/);
-  assert.match(backgroundSource, /'rename\.external\.models\.list': listExternalRenameModels/);
-  // token 用量计数：popup 读取 background 累计值展示
-  assert.match(renameSource, /send\('rename\.usage\.get'\)/);
-  assert.match(backgroundSource, /'rename\.usage\.get': getRenameUsage/);
+  assert.match(renameSource, /autoEnabled/);
+  assert.doesNotMatch(renameSource, /rename-model-select/);
+  // tidy 设置与候选/整理走 background 中继；解锁门控在 popup 侧
+  assert.match(tidySource, /'kimiTidySettings'/);
+  assert.match(tidySource, /kimiTidyManualDoneAt/);
+  assert.match(tidySource, /send\('tidy\.candidates'\)/);
+  assert.match(tidySource, /send\('tidy\.apply', \{ ids: candidates\.map\(\(c\) => c\.id\) \}\)/);
+  assert.match(tidySource, /send\('tidy\.lab\.ensure'\)/);
+  assert.match(tidySource, /'kimiFeatureBookmarks'/);
+  // 首跑即 dry run：显示待归档条数与「清理并解锁自动归档」；空结果给
+  // 「点击解锁自动归档」。解锁同时写 lastRun，首次自动归档从 24 小时后
+  // 开始（不立即清扫用户刻意留下的对话）
+  assert.match(tidySource, /有 \{n\} 条对话待归档/);
+  // 首跑面板列出具体会话名，最多 8 条其余折入省略行
+  assert.match(tidySource, /……以及其他 \{m\} 个对话/);
+  assert.match(tidySource, /tidy-first-item/);
+  assert.match(tidySource, /读取失败：\{msg\}/);
+  assert.match(tidySource, /清理并解锁自动归档/);
+  assert.match(tidySource, /点击解锁自动归档/);
+  assert.match(tidySource, /TIDY_MANUAL_DONE_STORAGE_KEY\]: Date\.now/);
+  assert.match(tidySource, /TIDY_LAST_RUN_STORAGE_KEY\]: \{ at: Date\.now\(\)/);
+  assert.match(tidySource, /renderTidyPhase/);
+  assert.match(tidySource, /runFirstRunPanel/);
+  assert.doesNotMatch(tidySource, /tidyModeSelect|tidy-candidates-btn/);
+  assert.match(backgroundSource, /'tidy\.candidates':/);
+  assert.match(backgroundSource, /'tidy\.apply':/);
+  assert.match(backgroundSource, /'tidy\.settings\.updated':/);
 });
 
 test('用量分享卡片：入口在消耗量板块内，构图纯函数与导出分离', () => {

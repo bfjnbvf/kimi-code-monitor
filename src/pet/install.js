@@ -72,6 +72,10 @@ function parsePetdexScript(scriptText) {
 async function fetchBytes(url, maxBytes = 16 * 1024 * 1024) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`下载失败（${resp.status}）：${url}`);
+  // Content-Length 预检：超限直接中止，避免整个响应先进入内存
+  //（分块/压缩传输时头可能缺失或失真，下载后仍复核）
+  const declared = Number(resp.headers?.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error('文件过大，已中止');
   const buf = await resp.arrayBuffer();
   if (buf.byteLength > maxBytes) throw new Error('文件过大，已中止');
   return buf;

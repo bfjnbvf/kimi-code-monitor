@@ -20,6 +20,11 @@ test('默认模式不再暴露 WebSocket 长期存档消息，只保留 CLI 长�
   assert.match(backgroundSource, /'cli\.usage\.refresh': refreshCliUsage/);
 });
 
+test('消息路由统一经来源守卫授权，未信来源返回 UNTRUSTED_SENDER', () => {
+  assert.match(backgroundSource, /authorizeMessage\(message\.type, sender\)/);
+  assert.match(backgroundSource, /UNTRUSTED_SENDER/);
+});
+
 function eventTarget() {
   return { addListener() {}, removeListener() {} };
 }

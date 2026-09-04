@@ -72,13 +72,20 @@ import {
   repaintBookmarkStars,
   refreshBookmarksLocale
 } from './content/bookmarks.js';
+import { initSessionTidy } from './content/session-tidy.js';
 import { syncLocaleFromPage } from './i18n.js';
 
 // ESM 静态依赖：缺失即加载失败，错误会直接在控制台可见，不再需要运行时守卫。
 
 const QUOTA_INTERVAL_MS = 60_000;
-const ROUTE_POLL_INTERVAL_MS = 1_000;
+// 路由轮询：等待 SPA 渲染侧栏 / 感知会话路由与凭据变化。静态匹配覆盖所有
+// localhost 端口——无关的本地应用页面不该陪跑 1Hz，连续冷轮询后降到 5s；
+// 页面一旦出现 Kimi Web 迹象（侧栏面板/凭据/会话路由）立即恢复 1s。
+const ROUTE_POLL_WARM_MS = 1_000;
+const ROUTE_POLL_COLD_MS = 5_000;
+const ROUTE_POLL_COLD_AFTER_TICKS = 10;
 const CREDENTIAL_STORAGE_KEY = 'kimi-web.server-credential';
+const BOOKMARKS_FEATURE_STORAGE_KEY = 'kimiFeatureBookmarks';
 
 let quotaTimer = null;
 let externalTimer = null;
@@ -253,6 +260,10 @@ function handleStorageChanged(changes, area) {
   }
   // 桌面宠物的开关/换素材/环视/大小变更由宠物域处理
   handlePetStorageChanged(changes);
+  // 收藏功能开关变化（popup 切换）：实时启停收藏域
+  if (changes[BOOKMARKS_FEATURE_STORAGE_KEY]) {
+    setBookmarksEnabled(changes[BOOKMARKS_FEATURE_STORAGE_KEY].newValue !== false);
+  }
   // 收藏数据变化（其他标签页写入）：刷新星标/目录行/收藏页
   handleBookmarksStorageChanged(changes);
   const stateKey = KimiCliUsage.STATE_STORAGE_KEY;
@@ -332,7 +343,7 @@ function dispose() {
   disposeRender();
   disposeUsageDaily();
   disposeBookmarks();
-  if (routeTimer) clearInterval(routeTimer);
+  if (routeTimer) clearTimeout(routeTimer);
   // 扩展重载后 Chrome 不会自动重新注入 content script，
   // 残留脚本退出时一并移除 widget，避免留下一个永远灰色的「僵尸面板」
   if (panel.els?.widget) panel.els.widget.remove();
@@ -353,18 +364,72 @@ function dispose() {
   panel.els = null;
 }
 
-function init() {
+function pageShowsKimiWebSigns() {
+  return Boolean(document.getElementById('ksb-widget') || readCredential() || getSessionId());
+}
+
+/* ---------- 收藏功能开关（popup kimiFeatureBookmarks，默认开） ---------- */
+
+let bookmarksActive = false;
+
+function startBookmarks() {
+  if (bookmarksActive || disposed) return;
+  bookmarksActive = true;
+  initBookmarks({
+    isDisposed: () => disposed,
+    getSessionId: () => getCurrentSessionId()
+  }).catch((error) => {
+    bookmarksActive = false;
+    console.warn('[Kimi Status] 收藏功能初始化失败', error);
+  });
+}
+
+async function maybeInitBookmarks() {
+  if (bookmarksActive || disposed) return;
+  try {
+    const stored = await chrome.storage.local.get(BOOKMARKS_FEATURE_STORAGE_KEY);
+    if (stored[BOOKMARKS_FEATURE_STORAGE_KEY] === false) return;
+  } catch (error) {
+    // 读失败按默认开
+  }
+  startBookmarks();
+}
+
+function setBookmarksEnabled(enabled) {
+  if (!enabled && bookmarksActive) {
+    disposeBookmarks();
+    bookmarksActive = false;
+  } else if (enabled) {
+    maybeInitBookmarks();
+  }
+}
+
+let coldRouteTicks = 0;
+
+function pollRouteState() {
   checkPageState();
-  routeTimer = setInterval(checkPageState, ROUTE_POLL_INTERVAL_MS);
+  if (disposed) return;
+  coldRouteTicks = pageShowsKimiWebSigns() ? 0 : coldRouteTicks + 1;
+  routeTimer = setTimeout(
+    pollRouteState,
+    coldRouteTicks >= ROUTE_POLL_COLD_AFTER_TICKS ? ROUTE_POLL_COLD_MS : ROUTE_POLL_WARM_MS
+  );
+}
+
+function init() {
+  pollRouteState();
   window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('pageshow', handlePageShow);
   chrome.storage.onChanged.addListener(handleStorageChanged);
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
-  // 收藏域：DOM 注入与存储镜像，失败不影响面板
-  initBookmarks({
-    isDisposed: () => disposed,
-    getSessionId: () => getCurrentSessionId()
-  }).catch((error) => console.warn('[Kimi Status] 收藏功能初始化失败', error));
+  // 收藏域：按功能开关装配（popup 可关），关闭时已有收藏数据保留
+  maybeInitBookmarks();
+  // 自动整理域：纯监听（popup / 后台 alarm 发起），注册失败不影响面板
+  try {
+    initSessionTidy();
+  } catch (error) {
+    console.warn('[Kimi Status] 自动整理初始化失败', error);
+  }
 }
 
 // 防御重复注入：动态注册与历史版本的即时注入叠加、或同一文档被注册两次时，

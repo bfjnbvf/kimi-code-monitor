@@ -237,6 +237,7 @@ const EN = {
   '到 codexpet.top 或 petdex.dev 挑选喜欢的宠物，复制它的安装命令（那段 bash），回到这里点「+ 添加宠物」粘贴即可。<br><br>宠物素材来自社区分享，其权利归属与使用限制以各发布页面为准；本扩展仅提供本地播放功能，不持有也不担保素材的任何权利。': 'Pick a pet at codexpet.top or petdex.dev, copy its install command (the bash snippet), and paste it here via "+ Add pet".<br><br>Pet assets are shared by the community; their rights and usage limits belong to the respective publishers. This extension only provides local playback and holds no rights to the assets.',
   '读取会话的首条与最近消息，由所选模型生成简短标题写回侧边栏；手动改过的名字不会被覆盖。<br><br>开启自动命名后，新会话在第 3 轮对话结束后才命名（首轮内容太少不足以概括）。<br><br>此功能会额外消耗 token：每次重命名输入约 1500~2500 tokens（上下文有 2000 字符硬上限），输出几十到几百 tokens。下方计数器显示累计消耗。': 'Reads the first and latest messages of a session and asks the selected model for a short title written back to the sidebar; manually renamed titles are never overwritten.<br><br>With auto-rename on, new sessions are named only after turn 3 (too little content earlier).<br><br>This feature consumes extra tokens: about 1500–2500 input tokens per rename (2,000-char context cap) and tens to hundreds of output tokens. The counter below shows the cumulative usage.',
   /* ---------- 收藏 + 分享卡片 ---------- */
+  '已开启实验性「多标签页侧栏」，页面即将刷新以生效…': 'Enabled the experimental "Multi-tab sidebar"; refreshing the page to apply…',
   '[close]关闭': 'Close',
   '收藏': 'Bookmark',
   '取消收藏': 'Remove bookmark',
@@ -280,7 +281,31 @@ const EN = {
   '重新启用': 'Re-enable',
   '未授予站点访问权限': 'Site access not granted',
   '启用失败': 'Failed to enable',
-  '取消失败': 'Failed to disable'
+  '取消失败': 'Failed to disable',
+  /* ---------- 扩展功能卡片（收藏开关 / 自动归档 / 自动命名） ---------- */
+  '扩展功能': 'Extensions',
+  'AI 回复收藏：点击 AI 回复下方的星标即可收藏，在侧栏随时回看；内容只保存在本地。<br><br>自动归档不活跃对话：按静默天数把不活跃的对话自动移入「已完成」，保持「进行中」列表干净。<br><br>新会话自动命名：新会话到第 3 轮对话后，自动调用系统「生成标题」；手动改过的名字不会被覆盖。': 'AI reply bookmarks: click the star below an AI reply to bookmark it and revisit from the sidebar; content stays on this device.<br><br>Auto-archive inactive chats: moves inactive sessions to "Done" after their idle days threshold, keeping the "Open" list clean.<br><br>Auto-rename new sessions: after the 3rd turn of a new session, the built-in "Generate title" is called automatically; manually renamed titles are never overwritten.',
+  'AI 回复收藏': 'AI reply bookmarks',
+  '自动归档不活跃对话': 'Auto-archive inactive chats',
+  '新会话自动命名': 'Auto-rename new sessions',
+  '单日对话，静默': 'Single-day, idle for',
+  '多日对话，静默': 'Multi-day, idle for',
+  '所有对话，静默': 'Any session, idle for',
+  '天后归档': 'days → archive',
+  '没有符合条件的对话': 'No sessions match the rules',
+  '点击解锁自动归档': 'Click to unlock auto-archive',
+  '重试': 'Retry',
+  '清理并解锁自动归档': 'Archive them & unlock auto-archive',
+  '……以及其他 {m} 个对话': '… and {m} more sessions',
+  '有 {n} 条对话待归档': '{n} sessions ready to archive',
+  '操作失败': 'Operation failed',
+  '已解锁自动归档': 'Auto-archive unlocked',
+  '操作失败：{msg}': 'Operation failed: {msg}',
+  '已移入「已完成」{n} 个对话': 'Moved {n} sessions to "Done"',
+  '正在读取会话列表…': 'Loading sessions…',
+  '已开启 Kimi Web 实验性「多标签页侧栏」，页面即将刷新…': 'Enabled the Kimi Web experimental "Multi-tab sidebar"; refreshing the page…',
+  '每 24 小时后台自动整理一次': 'Tidies automatically every 24 hours',
+  '每 24 小时后台自动整理一次；上次：{time}，归档 {n} 个对话': 'Tidies automatically every 24 hours; last run {time}, {n} sessions archived'
 };
 
 export function getLocale() {

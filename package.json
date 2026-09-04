@@ -1,6 +1,6 @@
 {
   "name": "kimi-code-monitor",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "type": "module",
   "description": "Kimi Code Web UI 底部 Agent 状态 HUD 浏览器扩展",

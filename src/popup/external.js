@@ -4,7 +4,6 @@
 import * as KimiExternalProviders from '../providers.js';
 import { send, pageState } from './shared.js';
 import { t } from '../i18n.js';
-import { buildRenameModelOptions } from './rename.js';
 
   /* ---------- 外部账户：加号添加（选类型 + 粘贴 key），列表管理 ---------- */
 
@@ -137,7 +136,6 @@ import { buildRenameModelOptions } from './rename.js';
       if (!response?.ok) return;
       externalAccountsCache = response.providers || [];
       renderExternalAccounts();
-      buildRenameModelOptions();
     } catch (error) {
       // 状态拉取失败不阻塞其他区块，但保留错误提示
       console.warn('读取外部账户失败:', error);

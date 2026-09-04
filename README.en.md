@@ -37,6 +37,7 @@ See an answer worth keeping? Click the star in the action row below it.
 - A sidebar "Bookmark" entry opens a full-page bookmark manager: **list / card views**, group-by-session and time sorting, batch management (select all / delete selected)
 - Open any item for a detail card: your previous question + the reply fully rendered in Markdown + a jump-to-original button
 - Cross-session jumps supported; all bookmark data stays local
+- A master switch lives in the popup's "Extensions" card (on by default); turning it off hides the stars and the bookmark page while keeping the data
 
 ![Bookmark page: list view (session / date / full content)](docs/screenshots/bookmarks.png)
 
@@ -64,11 +65,17 @@ Every info block is an independent module — combine them freely. Module sizes 
 
 ![Edit mode with three zones](docs/screenshots/edit-mode.png)
 
+### Auto-Tidy "Done" (Experimental)
+
+Moves inactive sessions to the sidebar's "Done" tab after their idle threshold, keeping the "Open" list clean. Three independently adjustable rules: single-day sessions idle 3 days, multi-day 14 days, any session 30 days. Sessions that are busy, awaiting interaction, child sessions, under 24 hours old, or empty are never touched.
+
+Defaults to manual review: pick candidates in the popup's "To review" list and archive them in one click; one completed manual tidy unlocks "Move automatically" (runs every 24 hours, with a desktop notification). Archiving is fully reversible via Kimi Web's archived-sessions manager. Classification is computed locally from list metadata (created/updated times) only — conversation content is never read. Enabling the feature turns on Kimi Web's experimental "Multi-tab sidebar".
+
 ### AI Auto-Rename for New Sessions
 
-At turn 3 of a new session, a short title (optionally with emoji) is generated and written back to the sidebar — no more first-message-verbatim titles. Manually renamed titles are never overwritten.
+At turn 3 of a new session, Kimi Code Web's built-in "Generate title" (the same endpoint as the context menu) is called automatically and the title written back to the sidebar — no more first-message-verbatim titles. Manually renamed titles are never overwritten.
 
-You pick the model: Kimi Code's built-in models, or your DeepSeek / Kimi API accounts — the model list is fetched live from the provider, always up to date. Toggle it in the popup and see the cumulative token cost of naming.
+No model or API key setup — just sign in to your Kimi Code hosted account. Toggle it in the popup's "Extensions" card.
 
 ### Chinese & English
 
@@ -109,12 +116,15 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 
 - WebSocket session history is not persisted by default; input, output, cache, speed, and sparklines only hold current-page data
 - Without the local CLI connection, 24h / 7d / 30d long-term stats stay locked; all real-time features work regardless
-- With the CLI connected, only `sessions/**/agents/*/wire.jsonl` is read, and only `usage.record` entries are extracted; conversation text, tool arguments, and answers are never stored or uploaded
+- With the CLI connected, only `sessions/**/agents/*/wire.jsonl` is read, extracting just `usage.record` usage entries and model names from `config.update`; when the `~/.kimi-code` root directory is granted, the `[secondary_model]` model name in `config.toml` is also read. Conversation text, tool arguments, and answers are never stored or uploaded
+- Auto-tidy only reads session list metadata (created/updated times, titles, activity status); classification and archiving are explicit API calls. Conversation content is never read
 - Input = uncached input + cache read + cache creation; cache hit rate = cache read ÷ total input
 - The CLI stats cache keeps only file read offsets and per-day numbers for the last 90 days; disconnect and clear anytime, then regenerate
 - Bookmarks live only in local extension storage (turn id + text excerpt + rendered fragment; nothing uploaded); deleting bookmarks or uninstalling the extension wipes them
 - First connect shows real read progress; afterwards only new records are read incrementally, with auto-refresh rate-limited
 - Quota and cache hit rate are shown with one decimal; values below 100% are never rounded up to 100.0% early
+- The background message router validates senders: extension pages are fully trusted; content scripts must come from loopback or a granted site and may only use the message types the panel needs (`src/background/sender-guard.js`)
+- The Rive animation assets are exposed to all http(s) pages via `web_accessible_resources` (dynamically granted sites cannot be enumerated statically in the manifest), so a web page can in theory probe whether this extension is installed; no other resource or interface is exposed to arbitrary pages
 
 ## Project Structure
 
@@ -123,14 +133,15 @@ Source lives in `src/` (ES modules). `npm run build` bundles with esbuild into `
 Each runtime surface has its own directory; shared modules sit at the `src/` root:
 
 - `src/content.js` + `src/content/`: the in-page panel — `content.js` (orchestration & lifecycle), `panel-state.js` (shared state), `render.js` (rendering), `widget-structure.js` (DOM & edit mode), `websocket-session.js` (WS state machine), `session.js` (session & snapshots), `quota.js` (quota & auth), `usage-daily.js` (CLI long-term stats & external accounts), `pet-panel.js` (Rive mascot & desktop pet driver), `bookmarks.js` (AI reply bookmarks: star, interleaved outline rows, bookmark page & detail modal, cross-session jumps), `utils.js` / `walkthrough.js`
-- `src/background/`: background modules — `store.js` (storage lock/fetch/relay), `vault.js` (secret vault), `oauth.js` (authorization & accounts), `quota.js` (quota/alerts/snapshots), `external.js` (external providers), `rename.js` (session naming), `pet.js`, `cli-scan.js`; `src/background.js` is the message router
-- `src/popup/`: popup sections — `shared.js`, `usage.js`, `accounts.js`, `external.js`, `rename.js`, `pets.js`, `share-card.js` (share-card data/preview/export); `src/popup.js` is the assembly entry, styles in `popup.css`
+- `src/background/`: background modules — `store.js` (storage lock/fetch/relay), `vault.js` (secret vault), `oauth.js` (authorization & accounts), `quota.js` (quota/alerts/snapshots), `external.js` (external providers), `rename.js` (session naming, retired in v2, kept), `pet.js`, `cli-scan.js`, `dynamic-hosts.js` (dynamic site grants), `sender-guard.js` (message sender guard), `tidy.js` (auto-tidy scheduling); `src/background.js` is the message router
+- `src/popup/`: popup sections — `shared.js`, `usage.js`, `accounts.js`, `external.js`, `rename.js` (rename switch), `tidy.js` (extensions card: tidy config / review list / bookmarks switch), `pets.js`, `share-card.js` (share-card data/preview/export); `src/popup.js` is the assembly entry, styles in `popup.css`
 - `src/share-card.js`: share-card composition (pure function: daily data in, SVG out)
 - `src/i18n.js`: Chinese/English strings (gettext style, follows Kimi Web's language setting)
 - `src/metrics.js`: shared pure functions (usage parsing, date aggregation, config normalization)
+- `src/tidy-rules.js`: auto-tidy classification pure functions (three rules + guards; list metadata in, candidates out)
 - `src/cli-usage.js`: local CLI directory grant, incremental reads, per-day aggregation
 - `src/providers.js`: external provider endpoints and parsing
 - `src/pet/`: desktop pet — `pet-sprites.js` (atlas player + behaviors), `pet-install.js` (gallery command parsing & download), `pet-store.js` (IndexedDB asset store)
-- `src/session-rename/`: AI auto-rename for new sessions (model calls, naming policy, shared helpers)
+- `src/session-rename/`: AI auto-rename for new sessions (v2 trigger policy and shared helpers; triggers the system "Generate title" endpoint, legacy model pipeline kept in comments)
 - `rive/`: mascot animation runtime and assets (bundled locally, no remote dependency)
 - `web-token.js`: retired web-side token relay (kept for reference, not registered in the manifest)

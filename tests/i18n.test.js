@@ -108,10 +108,11 @@ test('popup 板块字符串迁移到位', () => {
   const usage = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'usage.js'), 'utf8');
   const accounts = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'accounts.js'), 'utf8');
   const external = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'external.js'), 'utf8');
-  const rename = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'rename.js'), 'utf8');
+  const tidy = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'tidy.js'), 'utf8');
   const pets = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'pets.js'), 'utf8');
   const shareCard = fs.readFileSync(path.join(__dirname, '..', 'src', 'popup', 'share-card.js'), 'utf8');
-  for (const [name, src] of Object.entries({ usage, accounts, external, rename, pets, shareCard })) {
+  // rename.js v2 起仅剩总开关（无用户可见文案），不要求引入 t()
+  for (const [name, src] of Object.entries({ usage, accounts, external, tidy, pets, shareCard })) {
     assert.match(src, /import \{ t \} from '\.\.\/i18n\.js'/, `${name} 应引入 t()`);
   }
 });
