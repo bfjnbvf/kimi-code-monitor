@@ -476,19 +476,12 @@ export function enterEditMode() {
   editing = true;
   const widget = panel.els.widget;
   widget.classList.add('ksb-editing');
-  // 编辑模式改为视口内浮层：底边钉在屏幕下缘、向上生长，完整显示且不顶出
-  // 屏幕下边缘（面板在文档流里，原地变长只会向下推——这是此前"越往下伸"
-  // 的根因，浮层化是正解）
-  const rect = widget.getBoundingClientRect();
-  widget.style.position = 'fixed';
-  widget.style.left = `${Math.round(rect.left)}px`;
-  widget.style.width = `${Math.round(rect.width)}px`;
-  widget.style.bottom = '12px';
-  widget.style.top = 'auto';
-  widget.style.zIndex = '2147483000';
-  widget.style.overflowY = 'auto';
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
   renderWidgetStructure();
+  // 编辑面板重建后会变长：自动滚动让面板底部进入视野，不再悬在屏幕外
+  setTimeout(() => {
+    try { widget.scrollIntoView({ block: 'nearest' }); } catch { /* 旧环境无此 API */ }
+  }, 0);
   setConnectionHint(t('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成'));
   document.addEventListener('pointerdown', handleOutsidePointerDown, true);
   document.addEventListener('keydown', handleEditKeydown);
@@ -500,11 +493,7 @@ export function exitEditMode() {
   clearDrag();
   menuModuleId = null;
   hideModuleMenu();
-  const widget = panel.els?.widget;
-  widget?.classList.remove('ksb-editing');
-  for (const prop of ['position', 'left', 'width', 'bottom', 'top', 'z-index', 'overflow-y']) {
-    widget?.style.removeProperty(prop);
-  }
+  panel.els?.widget?.classList.remove('ksb-editing');
   // 重建以卸下隐藏区，隐藏模块回到不可见
   renderWidgetStructure();
   setConnectionHint('');
