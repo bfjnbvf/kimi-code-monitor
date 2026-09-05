@@ -917,3 +917,9 @@
     margin-top: 6px;
     line-height: 1.5;
   }
+
+  /* 弹窗初始化期（存储读取完成前）禁用所有过渡：开关/卡片直接就位，
+     消除每次打开时「默认值 → 存储值」的可见跳变动画 */
+  .kimi-preload, .kimi-preload *, .kimi-preload *::before, .kimi-preload *::after {
+    transition: none !important;
+  }

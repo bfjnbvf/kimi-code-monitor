@@ -99,11 +99,18 @@ import { t } from '../i18n.js';
     }
   }
 
-  // 默认关闭（卡片收起）；用户打开过才保持展开
-  chrome.storage.local.get(ROAM_PET_STORAGE_KEY).then((stored) => {
-    petLoaded = true;
-    petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
-  }).catch(() => {});
+  // 默认关闭（卡片收起）；用户打开过才保持展开。
+  // 装配入口：popup.js 在初始化期 await，保证开关就位后才恢复过渡动画
+  export async function loadPetSection() {
+    try {
+      const stored = await chrome.storage.local.get(ROAM_PET_STORAGE_KEY);
+      petLoaded = true;
+      petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
+    } catch {
+      petLoaded = true;
+      petSectionSetOn(false);
+    }
+  }
 
 
   // 安装输入框默认隐藏，点「+ 安装新宠物」才展开

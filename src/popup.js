@@ -10,8 +10,12 @@ import { refreshStatus } from './popup/accounts.js';
 import { buildExternalSection, refreshExternalStatus } from './popup/external.js';
 import { loadTidySettings, loadBookmarksFeature } from './popup/tidy.js';
 import './popup/rename.js';
-import './popup/pets.js';
+import { loadPetSection } from './popup/pets.js';
 import './popup/share-card.js';
+
+// 初始化期禁用全部过渡动画（popup.css .kimi-preload）：存储读取完成后各开关
+// 直接就位，消除每次打开弹窗时「HTML 默认值 → 存储值」的可见跳变动画
+document.documentElement.classList.add('kimi-preload');
 
 initMode();
 document.getElementById('version').textContent = chrome.runtime.getManifest().version;
@@ -32,7 +36,8 @@ kick(
     kick(refreshCliStatus());
     buildExternalSection();
     kick(refreshExternalStatus());
-    kick(loadTidySettings());
-    kick(loadBookmarksFeature());
+    // 开关类板块全部就位后再恢复过渡动画（下一帧渲染起生效）
+    await Promise.allSettled([loadTidySettings(), loadBookmarksFeature(), loadPetSection()]);
+    requestAnimationFrame(() => document.documentElement.classList.remove('kimi-preload'));
   })()
 );
