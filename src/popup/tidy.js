@@ -170,6 +170,8 @@ function renderFirstRunPanel(candidates) {
         archived = Number(response.archived) || candidates.length;
       }
       await markManualDone();
+      // 解锁成功：首跑面板（条数/清单/按钮）立即收起，只留阈值与节奏提示
+      hideFirstRunPanel();
       await renderTidyPhase();
       flashHint(archived > 0
         ? t('已移入「已完成」{n} 个对话', { n: archived })
