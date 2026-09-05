@@ -95,10 +95,10 @@ import { t } from '../i18n.js';
     petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
   }).catch(() => {});
 
-  // 首次开启宠物：一次性使用说明（点击其他位置关闭，不再显示）
+  // 首次开启宠物：一次性安装引导（此时还没有宠物，先装一只；点击其他位置关闭，不再显示）
   const PET_GUIDE_SHOWN_STORAGE_KEY = 'kimiPetGuideShown';
   function renderPetGuide() {
-    petSetStatus(t('宠物已出现在网页上：可按住拖拽停放、悬停打招呼；大小调整与更多宠物见本卡片。点击其他位置关闭本说明。'));
+    petSetStatus(t('桌面宠物已启用：页面上还没有宠物，先在下方安装一只——从推荐画廊复制安装命令，粘贴后点「安装」；之后可拖拽停放、悬停互动。'));
     const dismissPetGuide = () => {
       document.removeEventListener('click', dismissPetGuide);
       chrome.storage.local.set({ [PET_GUIDE_SHOWN_STORAGE_KEY]: Date.now() }).catch(() => {});
