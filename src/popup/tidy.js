@@ -361,17 +361,24 @@ function renderBookmarks(on) {
   extBookmarksBlock.classList.toggle('on', on);
 }
 
+let bookmarksLoaded = false;
+
 export async function loadBookmarksFeature() {
   let enabled = true;
   try {
     const stored = await chrome.storage.local.get(BOOKMARKS_FEATURE_STORAGE_KEY);
     enabled = stored[BOOKMARKS_FEATURE_STORAGE_KEY] !== false;
   } catch { /* 读失败按默认开 */ }
+  bookmarksLoaded = true;
   renderBookmarks(enabled);
 }
 
+// 防初始化竞态：存储读取完成前用户碰到开关，变更事件会把「HTML 默认值」
+// 写回存储、覆盖真实偏好（表现为每次重开都跳回关闭）。未加载完时只改
+// UI 不落盘，待 loadBookmarksFeature 以存储真值渲染。
 bookmarksToggle.addEventListener('change', () => {
   renderBookmarks(bookmarksToggle.checked);
+  if (!bookmarksLoaded) return;
   chrome.storage.local
     .set({ [BOOKMARKS_FEATURE_STORAGE_KEY]: bookmarksToggle.checked })
     .catch(() => {});

@@ -213,7 +213,7 @@ function renderRegions(widget) {
   if (editing) {
     const tray = document.createElement('div');
     tray.className = 'ksb-region ksb-region-hidden';
-    tray.append(zoneLabel(t('隐藏区 · 不在面板显示，拖到下方启用')));
+    tray.append(zoneLabel(t('拖到下方启用')));
     for (const id of panel.widgetConfig.orderHidden) tray.append(buildModule(id));
     widget.insertBefore(tray, full);
     full.append(zoneLabel(t('展开区 · 展开时显示')));
@@ -831,7 +831,7 @@ export function maybeShowGuide() {
         doneLabel: t('完成，进入编辑模式'),
         bodyHTML: t('<span class="ksb-walk-hl">长按面板任意位置</span>进入编辑模式，拖动模块到不同区域改变显示方式；点模块右上角 <b>≡</b> 调宽度和专属设置。')
           + '<div class="ksb-walk-zones">'
-          + `<div class="ksb-walk-zone z-gray"><i></i><span>${t('隐藏区（顶部）· 不在面板显示')}</span></div>`
+          + `<div class="ksb-walk-zone z-gray"><i></i><span>${t('隐藏区（顶部）')}</span></div>`
           + `<div class="ksb-walk-zone z-blue"><i></i><span>${t('展开区（中间）· 展开时显示')}</span></div>`
           + `<div class="ksb-walk-zone z-green"><i></i><span>${t('固定区（底部）· Mini 也保留')}</span></div>`
           + '</div>'

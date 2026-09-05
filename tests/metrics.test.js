@@ -187,14 +187,14 @@ test('Widget 配置：默认布局（标题行隐藏作备份、宠物沉底置�
   const config = defaultWidgetConfig();
   assert.deepEqual(config.orderFull, ['input', 'cache', 'output', 'speed', 'usageChart']);
   assert.deepEqual(config.orderMini, ['pet', 'quota5h', 'quotaWeek']);
-  assert.deepEqual(config.orderHidden, ['header', 'duration', 'agents', 'external']);
+  assert.deepEqual(config.orderHidden, ['header', 'duration', 'external', 'agents']);
   assert.deepEqual(config.modules.header, {
     show: 'hidden', span: 2, showBalance: true, balanceLink: 'subscription'
   });
-  // 消耗量默认整宽在完整区末尾；上轮耗时默认整宽隐藏
+  // 消耗量默认整宽在完整区末尾；上轮耗时/外部账户默认半宽隐藏（同行相邻）
   assert.equal(config.modules.usageChart.show, 'full');
   assert.equal(config.modules.usageChart.span, 2);
-  assert.deepEqual(config.modules.duration, { show: 'hidden', span: 2 });
+  assert.deepEqual(config.modules.duration, { show: 'hidden', span: 1 });
   assert.deepEqual(config.modules.pet, {
     show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none'
   });
@@ -252,7 +252,7 @@ test('Widget 配置：order 数组与显隐状态强制一致（含隐藏区）'
   });
   assert.deepEqual(config.orderFull, ['cache', 'output', 'speed', 'usageChart']);
   assert.deepEqual(config.orderMini, ['quotaWeek', 'pet', 'input']);
-  assert.deepEqual(config.orderHidden, ['header', 'duration', 'agents', 'external', 'quota5h']);
+  assert.deepEqual(config.orderHidden, ['header', 'duration', 'external', 'agents', 'quota5h']);
 
   // 存储顺序优先于默认顺序；未知 id 被剔除；缺漏的补在末尾
   const reordered = normalizeWidgetConfig({

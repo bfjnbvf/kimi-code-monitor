@@ -212,17 +212,17 @@ function defaultWidgetConfig() {
       cache: { show: 'full', span: 1 },
       output: { show: 'full', span: 1 },
       speed: { show: 'full', span: 1 },
-      duration: { show: 'hidden', span: 2 },
+      duration: { show: 'hidden', span: 1 },
       quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       usageChart: { show: 'full', span: 2, chartRange: 'week' },
       pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
       agents: { show: 'hidden', span: 2, hiddenAgents: [] },
-      external: { show: 'hidden', span: 2, hiddenAccounts: [] }
+      external: { show: 'hidden', span: 1, hiddenAccounts: [] }
     },
     orderFull: ['input', 'cache', 'output', 'speed', 'usageChart'],
     orderMini: ['pet', 'quota5h', 'quotaWeek'],
-    orderHidden: ['header', 'duration', 'agents', 'external']
+    orderHidden: ['header', 'duration', 'external', 'agents']
   };
 }
 
