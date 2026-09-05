@@ -429,6 +429,19 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 }
 
 /* 编辑模式分区块：灰=隐藏、蓝=展开、绿=固定；浅色底 + 色点标题 + 同色模块描边，区块之间留真实间距 */
+/* 编辑模式浮层：底边钉死向上生长；不透明表面解决半透明，去 margin 解决错位 */
+#ksb-widget.ksb-editing {
+  position: fixed;
+  bottom: 12px;
+  top: auto;
+  margin: 0;
+  background: var(--ksb-surface);
+  border: 1px solid var(--ksb-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  overflow-y: auto;
+  max-height: calc(100vh - 24px);
+}
+
 #ksb-widget.ksb-editing .ksb-region {
   border-radius: 8px;
   padding: 6px;

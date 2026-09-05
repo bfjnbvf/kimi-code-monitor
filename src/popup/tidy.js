@@ -14,7 +14,6 @@ import { t } from '../i18n.js';
 
 const TIDY_SETTINGS_STORAGE_KEY = 'kimiTidySettings';
 const TIDY_MANUAL_DONE_STORAGE_KEY = 'kimiTidyManualDoneAt';
-const TIDY_GUIDE_SHOWN_STORAGE_KEY = 'kimiTidyGuideShown';
 const TIDY_LAST_RUN_STORAGE_KEY = 'kimiTidyLastRun';
 const BOOKMARKS_FEATURE_STORAGE_KEY = 'kimiFeatureBookmarks';
 
@@ -175,8 +174,6 @@ function renderFirstRunPanel(candidates) {
       flashHint(archived > 0
         ? t('已移入「已完成」{n} 个对话', { n: archived })
         : t('已解锁自动归档'));
-      // 首次操作完成：展示一次性规则说明（展示过则直接收起面板）
-      await maybeShowTidyGuide();
     } catch (error) {
       actionBtn.disabled = false;
       flashHint(t('操作失败：{msg}', { msg: error.message || error }));
@@ -236,42 +233,6 @@ async function runFirstRunPanel() {
 
 function disposedOrGone() {
   return pageState.pageDestroyed;
-}
-
-// 一次性规则说明：解锁后展示，点击其他位置或「知道了」即关闭，此后不再显示
-function renderTidyGuide() {
-  tidyFirstRun.replaceChildren();
-  const line = document.createElement('div');
-  line.className = 'tidy-hint';
-  line.textContent = t('三条规则相互独立：勾选即启用、去掉即停用，天数可随时调整。之后每 24 小时按勾选的规则在后台自动归档。点击其他位置关闭本说明。');
-  tidyFirstRun.append(line);
-  const okBtn = document.createElement('button');
-  okBtn.type = 'button';
-  okBtn.className = 'action tidy-unlock-btn';
-  okBtn.textContent = t('知道了');
-  okBtn.addEventListener('click', dismissTidyGuide);
-  tidyFirstRun.append(okBtn);
-  tidyFirstRun.classList.remove('hidden');
-  // 等当前点击事件走完再挂 document 监听，避免立刻自关
-  setTimeout(() => { document.addEventListener('click', dismissTidyGuide, { once: true }); }, 0);
-}
-
-function dismissTidyGuide() {
-  document.removeEventListener('click', dismissTidyGuide);
-  chrome.storage.local.set({ [TIDY_GUIDE_SHOWN_STORAGE_KEY]: Date.now() }).catch(() => {});
-  if (!tidyFirstRun.classList.contains('hidden')) {
-    tidyFirstRun.classList.add('hidden');
-    tidyFirstRun.replaceChildren();
-  }
-}
-
-async function maybeShowTidyGuide() {
-  try {
-    const stored = await chrome.storage.local.get(TIDY_GUIDE_SHOWN_STORAGE_KEY);
-    if (stored[TIDY_GUIDE_SHOWN_STORAGE_KEY]) return;
-  } catch { /* 读失败视为未显示过 */ }
-  chrome.storage.local.set({ [TIDY_GUIDE_SHOWN_STORAGE_KEY]: Date.now() }).catch(() => {});
-  renderTidyGuide();
 }
 
 // 解锁自动阶段：写解锁键，并记录 lastRun——首次自动归档从 24 小时后开始，

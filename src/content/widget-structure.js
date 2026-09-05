@@ -476,12 +476,14 @@ export function enterEditMode() {
   editing = true;
   const widget = panel.els.widget;
   widget.classList.add('ksb-editing');
+  // 编辑模式浮层 v2：底边钉在屏幕下缘、向上生长；不透明表面与去 margin
+  // 在 CSS 的 .ksb-editing 规则中处理（修复 v3 的半透明与错位）。
+  // 只测原位水平坐标，重建前后外层元素不替换、行内样式不受影响
+  const rect = widget.getBoundingClientRect();
+  widget.style.left = `${Math.round(rect.left)}px`;
+  widget.style.width = `${Math.round(rect.width)}px`;
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
   renderWidgetStructure();
-  // 编辑面板重建后会变长：自动滚动让面板底部进入视野，不再悬在屏幕外
-  setTimeout(() => {
-    try { widget.scrollIntoView({ block: 'nearest' }); } catch { /* 旧环境无此 API */ }
-  }, 0);
   setConnectionHint(t('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成'));
   document.addEventListener('pointerdown', handleOutsidePointerDown, true);
   document.addEventListener('keydown', handleEditKeydown);
@@ -493,7 +495,10 @@ export function exitEditMode() {
   clearDrag();
   menuModuleId = null;
   hideModuleMenu();
-  panel.els?.widget?.classList.remove('ksb-editing');
+  const widget = panel.els?.widget;
+  widget?.classList.remove('ksb-editing');
+  widget?.style.removeProperty('left');
+  widget?.style.removeProperty('width');
   // 重建以卸下隐藏区，隐藏模块回到不可见
   renderWidgetStructure();
   setConnectionHint('');

@@ -27,6 +27,12 @@ import { t } from '../i18n.js';
     roamPetStatus.hidden = !text; // 无消息时不占行高
   }
 
+  // 开关持久化：默认关闭（卡片收起），用户打开过才保持展开
+  roamPetToggle.addEventListener('change', () => {
+    petSectionSetOn(roamPetToggle.checked);
+    chrome.storage.local.set({ [ROAM_PET_STORAGE_KEY]: roamPetToggle.checked }).catch(() => {});
+  });
+
   // 素材库列表：一行一只（名称 + 当前/切换/移除），与账户行同款
   async function renderPetLibrary() {
     const store = CodexPetStore;
@@ -95,28 +101,6 @@ import { t } from '../i18n.js';
     petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
   }).catch(() => {});
 
-  // 首次开启宠物：一次性安装引导（此时还没有宠物，先装一只；点击其他位置关闭，不再显示）
-  const PET_GUIDE_SHOWN_STORAGE_KEY = 'kimiPetGuideShown';
-  function renderPetGuide() {
-    petSetStatus(t('桌面宠物已启用：页面上还没有宠物，先在下方安装一只——从推荐画廊复制安装命令，粘贴后点「安装」；之后可拖拽停放、悬停互动。'));
-    const dismissPetGuide = () => {
-      document.removeEventListener('click', dismissPetGuide);
-      chrome.storage.local.set({ [PET_GUIDE_SHOWN_STORAGE_KEY]: Date.now() }).catch(() => {});
-      petSetStatus('');
-    };
-    // 等当前 toggle 点击事件走完再挂监听，避免立刻自关
-    setTimeout(() => { document.addEventListener('click', dismissPetGuide, { once: true }); }, 0);
-  }
-
-  roamPetToggle.addEventListener('change', () => {
-    petSectionSetOn(roamPetToggle.checked);
-    chrome.storage.local.set({ [ROAM_PET_STORAGE_KEY]: roamPetToggle.checked }).catch(() => {});
-    if (roamPetToggle.checked) {
-      chrome.storage.local.get(PET_GUIDE_SHOWN_STORAGE_KEY).then((stored) => {
-        if (!stored[PET_GUIDE_SHOWN_STORAGE_KEY]) renderPetGuide();
-      }).catch(() => {});
-    }
-  });
 
   // 安装输入框默认隐藏，点「+ 安装新宠物」才展开
   roamPetAddBtn.addEventListener('click', () => {
