@@ -147,22 +147,22 @@
         <div class="tidy-config">
           <div id="tidy-candidates" class="tidy-candidates hidden"></div>
           <div class="tidy-row">
-            <label><input type="checkbox" id="tidy-rule-single" checked> 单日对话，静默</label>
-            <span class="status-actions"><input type="number" id="tidy-t1" min="1" max="365" value="3"> 天后归档</span>
+            <label>单日对话，静默 <input type="number" id="tidy-t1" min="1" max="365" value="3"> 天后归档</label>
+            <input type="checkbox" id="tidy-rule-single" checked>
           </div>
           <div class="tidy-row">
-            <label><input type="checkbox" id="tidy-rule-multi" checked> 多日对话，静默</label>
-            <span class="status-actions"><input type="number" id="tidy-t2" min="1" max="365" value="14"> 天后归档</span>
+            <label>多日对话，静默 <input type="number" id="tidy-t2" min="1" max="365" value="14"> 天后归档</label>
+            <input type="checkbox" id="tidy-rule-multi" checked>
           </div>
           <div class="tidy-row">
-            <label><input type="checkbox" id="tidy-rule-all" checked> 所有对话，静默</label>
-            <span class="status-actions"><input type="number" id="tidy-t3" min="1" max="365" value="30"> 天后归档</span>
+            <label>所有对话，静默 <input type="number" id="tidy-t3" min="1" max="365" value="30"> 天后归档</label>
+            <input type="checkbox" id="tidy-rule-all" checked>
           </div>
           <div class="tidy-hint" id="tidy-hint" hidden></div>
         </div>
       </div>
 
-      <div class="feature-divider"></div>
+      <div class="feature-divider" id="ext-rename-divider"></div>
 
       <div class="ext-block on" id="ext-rename-block">
         <div class="ext-block-head">

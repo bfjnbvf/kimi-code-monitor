@@ -17,6 +17,12 @@ window.addEventListener('pagehide', () => {
 /* ---------- Kimi 账户：多账户列表（切换/改名/重新授权/移除/添加） ---------- */
 
 let kimiAccounts = [];
+
+// 默认备注名（扩展自己生成的「账户 N」）按界面语言显示；用户自定义名原样返回
+function displayAccountName(label) {
+  const m = /^账户 (\d+)$/.exec(String(label || ''));
+  return m ? t('账户 {n}', { n: m[1] }) : label;
+}
 let flowActive = false;
 // 授权流程启动前的基线，轮询据此判断流程是真的完成还是超时/被取消
 let flowBaseline = null;
@@ -46,7 +52,9 @@ function renderKimiAccounts() {
 
     const name = document.createElement('span');
     name.className = 'ext-name';
-    name.textContent = account.needsReauth ? `${account.label}${t('（需重新授权）')}` : account.label;
+    // 默认备注名（账户 N）按界面语言显示；用户自定义名原样
+    const displayAccountLabel = displayAccountName(account.label);
+    name.textContent = account.needsReauth ? `${displayAccountLabel}${t('（需重新授权）')}` : displayAccountLabel;
     name.title = name.textContent;
     row.append(name);
 

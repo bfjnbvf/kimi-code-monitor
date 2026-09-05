@@ -14,6 +14,7 @@ import { t } from '../i18n.js';
 
 const copyBtn = document.getElementById('rename-copy-prompt');
 const extRenameBlock = document.getElementById('ext-rename-block');
+const extRenameDivider = document.getElementById('ext-rename-divider');
 
 // 交给 kimi 执行的提示词（用户审定文本，勿改动措辞）
 const PROMPT = [
@@ -63,7 +64,10 @@ async function refreshOfficialStatus() {
   if (!extRenameBlock) return;
   try {
     const response = await send('rename.official.status');
-    if (response?.ok && response.enabled) extRenameBlock.classList.add('hidden');
+    if (response?.ok && response.enabled) {
+      extRenameBlock.classList.add('hidden');
+      extRenameDivider?.classList.add('hidden');
+    }
   } catch { /* 无打开页面：保持显示 */ }
 }
 

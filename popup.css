@@ -825,6 +825,7 @@
   }
 
   /* 子块：功能名 + 开关，说明文字用注释字号；关闭时配置收起 */
+  .ksb-editing, .ksb-widget.ksb-editing { overflow-y: auto; }
   .ext-block { padding: 2px 0; }
   .ext-block-head {
     display: flex;
@@ -859,6 +860,7 @@
     gap: 8px;
     margin-top: 8px;
     min-height: 24px;
+    flex-wrap: wrap;
   }
   .tidy-row label {
     font-size: 11px;
@@ -876,7 +878,8 @@
     color: inherit;
   }
   .tidy-row.off { opacity: 0.45; }
-  .tidy-row label { cursor: pointer; }
+  .tidy-row label { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+  .tidy-row input[type="checkbox"] { flex-shrink: 0; justify-self: end; }
   .tidy-row input[type="checkbox"] { flex-shrink: 0; }
   .tidy-row .status-actions {
     display: inline-flex;

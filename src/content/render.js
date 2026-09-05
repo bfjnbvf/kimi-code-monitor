@@ -29,7 +29,8 @@ import { t, statusText } from '../i18n.js';
 
 const STATUS_MIN_DISPLAY_MS = 1_500;
 const CHART_RANGE_DAYS = { week: 7, month: 30 };
-const CHART_RANGE_LABELS = { week: t('7d消耗'), month: t('30d消耗') };
+// 存原始键，渲染时 t()——模块加载期 t() 会被当时语言冻结，切换语言后不更新
+const CHART_RANGE_LABELS = { week: '7d消耗', month: '30d消耗' };
 
 // 窗口时长：5h 与 API 的 window.duration=300（分钟）一致；本周按 7 天
 const QUOTA_WINDOW_MS = { '5h': 300 * 60_000, week: 7 * 24 * 3_600_000 };
@@ -340,7 +341,7 @@ export function renderChart() {
   startDate.setDate(startDate.getDate() - (days - 1));
   const startKey = usageDayKey(startDate);
   const sum = sumUsageBetween(panel.usageDailyCache, startKey, endKey);
-  if (panel.els.chartLabel) panel.els.chartLabel.textContent = CHART_RANGE_LABELS[range] || CHART_RANGE_LABELS.week;
+  if (panel.els.chartLabel) panel.els.chartLabel.textContent = t(CHART_RANGE_LABELS[range] || CHART_RANGE_LABELS.week);
   panel.els.chartTotal.textContent = sum.totalTokens > 0 ? formatTokenCount(sum.totalTokens) : '--';
   const hitPct = sum.cacheHitRate != null ? `${formatPercentage(sum.cacheHitRate * 100)}%` : '';
   if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = hitPct ? t('缓存命中 {pct}', { pct: hitPct }) : '';
@@ -537,7 +538,7 @@ export function renderExternal() {
 // 宠物模块右侧数据：六种口径可选（≡ 菜单切换），标签与数值联动
 const PET_STAT_DEFS = {
   daily: {
-    label: t('24h消耗'),
+    label: '24h消耗',
     value: () => {
       if (!panel.cliUsageConnected) return t('需连接 CLI');
       const bucket = panel.usageDailyCache[usageDayKey(new Date())];
@@ -573,7 +574,7 @@ const PET_STAT_DEFS = {
 export function renderPetStats() {
   if (!panel.els?.petTotal) return;
   const def = PET_STAT_DEFS[panel.widgetConfig.modules.pet?.stat] || PET_STAT_DEFS.daily;
-  if (panel.els.petLabel) panel.els.petLabel.textContent = def.label;
+  if (panel.els.petLabel) panel.els.petLabel.textContent = t(def.label);
   panel.els.petTotal.textContent = def.value();
 }
 

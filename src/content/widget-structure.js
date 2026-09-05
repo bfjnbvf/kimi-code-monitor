@@ -475,6 +475,14 @@ export function enterEditMode() {
   if (!panel.els?.widget) return;
   editing = true;
   panel.els.widget.classList.add('ksb-editing');
+  // 高度钳制：编辑模式下面板变长时保持底边固定、向上生长（内容滚动），
+  // 不再向下顶出屏幕下边缘
+  const rect = panel.els.widget.getBoundingClientRect();
+  const available = window.innerHeight - rect.top - 12;
+  if (available > 240) {
+    panel.els.widget.style.maxHeight = `${Math.floor(available)}px`;
+    panel.els.widget.style.overflowY = 'auto';
+  }
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
   renderWidgetStructure();
   setConnectionHint(t('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成'));
@@ -489,6 +497,8 @@ export function exitEditMode() {
   menuModuleId = null;
   hideModuleMenu();
   panel.els?.widget?.classList.remove('ksb-editing');
+  panel.els?.widget?.style.removeProperty('max-height');
+  panel.els?.widget?.style.removeProperty('overflow-y');
   // 重建以卸下隐藏区，隐藏模块回到不可见
   renderWidgetStructure();
   setConnectionHint('');
