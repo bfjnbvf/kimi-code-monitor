@@ -94,9 +94,28 @@ import { t } from '../i18n.js';
   chrome.storage.local.get(ROAM_PET_STORAGE_KEY).then((stored) => {
     petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
   }).catch(() => {});
+
+  // 首次开启宠物：一次性使用说明（点击其他位置关闭，不再显示）
+  const PET_GUIDE_SHOWN_STORAGE_KEY = 'kimiPetGuideShown';
+  function renderPetGuide() {
+    petSetStatus(t('宠物已出现在网页上：可按住拖拽停放、悬停打招呼；大小调整与更多宠物见本卡片。点击其他位置关闭本说明。'));
+    const dismissPetGuide = () => {
+      document.removeEventListener('click', dismissPetGuide);
+      chrome.storage.local.set({ [PET_GUIDE_SHOWN_STORAGE_KEY]: Date.now() }).catch(() => {});
+      petSetStatus('');
+    };
+    // 等当前 toggle 点击事件走完再挂监听，避免立刻自关
+    setTimeout(() => { document.addEventListener('click', dismissPetGuide, { once: true }); }, 0);
+  }
+
   roamPetToggle.addEventListener('change', () => {
     petSectionSetOn(roamPetToggle.checked);
     chrome.storage.local.set({ [ROAM_PET_STORAGE_KEY]: roamPetToggle.checked }).catch(() => {});
+    if (roamPetToggle.checked) {
+      chrome.storage.local.get(PET_GUIDE_SHOWN_STORAGE_KEY).then((stored) => {
+        if (!stored[PET_GUIDE_SHOWN_STORAGE_KEY]) renderPetGuide();
+      }).catch(() => {});
+    }
   });
 
   // 安装输入框默认隐藏，点「+ 安装新宠物」才展开

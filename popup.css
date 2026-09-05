@@ -825,7 +825,6 @@
   }
 
   /* 子块：功能名 + 开关，说明文字用注释字号；关闭时配置收起 */
-  .ksb-editing, .ksb-widget.ksb-editing { overflow-y: auto; }
   .ext-block { padding: 2px 0; }
   .ext-block-head {
     display: flex;
