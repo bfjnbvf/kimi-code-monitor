@@ -65,17 +65,21 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 ![编辑模式三区域示意](docs/screenshots/edit-mode.png)
 
-### 自动整理「已完成」（实验性）
+### 自动归档不活跃对话（实验性）
 
-按静默天数把不活跃的对话自动移入侧栏「已完成」，保持「进行中」列表干净。三档规则独立可调：单日对话静默 3 天、多日对话静默 14 天、所有对话静默 30 天；正在工作、等待交互、子会话、创建不满 24 小时与空会话绝不整理。
+按静默天数把不活跃的对话自动移入侧栏「已完成」，保持「进行中」列表干净。三档规则独立可调、可单独启停（规则行带悬浮解释与勾选框）：
 
-默认「手动确认」：在弹窗的待确认列表里勾选后一键归档；完成一次手动整理后才解锁「自动移动」（每 24 小时后台执行一次，结果桌面通知）。归档完全可逆，Kimi Web 的「已归档会话」管理页可随时恢复。判定只用列表接口的创建/更新时间，纯本地计算，不读取对话内容。开启时自动打开 Kimi Web 实验性「多标签页侧栏」。
+- **单日对话**：创建后不到 2 天的短会话（当天一次性任务），默认静默 **3** 天归档
+- **多日对话**：跨 2 天以上持续使用的会话（隔几天回来一次），默认静默 **14** 天归档
+- **所有对话**：不论活跃跨度，静默 **30** 天一律归档（兜底）
+
+首次开启会先列出符合条件的会话清单，确认后一键归档并解锁自动归档；此后每 24 小时后台执行一次，结果桌面通知。正在工作、等待交互、子会话、创建不满 24 小时与空会话绝不归档。归档完全可逆，Kimi Web 的「已归档会话」页可随时恢复。判定只用列表接口的创建/更新时间，纯本地计算，不读取对话内容。开启时自动打开 Kimi Web 实验性「多标签页侧栏」。
 
 ### 会话标题自动生成（官方能力）
 
 新会话的标题自动生成由 Kimi CLI 官方实验「AI session titles」承担：第一轮对话结束即自动生成，右键会话的「生成标题」可随时手动触发，手动改过的名字不会被覆盖。
 
-开启方法：在启动 kimi 的环境里设置环境变量 `KIMI_CODE_EXPERIMENTAL_FLAG=1`（如写入 ~/.zshrc 后重启终端），再用 /experiments 确认 auto_session_title 为 enabled。扩展功能卡片的 ⓘ 提示里附有同样的教程。
+未开启时，「扩展功能」卡片提供「复制提示词」：粘贴到 kimi web 对话框发送，由 kimi 自动修改配置开启（完成后运行 /reload 生效）；官方实验已开启时该入口自动隐藏。也可以手动设置环境变量 `KIMI_CODE_EXPERIMENTAL_FLAG=1` 后用 /experiments 确认。
 
 ### 中英文双语
 
@@ -133,12 +137,12 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 三个运行面各自一个目录，共享模块在 `src/` 根部：
 
 - `src/content.js` + `src/content/`：页面内面板——`content.js`（编排入口与生命周期）、`panel-state.js`（共享状态容器）、`render.js`（渲染层）、`widget-structure.js`（DOM 结构与编辑模式）、`websocket-session.js`（WS 状态机）、`session.js`（会话与快照）、`quota.js`（额度与授权）、`usage-daily.js`（CLI 长期统计与外部账户）、`pet-panel.js`（Rive 吉祥物与桌面宠物驱动）、`bookmarks.js`（AI 回复收藏：星标、目录交错行、收藏页与详情弹层、跨会话跳转）、`utils.js` / `walkthrough.js`
-- `src/background/`：后台域模块——`store.js`（存储锁/fetch/中转）、`vault.js`（密钥库）、`oauth.js`（授权与账户）、`quota.js`（额度/预警/快照）、`external.js`（外部 provider）、`rename.js`（会话命名，v2 已停用保留）、`pet.js`、`cli-scan.js`、`dynamic-hosts.js`（动态站点授权）、`sender-guard.js`（消息来源守卫）、`tidy.js`（自动整理调度）；`src/background.js` 是消息路由入口
+- `src/background/`：后台域模块——`store.js`（存储锁/fetch/中转）、`vault.js`（密钥库）、`oauth.js`（授权与账户）、`quota.js`（额度/预警/快照）、`external.js`（外部 provider）、`rename.js`（会话命名，v2 已停用保留）、`pet.js`、`cli-scan.js`、`dynamic-hosts.js`（动态站点授权）、`sender-guard.js`（消息来源守卫）、`tidy.js`（自动归档调度）；`src/background.js` 是消息路由入口
 - `src/popup/`：弹窗板块——`shared.js`、`usage.js`、`accounts.js`、`external.js`、`rename.js`（命名开关）、`tidy.js`（扩展功能卡片：整理配置/待确认列表/收藏开关）、`pets.js`、`share-card.js`（分享卡片取数/预览/导出）；`src/popup.js` 是装配入口，样式在 `popup.css`
 - `src/share-card.js`：分享卡片构图（纯函数，输入按天数据输出 SVG）
 - `src/i18n.js`：中英文案（gettext 风格，跟随 Kimi Web 语言设置）
 - `src/metrics.js`：共享纯函数（用量解析、日期汇总、配置归一化）
-- `src/tidy-rules.js`：自动整理判定纯函数（三档规则 + 护栏，输入列表元数据输出候选）
+- `src/tidy-rules.js`：自动归档判定纯函数（三档规则 + 护栏，输入列表元数据输出候选）
 - `src/cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
 - `src/providers.js`：外部 provider 的端点与解析
 - `src/pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）

@@ -65,11 +65,15 @@ Every info block is an independent module — combine them freely. Module sizes 
 
 ![Edit mode with three zones](docs/screenshots/edit-mode.png)
 
-### Auto-Tidy "Done" (Experimental)
+### Auto-Archive Inactive Chats (Experimental)
 
-Moves inactive sessions to the sidebar's "Done" tab after their idle threshold, keeping the "Open" list clean. Three independently adjustable rules: single-day sessions idle 3 days, multi-day 14 days, any session 30 days. Sessions that are busy, awaiting interaction, child sessions, under 24 hours old, or empty are never touched.
+Moves inactive sessions to the sidebar's "Done" tab, keeping the "Open" list clean. Three independently adjustable rules, each with its own enable checkbox and hover explanation:
 
-Defaults to manual review: pick candidates in the popup's "To review" list and archive them in one click; one completed manual tidy unlocks "Move automatically" (runs every 24 hours, with a desktop notification). Archiving is fully reversible via Kimi Web's archived-sessions manager. Classification is computed locally from list metadata (created/updated times) only — conversation content is never read. Enabling the feature turns on Kimi Web's experimental "Multi-tab sidebar".
+- **Single-day**: sessions used within 2 days of creation (one-off tasks) — archived after **3** idle days by default
+- **Multi-day**: sessions used across more than 2 days (revisited every few days) — archived after **14** idle days by default
+- **Any session**: regardless of span, archived after **30** idle days (fallback)
+
+The first run lists matching sessions for one-click confirmation and unlocks auto-archiving; afterwards it runs every 24 hours in the background with a desktop notification. Sessions that are busy, awaiting interaction, child sessions, under 24 hours old, or empty are never touched. Archiving is fully reversible via Kimi Web's archived-sessions manager. Classification is computed locally from list metadata (created/updated times) only — conversation content is never read. Enabling the feature turns on Kimi Web's experimental "Multi-tab sidebar".
 
 ### Session Title Auto-Generation (official capability)
 
