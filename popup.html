@@ -146,15 +146,15 @@
         </div>
         <div class="tidy-config">
           <div id="tidy-candidates" class="tidy-candidates hidden"></div>
-          <div class="tidy-row">
+          <div class="tidy-row" title="单日对话 = 创建后不到 2 天的短会话（当天一次性任务），静默达到天数即自动归档">
             <label>单日对话，静默 <input type="number" id="tidy-t1" min="1" max="365" value="3"> 天后归档</label>
             <input type="checkbox" id="tidy-rule-single" checked>
           </div>
-          <div class="tidy-row">
+          <div class="tidy-row" title="多日对话 = 跨 2 天以上持续使用的会话（隔几天回来一次），静默达到天数即自动归档">
             <label>多日对话，静默 <input type="number" id="tidy-t2" min="1" max="365" value="14"> 天后归档</label>
             <input type="checkbox" id="tidy-rule-multi" checked>
           </div>
-          <div class="tidy-row">
+          <div class="tidy-row" title="所有对话 = 不论活跃跨度，只要静默达到天数就自动归档（兜底规则）">
             <label>所有对话，静默 <input type="number" id="tidy-t3" min="1" max="365" value="30"> 天后归档</label>
             <input type="checkbox" id="tidy-rule-all" checked>
           </div>

@@ -15,6 +15,9 @@ import { t } from '../i18n.js';
 const copyBtn = document.getElementById('rename-copy-prompt');
 const extRenameBlock = document.getElementById('ext-rename-block');
 const extRenameDivider = document.getElementById('ext-rename-divider');
+// 探测结果的持久缓存：只要探测到过「已开启」，之后每次打开弹窗都直接隐藏，
+// 不依赖当时是否有打开的 Kimi 页面（重载扩展后页面内容脚本恢复前探测必失败）
+const RENAME_OFFICIAL_CACHE_KEY = 'kimiOfficialAutoTitle';
 
 // 交给 kimi 执行的提示词（用户审定文本，勿改动措辞）
 const PROMPT = [
@@ -58,17 +61,27 @@ async function copyPrompt() {
   }
 }
 
-// 探测官方实验状态：已开启则隐藏整个子块（每次打开弹窗实时探测一次；
-// 探测失败——如没有打开的 Kimi 页面——保持显示，避免误隐藏）
+// 探测官方实验状态：已开启则隐藏整个子块。
+// 判定顺序：持久缓存（探测到过即真）→ 实时探测；实时探测失败（如没有打开的
+// Kimi 页面）时保持现状，避免误隐藏。
 async function refreshOfficialStatus() {
   if (!extRenameBlock) return;
   try {
+    const cached = await chrome.storage.local.get(RENAME_OFFICIAL_CACHE_KEY);
+    if (cached[RENAME_OFFICIAL_CACHE_KEY] === true) return hideRenameBlock();
+  } catch { /* 读失败继续探测 */ }
+  try {
     const response = await send('rename.official.status');
     if (response?.ok && response.enabled) {
-      extRenameBlock.classList.add('hidden');
-      extRenameDivider?.classList.add('hidden');
+      chrome.storage.local.set({ [RENAME_OFFICIAL_CACHE_KEY]: true }).catch(() => {});
+      hideRenameBlock();
     }
   } catch { /* 无打开页面：保持显示 */ }
+}
+
+function hideRenameBlock() {
+  extRenameBlock.classList.add('hidden');
+  extRenameDivider?.classList.add('hidden');
 }
 
 if (copyBtn) copyBtn.addEventListener('click', copyPrompt);
