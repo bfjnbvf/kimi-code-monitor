@@ -48,6 +48,9 @@ const bookmarksToggle = document.getElementById('bookmarks-toggle');
 const extBookmarksBlock = document.getElementById('ext-bookmarks-block');
 
 let tidySettings = { ...DEFAULT_TIDY_SETTINGS };
+// 存储读取完成前（tidyLoaded=false）碰到开关：只改 UI 不落盘，
+// 防止 HTML 默认值覆盖真实偏好（同 bookmarks 竞态）
+let tidyLoaded = false;
 
 function saveTidySettings() {
   chrome.storage.local.set({ [TIDY_SETTINGS_STORAGE_KEY]: { ...tidySettings } }).catch(() => {});
@@ -261,6 +264,7 @@ function flashHint(message) {
 tidyToggle.addEventListener('change', async () => {
   tidySettings.enabled = tidyToggle.checked;
   renderTidy(tidySettings.enabled);
+  if (!tidyLoaded) return;
   saveTidySettings();
   notifySettingsUpdated();
   if (tidySettings.enabled) {
@@ -354,6 +358,7 @@ export async function loadTidySettings() {
     const stored = await chrome.storage.local.get(TIDY_SETTINGS_STORAGE_KEY);
     tidySettings = { ...DEFAULT_TIDY_SETTINGS, ...(stored[TIDY_SETTINGS_STORAGE_KEY] || {}) };
   } catch { /* 读失败用默认设置 */ }
+  tidyLoaded = true;
   renderTidy(tidySettings.enabled === true);
   renderRuleChecks();
   renderThresholds();

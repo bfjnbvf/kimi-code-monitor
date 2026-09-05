@@ -27,9 +27,12 @@ import { t } from '../i18n.js';
     roamPetStatus.hidden = !text; // 无消息时不占行高
   }
 
-  // 开关持久化：默认关闭（卡片收起），用户打开过才保持展开
+  // 开关持久化：默认关闭（卡片收起），用户打开过才保持展开。
+  // 存储读取完成前碰到开关只改 UI 不落盘（防竞态覆盖真实偏好）
+  let petLoaded = false;
   roamPetToggle.addEventListener('change', () => {
     petSectionSetOn(roamPetToggle.checked);
+    if (!petLoaded) return;
     chrome.storage.local.set({ [ROAM_PET_STORAGE_KEY]: roamPetToggle.checked }).catch(() => {});
   });
 
@@ -98,6 +101,7 @@ import { t } from '../i18n.js';
 
   // 默认关闭（卡片收起）；用户打开过才保持展开
   chrome.storage.local.get(ROAM_PET_STORAGE_KEY).then((stored) => {
+    petLoaded = true;
     petSectionSetOn(stored[ROAM_PET_STORAGE_KEY] === true);
   }).catch(() => {});
 
