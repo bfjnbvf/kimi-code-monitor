@@ -471,24 +471,17 @@ export function cancelLongPress() {
   longPressStart = null;
 }
 
-// 编辑模式浮层的原位记忆：侧栏祖先带 transform/containment 时 fixed 会以
-// 侧栏为基准（局限在侧栏框内且错位），因此编辑期间把面板门户到
-// documentElement 直属，退出时插回原位（父节点 + 后继兄弟）
-let editModeReturn = null;
-
 export function enterEditMode() {
   if (!panel.els?.widget) return;
   editing = true;
   const widget = panel.els.widget;
-  // 先测原位再门户：left/width 让浮层出现在面板原水平位置
-  const rect = widget.getBoundingClientRect();
-  editModeReturn = { parent: widget.parentNode, next: widget.nextSibling };
-  document.documentElement.append(widget);
   widget.classList.add('ksb-editing');
-  widget.style.left = `${Math.round(rect.left)}px`;
-  widget.style.width = `${Math.round(rect.width)}px`;
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
   renderWidgetStructure();
+  // 编辑面板会显著变长：自动滚动让面板底部（固定区标签）进入视野
+  setTimeout(() => {
+    try { widget.scrollIntoView({ block: 'nearest' }); } catch { /* 旧环境无此 API */ }
+  }, 0);
   setConnectionHint(t('编辑模式：拖拽模块排序，点 ≡ 配置，Esc 或点空白处完成'));
   document.addEventListener('pointerdown', handleOutsidePointerDown, true);
   document.addEventListener('keydown', handleEditKeydown);
@@ -500,17 +493,7 @@ export function exitEditMode() {
   clearDrag();
   menuModuleId = null;
   hideModuleMenu();
-  const widget = panel.els?.widget;
-  widget?.classList.remove('ksb-editing');
-  widget?.style.removeProperty('left');
-  widget?.style.removeProperty('width');
-  // 门户归位：插回侧栏原位（父节点可能已被 SPA 重建，插不进则由路由轮询重建）
-  if (widget && editModeReturn) {
-    try {
-      editModeReturn.parent.insertBefore(widget, editModeReturn.next);
-    } catch { /* 原父节点已失效：挂回 body，后续 ensureWidget 不受影响 */ }
-    editModeReturn = null;
-  }
+  panel.els?.widget?.classList.remove('ksb-editing');
   // 重建以卸下隐藏区，隐藏模块回到不可见
   renderWidgetStructure();
   setConnectionHint('');
