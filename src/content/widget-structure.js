@@ -471,15 +471,20 @@ export function cancelLongPress() {
   longPressStart = null;
 }
 
+// 编辑模式浮层的原位记忆：侧栏祖先带 transform/containment 时 fixed 会以
+// 侧栏为基准（局限在侧栏框内且错位），因此编辑期间把面板门户到
+// documentElement 直属，退出时插回原位（父节点 + 后继兄弟）
+let editModeReturn = null;
+
 export function enterEditMode() {
   if (!panel.els?.widget) return;
   editing = true;
   const widget = panel.els.widget;
-  widget.classList.add('ksb-editing');
-  // 编辑模式浮层 v2：底边钉在屏幕下缘、向上生长；不透明表面与去 margin
-  // 在 CSS 的 .ksb-editing 规则中处理（修复 v3 的半透明与错位）。
-  // 只测原位水平坐标，重建前后外层元素不替换、行内样式不受影响
+  // 先测原位再门户：left/width 让浮层出现在面板原水平位置
   const rect = widget.getBoundingClientRect();
+  editModeReturn = { parent: widget.parentNode, next: widget.nextSibling };
+  document.documentElement.append(widget);
+  widget.classList.add('ksb-editing');
   widget.style.left = `${Math.round(rect.left)}px`;
   widget.style.width = `${Math.round(rect.width)}px`;
   // 重建以挂载顶部隐藏区，隐藏模块在编辑模式下全部可见
@@ -499,6 +504,13 @@ export function exitEditMode() {
   widget?.classList.remove('ksb-editing');
   widget?.style.removeProperty('left');
   widget?.style.removeProperty('width');
+  // 门户归位：插回侧栏原位（父节点可能已被 SPA 重建，插不进则由路由轮询重建）
+  if (widget && editModeReturn) {
+    try {
+      editModeReturn.parent.insertBefore(widget, editModeReturn.next);
+    } catch { /* 原父节点已失效：挂回 body，后续 ensureWidget 不受影响 */ }
+    editModeReturn = null;
+  }
   // 重建以卸下隐藏区，隐藏模块回到不可见
   renderWidgetStructure();
   setConnectionHint('');

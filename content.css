@@ -434,6 +434,7 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   position: fixed;
   bottom: 12px;
   top: auto;
+  z-index: 2147483000;
   margin: 0;
   background: var(--ksb-surface);
   border: 1px solid var(--ksb-border);
