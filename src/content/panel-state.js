@@ -55,6 +55,7 @@ export const panel = {
   lastWallet: null,
   // 本地 CLI 长期统计缓存与连接状态
   usageDailyCache: {},
+  usageHourlyCache: {},
   cliUsageConnected: false,
   // 外部账户最近一次拉取结果
   externalProviders: [],

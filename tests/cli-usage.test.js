@@ -67,7 +67,7 @@ test('同大小文件被改写时重建该文件统计，不与旧结果叠加',
 test('子代理文件同额累加进 sub 子桶，合流后保留主/子拆分', async () => {
   const daily = {};
   const line = usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 });
-  assert.equal(KimiCliUsage.parseUsageLines(line, daily, true), 1);
+  assert.equal(KimiCliUsage.parseUsageLines(line, daily, null, true), 1);
   assert.deepEqual(daily[DAY_KEY], {
     input: 30, output: 3, cacheRead: 20,
     sub: { input: 30, output: 3, cacheRead: 20 }
@@ -92,7 +92,7 @@ test('按会话汇总包含按代理拆分：模型分布与起止时间', () =>
   const subMeta = { models: {}, firstAt: null, lastAt: null };
   KimiCliUsage.parseUsageLines(
     usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 }),
-    main, false, mainMeta
+    main, null, false, mainMeta
   );
   KimiCliUsage.parseUsageLines(
     JSON.stringify({
@@ -102,7 +102,7 @@ test('按会话汇总包含按代理拆分：模型分布与起止时间', () =>
       usageScope: 'turn',
       time: 1785686500000
     }),
-    sub, true, subMeta
+    sub, null, true, subMeta
   );
   const sessions = KimiCliUsage.summarizeSessions({
     'ws/session_a/agents/main/wire.jsonl': { daily: main, meta: mainMeta },
@@ -232,7 +232,7 @@ test('单个 wire getFile 失败保留旧索引并打标 failed，下次不再 u
     `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const previousIndex = {
-    version: 4,
+    version: 5,
     files: {
       // 好文件与旧索引一致，走 unchanged 短路
       'ws/session_1/agents/main/wire.jsonl': {
@@ -277,6 +277,30 @@ test('单个 wire getFile 失败保留旧索引并打标 failed，下次不再 u
   assert.deepEqual(files['ws/session_1/agents/main/wire.jsonl'].daily[DAY_KEY], { input: 10, output: 0, cacheRead: 0 });
   assert.equal(files['ws/session_1/agents/agent-1/wire.jsonl'].failed, true);
   assert.equal(files['ws/session_1/agents/agent-1/wire.jsonl'].daily[DAY_KEY].input, 777);
+});
+
+test('按小时聚合：本地小时键与 sub 子桶，合流后保留主/子拆分', async () => {
+  const now = Date.now();
+  const hourKey = KimiMetrics.usageHourKey(new Date(now));
+  const daily = {};
+  const hourly = {};
+  const line = usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: now });
+  assert.equal(KimiCliUsage.parseUsageLines(line, daily, hourly, true), 1);
+  assert.deepEqual(hourly[hourKey], {
+    input: 30, output: 3, cacheRead: 20,
+    sub: { input: 30, output: 3, cacheRead: 20 }
+  });
+
+  // 主子两个文件的按小时汇总合流：总量相加，sub 只来自子代理文件
+  const mainFile = new File([`${line}\n`], 'wire.jsonl', { lastModified: 1000 });
+  const subFile = new File([`${line}\n`], 'wire.jsonl', { lastModified: 1000 });
+  const mainScan = await KimiCliUsage.scanFile(mainFile, null, undefined, false);
+  const subScan = await KimiCliUsage.scanFile(subFile, null, undefined, true);
+  const combined = KimiCliUsage.combineFileHourly({ main: mainScan, sub: subScan });
+  assert.deepEqual(combined[hourKey], {
+    input: 60, output: 6, cacheRead: 40,
+    sub: { input: 30, output: 3, cacheRead: 20 }
+  });
 });
 
 test('listWireFiles 权限失败直接上抛，不返回空数据', async () => {

@@ -111,7 +111,7 @@ const MODULE_HTML = {
       <div class="ksb-pet-clip"><canvas class="ksb-pet-canvas" id="ksb-pet-canvas" width="112" height="112"></canvas></div>
       <div class="ksb-pet-stats">
         <div class="ksb-pet-total-row">
-          <span class="ksb-quota-label" id="ksb-pet-label">${t('24h消耗')}</span>
+          <span class="ksb-quota-label" id="ksb-pet-label">${t('今日消耗')}</span>
           <span class="ksb-pet-total" id="ksb-pet-total">--</span>
         </div>
         <span class="ksb-pet-status" id="ksb-pet-status" data-status="idle"><span id="ksb-pet-status-text">${t('空闲')}</span><span class="ksb-pet-clock" id="ksb-pet-clock" hidden><span id="ksb-pet-clock-num"></span><span id="ksb-pet-ampm"></span></span></span>
@@ -127,7 +127,7 @@ const MODULE_HTML = {
       <div class="ksb-chart-bars" id="ksb-chart-bars"></div>
     </div>
     <button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
-      <span>${t('连接本地 CLI')}</span><small>${t('开启7d、30d长期统计')}</small>
+      <span>${t('连接本地 CLI')}</span><small>${t('开启24h、7d、30d统计')}</small>
     </button>`,
   agents: () => `
     <div class="ksb-agents">
@@ -213,11 +213,11 @@ function renderRegions(widget) {
   if (editing) {
     const tray = document.createElement('div');
     tray.className = 'ksb-region ksb-region-hidden';
-    tray.append(zoneLabel(t('拖到下方启用')));
+    tray.append(zoneLabel(t('隐藏区 · 拖到下方启用')));
     for (const id of panel.widgetConfig.orderHidden) tray.append(buildModule(id));
     widget.insertBefore(tray, full);
     full.append(zoneLabel(t('展开区 · 展开时显示')));
-    mini.append(zoneLabel(t('固定区 · Mini 也保留')));
+    mini.append(zoneLabel(t('固定区 · 始终显示')));
   }
   for (const id of panel.widgetConfig.orderFull) full.append(buildModule(id));
   for (const id of panel.widgetConfig.orderMini) mini.append(buildModule(id));
@@ -543,14 +543,14 @@ function moduleMenuHTML(id) {
     ? `<div class="ksb-menu-label">${t('显示账户')}</div>${externalVisibilityOpts()}`
     : '';
   const rangeRow = id === 'usageChart'
-    ? `<div class="ksb-menu-label">${t('统计范围')}</div>${menuOpts('chartRange', [['week', '7d'], ['month', '30d']], mod.chartRange)}`
+    ? `<div class="ksb-menu-label">${t('统计范围')}</div>${menuOpts('chartRange', [['day', '24h'], ['week', '7d'], ['month', '30d']], mod.chartRange)}`
     : '';
   const paceRow = id.startsWith('quota')
     ? `<div class="ksb-menu-label">${t('匀速参照线')}</div>${menuOpts('pace', [[true, t('显示')], [false, t('隐藏')]], mod.pace)}
       <div class="ksb-menu-label">${t('重置时间显示')}</div>${menuOpts('resetFormat', [['countdown', t('倒计时')], ['absolute', t('具体时间')]], mod.resetFormat || 'countdown')}`
     : '';
   const statRow = id === 'pet'
-    ? `<div class="ksb-menu-label">${t('右侧数据')}</div>${menuOpts('stat', [['daily', t('24h消耗')], ['input', t('输入')], ['output', t('输出')], ['cache', t('缓存命中')], ['speed', t('速度')], ['balance', t('余额')]], mod.stat)}
+    ? `<div class="ksb-menu-label">${t('右侧数据')}</div>${menuOpts('stat', [['daily', t('今日消耗')], ['input', t('输入')], ['output', t('输出')], ['cache', t('缓存命中')], ['speed', t('速度')], ['balance', t('余额')]], mod.stat)}
       <div class="ksb-menu-label">${t('点击小球跳转')}</div>${menuOpts('ballLink', [['none', t('无跳转')], ['console', t('控制台')], ['subscription', t('充值页')]], mod.ballLink || 'none')}
       <div class="ksb-menu-label">${t('侧栏改造（去 logo 上移）')}</div>${menuOpts('sidebarTidy', [[true, t('开启')], [false, t('关闭')]], mod.sidebarTidy !== false)}`
     : '';

@@ -87,6 +87,7 @@ export async function refreshCliUsage(options = {}) {
       await withStorageLock(KimiCliUsage.STATE_STORAGE_KEY, async () => {
         await chrome.storage.local.set({
           [KimiCliUsage.DAILY_STORAGE_KEY]: result.daily,
+          [KimiCliUsage.HOURLY_STORAGE_KEY]: result.hourly,
           [KimiCliUsage.INDEX_STORAGE_KEY]: result.index,
           [KimiCliUsage.SESSIONS_STORAGE_KEY]: result.sessions,
           [KimiCliUsage.STATE_STORAGE_KEY]: state
@@ -127,6 +128,7 @@ export async function disconnectCliUsage() {
   await KimiCliUsage.clearDirectoryHandle().catch(() => {});
   await chrome.storage.local.remove([
     KimiCliUsage.DAILY_STORAGE_KEY,
+    KimiCliUsage.HOURLY_STORAGE_KEY,
     KimiCliUsage.INDEX_STORAGE_KEY,
     KimiCliUsage.SESSIONS_STORAGE_KEY,
     KimiCliUsage.STATE_STORAGE_KEY

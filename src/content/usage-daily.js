@@ -29,11 +29,15 @@ export async function loadUsageDaily({ refreshIfStale = false } = {}) {
     panel.cliUsageConnected = status?.ok === true && status.connected === true;
     const stored = await chrome.storage.local.get([
       KimiCliUsage.DAILY_STORAGE_KEY,
+      KimiCliUsage.HOURLY_STORAGE_KEY,
       KimiCliUsage.SECONDARY_MODEL_STORAGE_KEY
     ]);
     panel.secondaryModelName = stored[KimiCliUsage.SECONDARY_MODEL_STORAGE_KEY] || '';
     panel.usageDailyCache = panel.cliUsageConnected
       ? stored[KimiCliUsage.DAILY_STORAGE_KEY] || {}
+      : {};
+    panel.usageHourlyCache = panel.cliUsageConnected
+      ? stored[KimiCliUsage.HOURLY_STORAGE_KEY] || {}
       : {};
     renderChart();
     renderAgents();

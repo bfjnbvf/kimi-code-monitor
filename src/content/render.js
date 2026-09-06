@@ -16,7 +16,8 @@ import {
   listDayKeysBetween,
   sumUsageBetween,
   totalInputTokens,
-  usageDayKey
+  usageDayKey,
+  usageHourKey
 } from '../metrics.js';
 import { panel, agentModelLabel, emptyAgentMetric } from './panel-state.js';
 import {
@@ -28,9 +29,9 @@ import {
 import { t, statusText } from '../i18n.js';
 
 const STATUS_MIN_DISPLAY_MS = 1_500;
-const CHART_RANGE_DAYS = { week: 7, month: 30 };
+const CHART_RANGE_DAYS = { day: 1, week: 7, month: 30 };
 // 存原始键，渲染时 t()——模块加载期 t() 会被当时语言冻结，切换语言后不更新
-const CHART_RANGE_LABELS = { week: '7d消耗', month: '30d消耗' };
+const CHART_RANGE_LABELS = { day: '24h消耗', week: '7d消耗', month: '30d消耗' };
 
 // 窗口时长：5h 与 API 的 window.duration=300（分钟）一致；本周按 7 天
 const QUOTA_WINDOW_MS = { '5h': 300 * 60_000, week: 7 * 24 * 3_600_000 };
@@ -340,32 +341,55 @@ export function renderChart() {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - (days - 1));
   const startKey = usageDayKey(startDate);
-  const sum = sumUsageBetween(panel.usageDailyCache, startKey, endKey);
   if (panel.els.chartLabel) panel.els.chartLabel.textContent = t(CHART_RANGE_LABELS[range] || CHART_RANGE_LABELS.week);
+  panel.els.chartBars.replaceChildren();
+  let sum;
+  let columns;
+  if (range === 'day') {
+    // 24h = 滚动窗口：当前小时钉在最右，往前共 24 个小时（跨昨天，小时桶保留 2 天够用）
+    columns = [];
+    sum = { totalTokens: 0, cacheHitRate: null };
+    let input = 0;
+    let cacheRead = 0;
+    for (let i = 23; i >= 0; i -= 1) {
+      const key = usageHourKey(new Date(Date.now() - i * 3_600_000));
+      const bucket = panel.usageHourlyCache[key];
+      const tokens = bucket ? bucket.input + bucket.output : 0;
+      columns.push({
+        label: `${key.slice(5, 10)} ${key.slice(11)}:00`,
+        tokens,
+        subTokens: bucket?.sub ? bucket.sub.input + bucket.sub.output : 0
+      });
+      input += bucket?.input || 0;
+      cacheRead += bucket?.cacheRead || 0;
+      sum.totalTokens += tokens;
+    }
+    sum.cacheHitRate = input > 0 ? cacheRead / input : null;
+  } else {
+    // 7d/30d 按本地自然日分柱
+    sum = sumUsageBetween(panel.usageDailyCache, startKey, endKey);
+    columns = listDayKeysBetween(startKey, endKey).map((key) => {
+      const bucket = panel.usageDailyCache[key];
+      return {
+        label: key.slice(5),
+        tokens: bucket ? bucket.input + bucket.output : 0,
+        subTokens: bucket?.sub ? bucket.sub.input + bucket.sub.output : 0
+      };
+    });
+  }
   panel.els.chartTotal.textContent = sum.totalTokens > 0 ? formatTokenCount(sum.totalTokens) : '--';
   const hitPct = sum.cacheHitRate != null ? `${formatPercentage(sum.cacheHitRate * 100)}%` : '';
   if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = hitPct ? t('缓存命中 {pct}', { pct: hitPct }) : '';
   if (panel.els.chartHitShort) panel.els.chartHitShort.textContent = hitPct;
-  panel.els.chartBars.replaceChildren();
-  const keys = listDayKeysBetween(startKey, endKey);
-  const maxTokens = Math.max(
-    0,
-    ...keys.map((key) => {
-      const bucket = panel.usageDailyCache[key];
-      return bucket ? bucket.input + bucket.output : 0;
-    })
-  );
-  for (const key of keys) {
-    const bucket = panel.usageDailyCache[key];
-    const tokens = bucket ? bucket.input + bucket.output : 0;
+  const maxTokens = Math.max(0, ...columns.map((c) => c.tokens));
+  for (const { label, tokens, subTokens } of columns) {
     // sub 子桶存在时拆分主/子代理，堆叠展示（主灰在底、子绿在上），与 popup 口径一致
-    const subTokens = bucket?.sub ? bucket.sub.input + bucket.sub.output : 0;
     const mainTokens = tokens - subTokens;
     const col = document.createElement('span');
     col.className = 'ksb-chart-col';
     col.title = subTokens > 0
-      ? t('{date} · 主 {main} · 子 {sub}', { date: key.slice(5), main: formatTokenCount(mainTokens), sub: formatTokenCount(subTokens) })
-      : `${key.slice(5)} · ${formatTokenCount(tokens)}`;
+      ? t('{date} · 主 {main} · 子 {sub}', { date: label, main: formatTokenCount(mainTokens), sub: formatTokenCount(subTokens) })
+      : `${label} · ${formatTokenCount(tokens)}`;
     const stack = document.createElement('span');
     stack.className = 'ksb-chart-stack';
     if (subTokens > 0 && maxTokens > 0) {
@@ -538,7 +562,7 @@ export function renderExternal() {
 // 宠物模块右侧数据：六种口径可选（≡ 菜单切换），标签与数值联动
 const PET_STAT_DEFS = {
   daily: {
-    label: '24h消耗',
+    label: '今日消耗',
     value: () => {
       if (!panel.cliUsageConnected) return t('需连接 CLI');
       const bucket = panel.usageDailyCache[usageDayKey(new Date())];

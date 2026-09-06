@@ -6,6 +6,7 @@ const DB_NAME = 'kimi-code-monitor';
 const HANDLE_STORE = 'file-handles';
 const SESSIONS_HANDLE_KEY = 'kimi-cli-sessions';
 const DAILY_STORAGE_KEY = 'kimiCliUsageDaily';
+const HOURLY_STORAGE_KEY = 'kimiCliUsageHourly';
 const INDEX_STORAGE_KEY = 'kimiCliUsageIndex';
 const STATE_STORAGE_KEY = 'kimiCliUsageState';
 const SESSIONS_STORAGE_KEY = 'kimiCliUsageSessions';
@@ -13,7 +14,8 @@ const SECONDARY_MODEL_STORAGE_KEY = 'kimiCliSecondaryModel';
 // 按会话汇总只保留最近有活动的若干条，避免长期无限增长
 const SESSIONS_SUMMARY_LIMIT = 200;
 // v4：meta 新增 modelAlias（config.update 里的真实模型名），旧缓存没有，必须全量重扫一次
-const INDEX_VERSION = 4;
+// v5：新增按小时聚合（hourly，供 24h 图表分柱），旧缓存没有，必须全量重扫一次
+const INDEX_VERSION = 5;
 const READ_CHUNK_BYTES = 1024 * 1024;
 
 function openHandleDb() {
@@ -107,6 +109,27 @@ function addUsageRecord(daily, record, isSubagent = false, meta = null) {
   return true;
 }
 
+// 与 addUsageRecord 同口径的按小时聚合（'YYYY-MM-DDTHH' 本地小时键），供 24h 图表分柱
+function addHourlyRecord(hourly, record, isSubagent = false) {
+  const time = Number(record?.time);
+  if (!Number.isFinite(time) || !record.usage) return;
+  const usage = KimiMetrics.normalizeUsage(record.usage);
+  const key = KimiMetrics.usageHourKey(new Date(time));
+  const bucket = { ...emptyBucket(), ...(hourly[key] || {}) };
+  const input = KimiMetrics.totalInputTokens(usage);
+  bucket.input += input;
+  bucket.output += usage.outputTokens;
+  bucket.cacheRead += usage.cacheReadTokens;
+  if (isSubagent) {
+    const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+    sub.input += input;
+    sub.output += usage.outputTokens;
+    sub.cacheRead += usage.cacheReadTokens;
+    bucket.sub = sub;
+  }
+  hourly[key] = bucket;
+}
+
 function emptyScanMeta() {
   return { models: {}, firstAt: null, lastAt: null, modelAlias: null };
 }
@@ -129,14 +152,18 @@ function mergeScanMeta(target, source) {
   return target;
 }
 
-function parseUsageLines(text, daily, isSubagent = false, meta = null) {
+function parseUsageLines(text, daily, hourly = null, isSubagent = false, meta = null) {
   let count = 0;
   for (const line of String(text || '').split('\n')) {
     // 先用子串粗筛，避免对话正文进入 JSON 解析器；真实类型由 addUsageRecord
     // 校验 parsed.type === 'usage.record'，不依赖 type 是行内第一个字段。
     if (line.includes('"usage.record"')) {
       try {
-        if (addUsageRecord(daily, JSON.parse(line), isSubagent, meta)) count += 1;
+        const parsed = JSON.parse(line);
+        if (addUsageRecord(daily, parsed, isSubagent, meta)) {
+          count += 1;
+          if (hourly) addHourlyRecord(hourly, parsed, isSubagent);
+        }
       } catch (error) {
         // 单行损坏不阻塞其他会话；未完整写入的末行不会传到这里。
       }
@@ -181,6 +208,9 @@ async function scanFile(file, previous, onBytesProcessed, isSubagent = false) {
   const daily = canAppend && previous.daily && typeof previous.daily === 'object'
     ? structuredClone(previous.daily)
     : {};
+  const hourly = canAppend && previous.hourly && typeof previous.hourly === 'object'
+    ? structuredClone(previous.hourly)
+    : {};
   let usageRecords = canAppend ? KimiMetrics.toNonNegativeInteger(previous.usageRecords) : 0;
   const meta = canAppend && previous.meta && typeof previous.meta === 'object'
     ? mergeScanMeta(emptyScanMeta(), previous.meta)
@@ -201,7 +231,7 @@ async function scanFile(file, previous, onBytesProcessed, isSubagent = false) {
     // 文件末尾尚未写完的行留到下次扫描，不推进 offset。
     if (newline < 0) break;
     const complete = bytes.subarray(0, newline + 1);
-    usageRecords += parseUsageLines(new TextDecoder().decode(complete), daily, isSubagent, meta);
+    usageRecords += parseUsageLines(new TextDecoder().decode(complete), daily, hourly, isSubagent, meta);
     offset += complete.byteLength;
     onBytesProcessed?.(complete.byteLength);
   }
@@ -212,6 +242,7 @@ async function scanFile(file, previous, onBytesProcessed, isSubagent = false) {
     offset,
     usageRecords,
     daily: KimiMetrics.pruneDailyUsage(daily),
+    hourly: KimiMetrics.pruneHourlyUsage(hourly),
     meta
   };
 }
@@ -264,6 +295,25 @@ function combineFileDaily(files) {
     }
   }
   combined = KimiMetrics.pruneDailyUsage(combined);
+  return combined;
+}
+
+// 逐文件按小时聚合的合流，与 combineFileDaily 同口径（含 sub 子桶）
+function combineFileHourly(files) {
+  let combined = {};
+  for (const entry of Object.values(files || {})) {
+    for (const [key, source] of Object.entries(entry?.hourly || {})) {
+      const bucket = { ...emptyBucket(), ...(combined[key] || {}) };
+      addBucket(bucket, source);
+      if (source?.sub) {
+        const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+        addBucket(sub, source.sub);
+        bucket.sub = sub;
+      }
+      combined[key] = bucket;
+    }
+  }
+  combined = KimiMetrics.pruneHourlyUsage(combined);
   return combined;
 }
 
@@ -398,6 +448,7 @@ async function scanSessionsDirectory(sessionsHandle, previousIndex, onProgress) 
   return {
     index,
     daily: combineFileDaily(files),
+    hourly: combineFileHourly(files),
     sessions: summarizeSessions(files),
     secondaryModel,
     scannedAt,
@@ -410,12 +461,14 @@ async function scanSessionsDirectory(sessionsHandle, previousIndex, onProgress) 
 
 const KimiCliUsage = {
   DAILY_STORAGE_KEY,
+  HOURLY_STORAGE_KEY,
   INDEX_STORAGE_KEY,
   STATE_STORAGE_KEY,
   SESSIONS_STORAGE_KEY,
   SECONDARY_MODEL_STORAGE_KEY,
   clearDirectoryHandle,
   combineFileDaily,
+  combineFileHourly,
   getDirectoryHandle,
   parseUsageLines,
   permissionState,
@@ -427,12 +480,14 @@ const KimiCliUsage = {
 
 export {
   DAILY_STORAGE_KEY,
+  HOURLY_STORAGE_KEY,
   INDEX_STORAGE_KEY,
   STATE_STORAGE_KEY,
   SESSIONS_STORAGE_KEY,
   SECONDARY_MODEL_STORAGE_KEY,
   clearDirectoryHandle,
   combineFileDaily,
+  combineFileHourly,
   getDirectoryHandle,
   parseUsageLines,
   permissionState,

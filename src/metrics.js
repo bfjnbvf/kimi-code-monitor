@@ -57,19 +57,38 @@ function formatPercentage(value, decimals = 1) {
 
 /* ---------- 按天消耗量累计（popup 消耗量板块数据源） ---------- */
 
-// UTC 日的 'YYYY-MM-DD'，字典序即时间序，可直接字符串比较；用 UTC 避免 DST 跳天/重复天。
+// 本地自然日的 'YYYY-MM-DD'，字典序即时间序，可直接字符串比较。
+// 用本地时区而非 UTC：「今日消耗」以用户本地午夜为界，东八区清晨的用量不再算进昨天。
 function usageDayKey(date = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
-  const year = d.getUTCFullYear();
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// 本地小时键 'YYYY-MM-DDTHH'：24h 图表按小时分柱；字典序即时间序
+function usageHourKey(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  return `${usageDayKey(d)}T${String(d.getHours()).padStart(2, '0')}`;
+}
+
+// 小时桶只保留最近 keepDays 个自然日（含今天），避免长期膨胀
+function pruneHourlyUsage(hourly, keepDays = 2, now = new Date()) {
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - (keepDays - 1));
+  const cutoffKey = `${usageDayKey(cutoff)}T00`;
+  const next = {};
+  for (const [key, bucket] of Object.entries(hourly || {})) {
+    if (key >= cutoffKey) next[key] = bucket;
+  }
+  return next;
 }
 
 // 只保留最近 keepDays 个自然日（含今天）的桶，防止存储无限膨胀
 function pruneDailyUsage(daily, keepDays = 90, now = new Date()) {
   const cutoff = new Date(now);
-  cutoff.setUTCDate(cutoff.getUTCDate() - (keepDays - 1));
+  cutoff.setDate(cutoff.getDate() - (keepDays - 1));
   const cutoffKey = usageDayKey(cutoff);
   const next = {};
   for (const [key, bucket] of Object.entries(daily || {})) {
@@ -93,15 +112,15 @@ function sumUsageBetween(daily, startKey, endKey) {
   return total;
 }
 
-// 枚举范围内的每个 UTC 日 key（含端点），无记录的日期也会列出，供图表补零
+// 枚举范围内的每个本地日 key（含端点），无记录的日期也会列出，供图表补零
 function listDayKeysBetween(startKey, endKey) {
   const parse = (key) => {
     const [y, m, d] = String(key).split('-').map(Number);
-    return new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+    return new Date(y, (m || 1) - 1, d || 1);
   };
   const keys = [];
   const end = parse(endKey);
-  for (let d = parse(startKey); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+  for (let d = parse(startKey); d <= end; d.setDate(d.getDate() + 1)) {
     keys.push(usageDayKey(d));
   }
   return keys;
@@ -113,18 +132,18 @@ function buildHeatmapData(daily, endKey, dayCount = 90) {
   const source = daily && typeof daily === 'object' ? daily : {};
   const count = Math.max(1, Math.floor(Number(dayCount)) || 90);
   const [y, m, d] = String(endKey).split('-').map(Number);
-  const end = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+  const end = new Date(y, (m || 1) - 1, d || 1);
   const cells = [];
   let maxTotal = 0;
   for (let i = count - 1; i >= 0; i -= 1) {
     const date = new Date(end);
-    date.setUTCDate(date.getUTCDate() - i);
+    date.setDate(date.getDate() - i);
     const key = usageDayKey(date);
     const bucket = source[key];
     const total = toNonNegativeInteger(bucket?.input) + toNonNegativeInteger(bucket?.output);
     if (total > maxTotal) maxTotal = total;
-    // getUTCDay()：0=周日 … 6=周六；换算成周一起头的列内序号（周一=0）
-    cells.push({ key, total, weekIndex: (date.getUTCDay() + 6) % 7 });
+    // getDay()：0=周日 … 6=周六；换算成周一起头的列内序号（周一=0）
+    cells.push({ key, total, weekIndex: (date.getDay() + 6) % 7 });
   }
   const thresholds = maxTotal > 0
     ? [0.2, 0.4, 0.6, 0.8].map((fraction) => maxTotal * fraction)
@@ -196,7 +215,7 @@ const WIDGET_MODULE_IDS = [
   'quota5h', 'quotaWeek', 'usageChart', 'pet', 'agents', 'external'
 ];
 const WIDGET_SHOW_STATES = ['full', 'mini', 'hidden'];
-const CHART_RANGES = ['week', 'month'];
+const CHART_RANGES = ['day', 'week', 'month'];
 const PET_STATS = ['daily', 'input', 'output', 'cache', 'speed', 'balance'];
 const BALL_LINKS = ['none', 'console', 'subscription'];
 const BALANCE_LINKS = ['subscription', 'console'];
@@ -347,11 +366,13 @@ const KimiMetrics = {
   normalizeWidgetConfig,
   PET_STATS,
   pruneDailyUsage,
+  pruneHourlyUsage,
   quotaPercentage,
   sumUsageBetween,
   toNonNegativeInteger,
   totalInputTokens,
   usageDayKey,
+  usageHourKey,
   WIDGET_MODULE_IDS,
   WIDGET_SHOW_STATES
 };
@@ -371,11 +392,13 @@ export {
   normalizeWidgetConfig,
   PET_STATS,
   pruneDailyUsage,
+  pruneHourlyUsage,
   quotaPercentage,
   sumUsageBetween,
   toNonNegativeInteger,
   totalInputTokens,
   usageDayKey,
+  usageHourKey,
   WIDGET_MODULE_IDS,
   WIDGET_SHOW_STATES,
   KimiMetrics

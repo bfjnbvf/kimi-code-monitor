@@ -14,9 +14,11 @@ import {
   normalizeUsage,
   normalizeWidgetConfig,
   pruneDailyUsage,
+  pruneHourlyUsage,
   sumUsageBetween,
   totalInputTokens,
-  usageDayKey
+  usageDayKey,
+  usageHourKey
 } from '../src/metrics.js';
 
 test('总输入包含未缓存、缓存读取和缓存创建 token', () => {
@@ -114,7 +116,7 @@ test('钱包未启用时不展示接口中的伪余额', () => {
   }), 3.152507);
 });
 
-test('日期键使用 UTC 且可字符串比较，修剪只保留近期桶', () => {
+test('日期键按本地自然日且可字符串比较，修剪只保留近期桶', () => {
   const now = new Date('2026-07-30T15:00:00');
   assert.equal(usageDayKey(now), '2026-07-30');
 
@@ -127,15 +129,26 @@ test('日期键使用 UTC 且可字符串比较，修剪只保留近期桶', () 
   assert.deepEqual(Object.keys(pruned), ['2026-07-30']);
 });
 
-test('UTC 日期键跨本地时区/DST 午夜仍稳定', () => {
-  // 2026-07-15 23:30 UTC，在 UTC+8 等东时区已落入次日，但日期键应仍为 UTC 日
-  const nearMidnight = new Date('2026-07-15T23:30:00.000Z');
-  assert.equal(usageDayKey(nearMidnight), '2026-07-15');
-  assert.equal(nearMidnight.getUTCDate(), 15);
+test('日期键以本地午夜为界，跨 DST 也稳定', () => {
+  // 本地午夜前后分属相邻两天（用本地分量构造，任何时区运行结果一致）
+  assert.equal(usageDayKey(new Date(2026, 6, 15, 23, 30)), '2026-07-15');
+  assert.equal(usageDayKey(new Date(2026, 6, 16, 0, 30)), '2026-07-16');
 
-  // 美国东部夏令时 2026-03-08 02:00 是 DST 切换点，UTC 日不变
-  const dstSwitch = new Date('2026-03-08T07:00:00.000Z');
-  assert.equal(usageDayKey(dstSwitch), '2026-03-08');
+  // 美国东部夏令时 2026-03-08 02:00 是 DST 跳变点，本地日期键仍落在当天
+  assert.equal(usageDayKey(new Date(2026, 2, 8, 3, 30)), '2026-03-08');
+});
+
+test('小时键按本地小时，修剪只保留近两天', () => {
+  const now = new Date(2026, 6, 30, 15, 0);
+  assert.equal(usageHourKey(now), '2026-07-30T15');
+
+  const hourly = {
+    '2026-07-30T09': { input: 1, output: 1, cacheRead: 0 },
+    '2026-07-29T23': { input: 1, output: 1, cacheRead: 0 },
+    '2026-07-28T23': { input: 1, output: 1, cacheRead: 0 }
+  };
+  const pruned = pruneHourlyUsage(hourly, 2, now);
+  assert.deepEqual(Object.keys(pruned), ['2026-07-30T09', '2026-07-29T23']);
 });
 
 test('token 数量缩写与 widget 一致', () => {

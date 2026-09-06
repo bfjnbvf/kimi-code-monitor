@@ -258,6 +258,11 @@ function handleStorageChanged(changes, area) {
     renderChart();
     renderPetStats();
   }
+  const hourlyKey = KimiCliUsage.HOURLY_STORAGE_KEY;
+  if (hourlyKey && changes[hourlyKey]) {
+    panel.usageHourlyCache = changes[hourlyKey].newValue || {};
+    renderChart();
+  }
   // 桌面宠物的开关/换素材/环视/大小变更由宠物域处理
   handlePetStorageChanged(changes);
   // 收藏功能开关变化（popup 切换）：实时启停收藏域
@@ -269,7 +274,10 @@ function handleStorageChanged(changes, area) {
   const stateKey = KimiCliUsage.STATE_STORAGE_KEY;
   if (stateKey && changes[stateKey]) {
     panel.cliUsageConnected = changes[stateKey].newValue?.connected === true;
-    if (!panel.cliUsageConnected) panel.usageDailyCache = {};
+    if (!panel.cliUsageConnected) {
+      panel.usageDailyCache = {};
+      panel.usageHourlyCache = {};
+    }
     renderChart();
     renderPetStats();
   }
