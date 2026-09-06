@@ -22,3 +22,14 @@ kimi-code-monitor-v*-unpacked/
 
 # Chrome 加载解包扩展时生成
 _metadata/
+
+# docs/ 下的一次性设计稿与截图工具（仅本地保留，不进仓库）
+docs/extensions-card-mockup.html
+docs/extensions-card-mockup.png
+docs/guide-variants.html
+docs/head-image.html
+docs/kimi-pet-preview.html
+docs/kimi-pet-preview.png
+docs/rive-gallery.html
+docs/screenshot-studio.html
+docs/window.png
