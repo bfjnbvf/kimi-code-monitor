@@ -12,6 +12,9 @@
  *     panel.usageDailyCache / usageHourlyCache / secondaryModelName 后重绘图表。
  *   - { type: 'status', status: 'idle' | 'working' | 'waiting' | 'offline' }：
  *     整体状态灯与宠物联动。
+ *   - { type: 'external', providers }：外部账户（DeepSeek/Kimi API/智谱/MiniMax）
+ *     抓取结果直写 panel.externalProviders 后重绘；App 侧 ExternalAccounts 拉取，
+ *     popup 页增删改后推送。
  *   - { type: 'session', sid, snapshot?: { usage } }：切换当前会话（跟随桌面端
  *     最近活跃会话）——清空累计并以 REST 快照的 usage 做底，再重绘。
  *   - 可选 sessionId 字段（任意消息上）：标记当前会话 id（宠物轮次归属用）。
@@ -29,6 +32,7 @@ import {
   renderAgents,
   renderChart,
   renderPetStats,
+  renderExternal,
   updateBalance,
   updateProgress,
   updateResetText
@@ -288,6 +292,14 @@ function handleSessionSwitch(msg) {
   renderPetStats();
 }
 
+// 外部账户（App 侧 ExternalAccounts 抓取）：结果直写并重绘，
+// 数据形状与扩展 background/external.js 的 providers 一致
+// （{id, name, keyTail, kind, total, granted, paid, currency, windows, plan, error}）
+function handleExternal(msg) {
+  panel.externalProviders = Array.isArray(msg.providers) ? msg.providers : [];
+  renderExternal();
+}
+
 function dispatch(msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.v != null && msg.v !== 1) {
@@ -307,6 +319,9 @@ function dispatch(msg) {
       break;
     case 'status':
       handleStatus(msg);
+      break;
+    case 'external':
+      handleExternal(msg);
       break;
     case 'session':
       handleSessionSwitch(msg);

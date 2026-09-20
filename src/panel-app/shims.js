@@ -117,9 +117,16 @@ const noopListenerHub = {
 };
 
 // 扩展里的 chrome-extension://<id>/<path> 统一还原为 <path>（相对面板资源目录）；
-// 已是相对路径的原样返回
+// 已是相对路径的原样返回。
+// 注入模式（CDP 注入桌面端页面）下资源不在同 origin：注入器预先把
+// wasm/riv 等资产转成 blob: URL 挂在 window.__vibepalAssets，优先命中
 function resolveResourcePath(path) {
-  return String(path || '').replace(/^chrome-extension:\/\/[^/]+\//, '');
+  const rel = String(path || '').replace(/^chrome-extension:\/\/[^/]+\//, '');
+  const assets = globalThis.__vibepalAssets;
+  if (assets && typeof assets === 'object' && typeof assets[rel] === 'string') {
+    return assets[rel];
+  }
+  return rel;
 }
 
 // 面板 → Swift：经 window.__vibepalAsk（页面脚本经 webkit.messageHandlers 转发）。

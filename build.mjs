@@ -14,7 +14,8 @@ const entries = [
   ['src/content.js', 'dist/content.js'],
   ['src/background.js', 'dist/background.js'],
   ['src/popup.js', 'dist/popup.js'],
-  ['src/panel-app.js', 'dist/panel-app.js']
+  ['src/panel-app.js', 'dist/panel-app.js'],
+  ['src/popup-app.js', 'dist/popup-app.js']
 ];
 
 for (const [entryPoints, outfile] of entries) {

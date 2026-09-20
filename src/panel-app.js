@@ -13,6 +13,7 @@
 
 import './panel-app/shims.js';
 import { installBridge, markBridgeReady, getSessionId } from './panel-app/bridge.js';
+import { startDirectMode } from './panel-app/direct.js';
 import {
   applyWidgetConfig,
   initWidgetStructure,
@@ -92,9 +93,18 @@ initRender({
 
 installBridge();
 
+// 注入模式（CDP 注入桌面端页面，http/https 页面）：宿主挂进侧栏、数据直连同源
+// kap-server；桥接模式（macOS App 菜单栏，vibepal:// 自定义 scheme）：挂 body、
+// 数据由 Swift 推送
+const injectedMode = location.protocol !== 'vibepal:';
+
 const host = document.createElement('div');
 host.id = 'ksb-panel-host';
-document.body.appendChild(host);
+if (injectedMode && typeof globalThis.__vibepalMountInto === 'function') {
+  globalThis.__vibepalMountInto(host); // 注入器提供：挂到 aside.side > .col
+} else {
+  document.body.appendChild(host);
+}
 mountWidget(host);
 
 // 语言跟随 kimi-locale（Swift 侧如需英文可预先写入该键）；
@@ -119,6 +129,8 @@ async function bootstrap() {
     applyWidgetConfig(PANEL_WIDGET_CONFIG);
   }
   markBridgeReady();
+  // 注入模式：直连同源 kap-server（页面在桌面端 DOM 里）；桥接模式等 Swift 推送
+  if (injectedMode) startDirectMode();
   // 页面内联脚本（?mock=1 演示数据）就绪信号
   window.dispatchEvent(new Event('vibepal:panel-ready'));
 }
