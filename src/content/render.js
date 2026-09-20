@@ -20,6 +20,7 @@ import {
   usageHourKey
 } from '../metrics.js';
 import { panel, agentModelLabel, emptyAgentMetric } from './panel-state.js';
+import { STATUS_SHORT } from '../panel-app/status-copy.js';
 import {
   escapeHtml,
   fmtDuration,
@@ -329,7 +330,10 @@ export function renderChart() {
   module?.classList.toggle('ksb-cli-required', !panel.cliUsageConnected);
   if (panel.els.cliLock) panel.els.cliLock.hidden = panel.cliUsageConnected;
   if (!panel.cliUsageConnected) {
-    panel.els.chartTotal.textContent = t('需连接');
+    // 独立面板：窄位显示状态短词（统计中/连接中/异常）；扩展保持原「需连接」
+    panel.els.chartTotal.textContent = panel.standaloneMode
+      ? t(STATUS_SHORT[panel.statusLevel] || STATUS_SHORT.loading)
+      : t('需连接');
     if (panel.els.chartHitFull) panel.els.chartHitFull.textContent = '';
     if (panel.els.chartHitShort) panel.els.chartHitShort.textContent = '';
     panel.els.chartBars.replaceChildren();
@@ -564,7 +568,11 @@ const PET_STAT_DEFS = {
   daily: {
     label: '今日消耗',
     value: () => {
-      if (!panel.cliUsageConnected) return t('需连接 CLI');
+      if (!panel.cliUsageConnected) {
+        return panel.standaloneMode
+          ? t(STATUS_SHORT[panel.statusLevel] || STATUS_SHORT.loading)
+          : t('需连接 CLI');
+      }
       const bucket = panel.usageDailyCache[usageDayKey(new Date())];
       const total = bucket ? bucket.input + bucket.output : 0;
       return total > 0 ? formatTokenCount(total) : '--';

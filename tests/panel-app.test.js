@@ -164,3 +164,102 @@ test('panel-app：桥接消息驱动额度 / 统计 / 会话事件渲染', async
     window.close();
   }
 });
+
+test('panel-app：真实形状长期统计解锁图表（多天 + sub 子桶 + 历史久远日期）', async () => {
+  const { window } = createPage();
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window);
+
+    // 数据未到：独立面板锁位显示状态句（人话）而非「连接本地 CLI」（无目录授权动作）
+    const lock = window.document.getElementById('ksb-cli-lock');
+    assert.ok(lock, '锁元素应存在');
+    assert.equal(lock.disabled, true, '独立面板的锁不可点击');
+    assert.ok(lock.textContent.includes('正在加载数据统计'), '锁文案应为初始状态句');
+    assert.ok(window.document.getElementById('vibepal-data-status'), '诊断状态位应存在');
+    assert.ok(window.document.getElementById('ksb-status-sentence'), '状态句元素应存在');
+
+    const push = (msg) => window.__vibepal.push(msg);
+    const todayKey = usageDayKey(new Date());
+    const old = new Date();
+    old.setDate(old.getDate() - 40);
+    push({ v: 1, type: 'usageDaily',
+      daily: {
+        [usageDayKey(old)]: { input: 9000000, output: 900000, cacheRead: 8000000 },
+        [todayKey]: {
+          input: 420000, output: 38000, cacheRead: 218000,
+          sub: { input: 82000, output: 9000, cacheRead: 25000 }
+        }
+      },
+      hourly: { [`${todayKey}T09`]: { input: 120000, output: 9000, cacheRead: 60000, sub: { input: 0, output: 0, cacheRead: 0 } } },
+      secondaryModel: 'StepFun Step Plan/step-5-preview'
+    });
+    assert.equal(lock.hidden, true, '推送后锁应隐藏');
+    // week 口径只含最近 7 天：40 天前的大数不进汇总
+    assert.equal(
+      window.document.getElementById('ksb-chart-total').textContent,
+      '458k',
+      '消耗量应只汇总近 7 天'
+    );
+  } finally {
+    window.close();
+  }
+});
+
+test('panel-app：单条异常消息不锁死桥接（后续消息照常渲染）', async () => {
+  const { window } = createPage();
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 1600);
+
+    // 属性读取即抛的消息（模拟未知数据形状）：不应把异常抛给 push 调用方
+    const evil = { v: 1, type: 'quota', get quota() { throw new Error('boom'); } };
+    assert.doesNotThrow(() => window.__vibepal.push(evil), '异常消息应被吞掉并记录');
+    assert.ok(
+      String(window.__vibepalDebug?.dispatchError || '').includes('quota'),
+      '异常应记入诊断标记'
+    );
+
+    window.__vibepal.push({ v: 1, type: 'quota', quota: {
+      limit5h: { usedRatio: 0.5, resetAt: new Date(Date.now() + 3600e3).toISOString() }
+    }});
+    assert.equal(
+      window.document.getElementById('ksb-5h-pct').textContent,
+      '50%',
+      '异常之后的正常消息应照常渲染'
+    );
+  } finally {
+    window.close();
+  }
+});
+
+
+test('panel-app：会话路由下直连模式启动不抛错（TDZ 回归）', async () => {
+  // 曾因 pollFocus 在 ws 声明前调用 wsSubscribe 同步抛错，
+  // 炸掉 startDirectMode 后半段与 panel-ready 事件派发；
+  // 该 bug 只在 URL 含 /sessions/<id> 时触发（现有测试的 URL 恰好绕开）
+  const dom = new JSDOM(PAGE_HTML, {
+    url: 'http://localhost:3000/sessions/session_tdz-regress',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 100);
+    assert.ok(window.__vibepalDebug, '直连模式应写入调试状态');
+    assert.ok(
+      window.__vibepalDebug.wsState,
+      'WS 状态应被记录而非在启动时抛错'
+    );
+  } finally {
+    window.close();
+  }
+});

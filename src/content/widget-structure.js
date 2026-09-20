@@ -51,7 +51,10 @@ let deps = {
   manualRefresh: () => {},
   beginOAuth: () => {},
   fetchQuota: () => {},
-  fetchExternalProviders: () => {}
+  fetchExternalProviders: () => {},
+  // 独立面板（panel-app）没有「连接本地 CLI」的目录授权动作：
+  // 锁位改为状态句（bridge 的 ticker 按 status-copy 等级更新）并禁用点击
+  cliLockAccumulate: false
 };
 
 export function initWidgetStructure(nextDeps) {
@@ -126,9 +129,13 @@ const MODULE_HTML = {
       <span class="ksb-chart-total" id="ksb-chart-total">--</span>
       <div class="ksb-chart-bars" id="ksb-chart-bars"></div>
     </div>
-    <button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
+    ${deps.cliLockAccumulate
+      ? `<button type="button" class="ksb-cli-lock" id="ksb-cli-lock" disabled>
+      <span id="ksb-status-sentence">${t('正在加载数据统计…')}</span><small id="vibepal-data-status"></small>
+    </button>`
+      : `<button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
       <span>${t('连接本地 CLI')}</span><small>${t('开启24h、7d、30d统计')}</small>
-    </button>`,
+    </button>`}`,
   agents: () => `
     <div class="ksb-agents">
       <div class="ksb-agents-head">
@@ -189,7 +196,7 @@ function buildModule(id) {
   if (id === 'usageChart') {
     module.querySelector('.ksb-cli-lock')?.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (editing) return;
+      if (editing || deps.cliLockAccumulate) return;
       chrome.runtime.sendMessage({ type: 'cli.usage.open_settings' }).catch(() => {});
     });
   }

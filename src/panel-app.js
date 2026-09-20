@@ -12,7 +12,7 @@
  */
 
 import './panel-app/shims.js';
-import { installBridge, markBridgeReady, getSessionId } from './panel-app/bridge.js';
+import { installBridge, markBridgeReady, getSessionId, installStatusTicker } from './panel-app/bridge.js';
 import { startDirectMode } from './panel-app/direct.js';
 import {
   applyWidgetConfig,
@@ -25,6 +25,9 @@ import { initRender, renderAll } from './content/render.js';
 import { initPet, petUpdateStatus } from './content/pet-panel.js';
 import { panel, resetMetrics } from './content/panel-state.js';
 import { syncLocaleFromPage } from './i18n.js';
+
+// 独立面板标记：渲染层据此切换状态短词（扩展里对应位置显示「需连接」）
+panel.standaloneMode = true;
 
 // 面板页默认布局：与扩展侧栏的默认配置同口径，但全部模块可见
 // （侧栏默认把标题行 / 上轮耗时 / 子代理 / 外部账户收进隐藏区）。
@@ -74,7 +77,9 @@ initWidgetStructure({
   // 授权 / 额度 / 外部账户的拉取都在 Swift 侧，这里只转发意图
   beginOAuth: () => askSwift({ type: 'auth.begin' }),
   fetchQuota: () => askSwift({ type: 'refresh' }),
-  fetchExternalProviders: () => {}
+  fetchExternalProviders: () => {},
+  // 无「连接本地 CLI」目录授权动作：锁位由 widget-structure 改述为统计积累中
+  cliLockAccumulate: true
 });
 
 initPet({
@@ -129,8 +134,17 @@ async function bootstrap() {
     applyWidgetConfig(PANEL_WIDGET_CONFIG);
   }
   markBridgeReady();
-  // 注入模式：直连同源 kap-server（页面在桌面端 DOM 里）；桥接模式等 Swift 推送
-  if (injectedMode) startDirectMode();
+  // 状态文案 ticker：锁位句子 + 渲染层短词的数据源（bridge 模式同样适用）
+  installStatusTicker();
+  // 注入模式：直连同源 kap-server（页面在桌面端 DOM 里）；桥接模式等 Swift 推送。
+  // 直连启动失败不拖垮面板：就绪信号必须照常派发（loader 靠它补推数据）
+  if (injectedMode) {
+    try {
+      startDirectMode();
+    } catch (error) {
+      console.error('[Kimi Status] 直连模式启动失败', error);
+    }
+  }
   // 页面内联脚本（?mock=1 演示数据）就绪信号
   window.dispatchEvent(new Event('vibepal:panel-ready'));
 }

@@ -8,8 +8,8 @@
  *     （parseResetTime 后进 updateResetText）。可选 wallet 字段透传 updateBalance。
  *   - { type: 'event', event }：Swift 侧透传的 WS 消息（type/payload/agent_id…），
  *     按 websocket-session.js 的实时分支翻译成面板状态（游标/重连/去重不管）。
- *   - { type: 'usageDaily', daily, hourly, secondaryModel }：CLI 长期统计缓存直写
- *     panel.usageDailyCache / usageHourlyCache / secondaryModelName 后重绘图表。
+ *   - { type: 'usageDaily', daily, hourly, secondaryModel }：CLI 长期统计（wire.jsonl
+ *     全量扫描），与页内按天积累（accumulate.js）取大合并后写 panel.usageDailyCache。
  *   - { type: 'status', status: 'idle' | 'working' | 'waiting' | 'offline' }：
  *     整体状态灯与宠物联动。
  *   - { type: 'external', providers }：外部账户（DeepSeek/Kimi API/智谱/MiniMax）
@@ -25,6 +25,9 @@
  */
 
 import { normalizeUsage } from '../metrics.js';
+import { noteStepUsage, mergeDaily, hasAccumulated } from './accumulate.js';
+import { summarizeStatus, STATUS_LONG } from './status-copy.js';
+import { t } from '../i18n.js';
 import { panel, registerSessionAgent, pushStepSample, recordTurnDuration, markLastSampleTurnEnd, resetMetrics } from '../content/panel-state.js';
 import {
   setAgentStatus,
@@ -125,6 +128,9 @@ function handleStepCompleted(payload, agentId) {
   panel.metrics.outputTokens += usage.outputTokens;
   panel.metrics.cacheReadTokens += usage.cacheReadTokens;
   panel.metrics.cacheCreationTokens += usage.cacheCreationTokens;
+
+  // 按天自积累（补丁模式无看门狗时长期统计的兜底，详见 accumulate.js）
+  noteStepUsage(usage);
 
   registerSessionAgent(agentId);
   const totals = panel.agentTotals[agentId];
@@ -253,11 +259,29 @@ function handleQuota(msg) {
   updateBalance(quota.wallet ?? null);
 }
 
+// 看门狗文件（wire.jsonl 全量扫描）的原始日数据：与页内积累分开存，
+// 每次合并都是「文件 ∪ 积累」按天取大（accumulate.js）
+let lastFileDaily = {};
+
 function handleUsageDaily(msg) {
-  panel.usageDailyCache = msg.daily && typeof msg.daily === 'object' ? msg.daily : {};
+  lastFileDaily = msg.daily && typeof msg.daily === 'object' ? msg.daily : {};
   panel.usageHourlyCache = msg.hourly && typeof msg.hourly === 'object' ? msg.hourly : {};
   panel.secondaryModelName = typeof msg.secondaryModel === 'string' ? msg.secondaryModel : '';
   panel.cliUsageConnected = msg.connected !== false;
+  // loader 的状态行读这个标记区分「文件已载入」与「已进渲染层」
+  try {
+    globalThis.__vibepalDebug = { ...globalThis.__vibepalDebug, usageDailyOk: true };
+  } catch (error) {
+    // 忽略
+  }
+  refreshDailyChart();
+}
+
+/** 合并「文件 + 页内积累」重绘长期统计；补丁模式无文件时纯靠页内积累 */
+export function refreshDailyChart() {
+  const merged = mergeDaily(lastFileDaily);
+  panel.usageDailyCache = merged;
+  if (Object.keys(merged).length > 0) panel.cliUsageConnected = true;
   renderChart();
   renderAgents();
   renderPetStats();
@@ -331,6 +355,24 @@ function dispatch(msg) {
   }
 }
 
+// 单条消息处理失败只影响自己：记录后继续，排队队列与后续推送不被锁死
+// （loader 的数据轮询有内容去重，一旦某条消息抛错且不被吞掉，锁就会永久停在屏幕上）
+function safeDispatch(msg) {
+  try {
+    dispatch(msg);
+  } catch (error) {
+    console.error('[Kimi Status] 桥接消息处理失败', msg?.type, error);
+    try {
+      globalThis.__vibepalDebug = {
+        ...globalThis.__vibepalDebug,
+        dispatchError: `${msg?.type}: ${error?.message || error}`
+      };
+    } catch (e) {
+      // 诊断写入失败不影响面板
+    }
+  }
+}
+
 let bridgeReady = false;
 const pendingMessages = [];
 
@@ -341,7 +383,7 @@ export function installBridge() {
         pendingMessages.push(msg);
         return;
       }
-      dispatch(msg);
+      safeDispatch(msg);
     }
   };
 }
@@ -350,5 +392,39 @@ export function installBridge() {
 export function markBridgeReady() {
   if (bridgeReady) return;
   bridgeReady = true;
-  while (pendingMessages.length) dispatch(pendingMessages.shift());
+  while (pendingMessages.length) safeDispatch(pendingMessages.shift());
+}
+
+/* ---------- 状态文案 ticker：归并各环节状态 → 锁位句子与短词 ---------- */
+
+let disconnectedSince = 0;
+
+// 数据未就绪期间每秒刷新：更新锁位状态句（人话）并把等级挂到 panel 上
+// 供渲染层窄位（吉祥物旁 / 图表汇总位）取短词。诊断技术串由 loader 写。
+function tickStatusSentence() {
+  const d = globalThis.__vibepalDebug || {};
+  const wsState = String(d.wsState || '');
+  const disconnected = d.kapKnown === false
+    || wsState.startsWith('closed')
+    || wsState === '等kap源';
+  if (disconnected && !disconnectedSince) disconnectedSince = Date.now();
+  if (!disconnected) disconnectedSince = 0;
+  const level = summarizeStatus({
+    dispatchError: d.dispatchError,
+    connected: panel.cliUsageConnected,
+    usageDailyOk: d.usageDailyOk,
+    hasAccum: hasAccumulated(),
+    fileState: d.fileState,
+    kapKnown: d.kapKnown,
+    wsState: d.wsState,
+    connectingMs: disconnectedSince ? Date.now() - disconnectedSince : 0
+  });
+  panel.statusLevel = level;
+  const sentence = document.getElementById('ksb-status-sentence');
+  if (sentence && level !== 'ok') sentence.textContent = t(STATUS_LONG[level]);
+}
+
+export function installStatusTicker() {
+  tickStatusSentence();
+  setInterval(tickStatusSentence, 1_000);
 }

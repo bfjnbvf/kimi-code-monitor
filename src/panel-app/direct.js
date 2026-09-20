@@ -15,14 +15,41 @@
  * CDP Runtime.evaluate 推送给桥接管道（与本文件无冲突：都只进 push）。
  */
 
-// kap-server 源：惰性读取（kap 重启换端口后注入器会更新这个全局值）
-const kapOrigin = () => globalThis.__vibepalKapOrigin || '';
+// kap-server 源：惰性读取（kap 重启换端口后注入器/loader 会更新全局值）。
+// 顺带读桌面端 SPA 自己的 sessionStorage（UI 用同一来源定位 kap）；
+// 再兜底从页面自己的资源记录里学——渲染进程对 kap 的请求都在 performance 里
+const kapOrigin = () => globalThis.__vibepalKapOrigin || spaOrigin() || learnKapOrigin() || '';
+
+function spaOrigin() {
+  try {
+    const value = sessionStorage.getItem('kimi-desktop-server-origin');
+    return /^https?:\/\/127\.0\.0\.1:\d+$/.test(value || '') ? value : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function learnKapOrigin() {
+  try {
+    for (const e of performance.getEntriesByType('resource')) {
+      const m = /^(https?:\/\/127\.0\.0\.1:\d+)\/api\//.exec(e.name);
+      if (m) return m[1];
+    }
+  } catch (error) {
+    // performance 不可用就放弃兜底
+  }
+  return '';
+}
+
+import { refreshDailyChart } from './bridge.js';
 
 // 活跃度模型：与 KapClient 同口径——证据事件 20s 无更新判空闲
 const ACTIVITY_TTL_MS = 20_000;
 const STATUS_TICK_MS = 2_000;
 const QUOTA_INTERVAL_MS = 60_000;
 const FOCUS_POLL_MS = 1_000;
+// 按天积累的图表重绘节奏（无看门狗文件时图表全靠页内积累）
+const DAILY_TICK_MS = 20_000;
 
 const EVIDENCE_TYPES = new Set([
   'turn.started', 'turn.step.started', 'turn.step.completed',
@@ -39,11 +66,26 @@ export function startDirectMode() {
     }
   };
 
-  /* ---------- 额度：60s 轮询同源 REST ---------- */
+  // 诊断状态（loader 的状态行展示）：改一次记一次，只在数据未到位时可见
+  function debug(state) {
+    try {
+      globalThis.__vibepalDebug = { ...globalThis.__vibepalDebug, ...state };
+    } catch (error) {
+      // 忽略
+    }
+  }
+  debug({ kapOrigin: kapOrigin() || '未知', focusedSid: '', wsState: 'init' });
+
+  /* ---------- 额度：60s 轮询 REST ---------- */
+
+  // kap 源未知时走相对路径：桌面端 app:// 处理器会把 /api/* 代理到 kap-server
+  // （实测额度轮询相对路径可用）；WS 不行（ws://renderer 不是有效主机），
+  // 所以事件流必须等源解析出来才连。
+  const apiUrl = (path) => `${kapOrigin()}${path}`;
 
   async function pollQuota() {
     try {
-      const r = await fetch(`${kapOrigin()}/api/v1/oauth/usage`);
+      const r = await fetch(apiUrl('/api/v1/oauth/usage'));
       const body = await r.json();
       const usages = body?.data?.quota?.usages;
       if (usages) push({ v: 1, type: 'quota', quota: usages });
@@ -60,15 +102,21 @@ export function startDirectMode() {
   let lastActiveAt = 0;
   let lastStatus = '';
 
+  // WS 连接状态：声明必须先于 pollFocus 的首次调用——曾经因 TDZ（pollFocus
+  // 同步执行时读到尚未初始化的 ws）抛错，把 startDirectMode 后半段全部炸死
+  let ws = null;
+  let retry = 0;
+
   function currentSidFromLocation() {
     return location.pathname.match(/\/sessions\/([^/?#]+)/)?.[1] || '';
   }
 
   async function applyFocus(sid) {
     focusedSid = sid;
+    debug({ focusedSid: sid, kapOrigin: kapOrigin() || '未知' });
     let snapshot;
     try {
-      const r = await fetch(`${kapOrigin()}/api/v1/sessions/${sid}`);
+      const r = await fetch(apiUrl(`/api/v1/sessions/${sid}`));
       const body = await r.json();
       if (body?.data?.usage) snapshot = { usage: body.data.usage };
     } catch (error) {
@@ -86,6 +134,11 @@ export function startDirectMode() {
   }
   pollFocus();
   setInterval(pollFocus, FOCUS_POLL_MS);
+
+  // 长期统计：看门狗的 usage-daily.json 走桥接推送；它缺席时图表靠
+  // 页内按天积累（accumulate.js），定时合并重绘（有文件时按天取大）
+  setTimeout(refreshDailyChart, 3_000);
+  setInterval(refreshDailyChart, DAILY_TICK_MS);
 
   /* ---------- 整体状态：活跃度模型（详见 KapClient 同口径注释） ---------- */
 
@@ -106,10 +159,8 @@ export function startDirectMode() {
     }
   }, STATUS_TICK_MS);
 
-  /* ---------- WS：同源事件流（协议与 KapClient/参考项目一致） ---------- */
-
-  let ws = null;
-  let retry = 0;
+  /* ---------- WS：事件流（协议与 KapClient/参考项目一致） ---------- */
+  // （ws/retry 已在焦点段声明，先于 pollFocus 首次调用——TDZ 防回归见上）
 
   function wsSubscribe(ids) {
     if (!ids.length || !ws || ws.readyState !== 1) return;
@@ -117,23 +168,29 @@ export function startDirectMode() {
   }
 
   function connect() {
-    // kap 源已知就用绝对地址（app:// 页面跨源）；否则回退同源相对地址（旧版桌面端）
+    // WS 无法走相对路径（ws://renderer 不是有效主机），必须等 kap 源解析出来。
+    // 源未知时短周期重查（loader 各级来源可能在页面加载后才就绪），不走指数退避。
     const base = kapOrigin();
-    const url = base
-      ? `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=vibepal-injected`
-      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/v1/ws?client_id=vibepal-injected`;
+    if (!base) {
+      debug({ wsState: '等kap源', kapOrigin: '未知' });
+      setTimeout(connect, 5_000);
+      return;
+    }
+    const url = `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=vibepal-injected`;
     try {
       ws = new WebSocket(url);
     } catch (error) {
       scheduleReconnect();
       return;
     }
+    debug({ wsState: 'connecting', wsUrl: base });
+    ws.onopen = () => debug({ wsState: 'open' });
     ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch (error) { return; }
       handleServer(m);
     };
-    ws.onclose = () => { ws = null; scheduleReconnect(); };
+    ws.onclose = () => { ws = null; debug({ wsState: `closed(r${retry})` }); scheduleReconnect(); };
     ws.onerror = () => { try { ws?.close(); } catch (error) { /* 忽略 */ } };
   }
 

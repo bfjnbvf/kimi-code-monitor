@@ -99,8 +99,9 @@ test('宠物显示余额时即使其他额度模块隐藏也继续刷新', () =>
   assert.match(panelStateSource, /return quotaVisible \|\| balanceVisible \|\| petBalanceVisible;/);
 });
 
-test('宠物今日消耗未授权时明确提示连接 CLI', () => {
-  assert.match(renderSource, /if \(!panel\.cliUsageConnected\) return t\('需连接 CLI'\);/);
+test('宠物今日消耗未授权时明确提示（扩展提示连接 CLI，独立面板显示状态短词）', () => {
+  assert.match(renderSource, /: t\('需连接 CLI'\);/);
+  assert.match(renderSource, /STATUS_SHORT\[panel\.statusLevel\] \|\| STATUS_SHORT\.loading/);
 });
 
 test('宠物恢复 2.0.0 的命名动画架构，不再混用官网状态机', () => {
