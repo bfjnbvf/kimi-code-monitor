@@ -7,6 +7,40 @@ aside.side .side-footer {
   padding: 0 12px 12px;
 }
 
+/* 侧栏折叠阴影修正：面板插在会话列表与 .side-footer 之间后，滚动视口的
+   下边缘上移到面板顶，但原生的底部折叠阴影是 .side-footer::before（钉在
+   footer 上方），会错位到面板下面。面板在场时隐藏 footer 阴影，并把同款
+   渐变阴影挂到面板顶部；显隐仍由原生的 .side-footer--shadowed 类驱动
+   （:has() 随类名切换动态生效）。面板被移除时本组规则自动失效，恢复原样。 */
+aside.side > .col:has(> #ksb-panel-host) .side-footer::before {
+  opacity: 0;
+}
+
+aside.side > .col > #ksb-panel-host {
+  position: relative;
+}
+
+aside.side > .col > #ksb-panel-host::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--p-sidebar-seam-h, 13px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base, 150ms) var(--ease-out, ease-out);
+  transition-duration: var(--duration-slow, 300ms);
+  background:
+    linear-gradient(to top, color-mix(in srgb, var(--color-text, #000) 1.5%, transparent), transparent 35%),
+    linear-gradient(to top, color-mix(in srgb, var(--color-text, #000) 1%, transparent), transparent 65%),
+    linear-gradient(to top, color-mix(in srgb, var(--color-text, #000) 0.75%, transparent), transparent);
+}
+
+aside.side > .col:has(> .side-footer--shadowed) > #ksb-panel-host::before {
+  opacity: 1;
+}
+
 /* 侧栏顶部改造（宠物 ≡ 菜单「侧栏改造」开关控制，默认开启）：
    隐藏品牌 logo，工作区上移；伸缩按钮原位绝对定位，新建对话行上移与其居中对齐。
    注意页面规则有 min-height: calc(26px + 2*space)，必须一并清掉。
