@@ -36,6 +36,7 @@ import {
   applyWidgetConfig,
   loadWidgetConfig,
   renderWidgetStructure,
+  applySidebarTidy,
   setConnectionHint,
   maybeShowGuide,
   exitEditMode,
@@ -202,6 +203,8 @@ function checkPageState() {
   }
   if (disposed) return;
   if (!ensureWidget()) return;
+  // 侧栏头部内容可能异步变化（如 RC 页的设备选择器），随路由轮询重新评估改造安全闸
+  applySidebarTidy();
   // 语言跟随 Kimi Web 设置（localStorage kimi-locale）：变化时重建面板结构与收藏 UI
   if (syncLocaleFromPage() && pageActivated) {
     renderWidgetStructure();

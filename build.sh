@@ -23,7 +23,7 @@ zip -r "$OUT" \
   popup.html \
   icons \
   README.md LICENSE \
-  -x "*.DS_Store" "__MACOSX/*" "*~"
+  -x "*.DS_Store" "__MACOSX/*" "*~" "dist/panel-app.js"
 
 # 校验 zip 完整性
 unzip -t "$OUT" >/dev/null

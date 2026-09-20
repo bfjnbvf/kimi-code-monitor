@@ -9,7 +9,10 @@ aside.side .side-footer {
 
 /* 侧栏顶部改造（宠物 ≡ 菜单「侧栏改造」开关控制，默认开启）：
    隐藏品牌 logo，工作区上移；伸缩按钮原位绝对定位，新建对话行上移与其居中对齐。
-   注意页面规则有 min-height: calc(26px + 2*space)，必须一并清掉 */
+   注意页面规则有 min-height: calc(26px + 2*space)，必须一并清掉。
+   安全闸在 JS 侧（widget-structure.js sidebarHeaderTidySafe）：头部 .ch 内出现 logo 与
+   收起按钮之外的可见内容时不挂 ksb-sidebar-tidy，本组规则整体不生效（issue #8）。
+   RC 环境的设备选择器（.rc-dev，.ch 的兄弟行）有专属避让样式，见下方规则 */
 html.ksb-sidebar-tidy aside.side .ch {
   position: relative;
   height: 0;
@@ -27,6 +30,21 @@ html.ksb-sidebar-tidy aside.side .ch-collapse {
   top: 12px;
   right: 12px;
   z-index: 2;
+}
+
+/* RC 设备选择器（.rc-dev，仅 code-rc.kimi.com 存在）：头部压平后它与右上角
+   绝对定位的收起按钮重叠（issue #8）。改为与按钮同一行：同顶缘（12px）、
+   同高（26px），右侧让出按钮位（12 页边距 + 26 按钮 + 8 间隙 = 46px），
+   设备名超宽时由原生 text-overflow: ellipsis 截断 */
+html.ksb-sidebar-tidy aside.side .rc-dev {
+  height: 26px;
+  margin: 12px 46px 0 0;
+  padding: 0 0 0 8px;
+}
+
+html.ksb-sidebar-tidy aside.side .rc-dev-trigger {
+  height: 26px;
+  padding: 4px 8px;
 }
 
 /* .btn-wrap 为旧版新建对话容器；现版本为 .sidebar-actions（新建会话 + 搜索），两者都保留兼容 */

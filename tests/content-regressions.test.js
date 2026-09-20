@@ -230,3 +230,18 @@ test('切换账户后面板先显示该账户缓存额度，再强制刷新', ()
 test('侧栏改造开启时隐藏新建对话/搜索右端的快捷键提示（与收起按钮重叠）', () => {
   assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.sidebar-actions \.ui-kbd \{\s*display: none/);
 });
+
+test('侧栏头部存在 logo/收起按钮之外的可见内容（如 RC 设备选择器）时自动跳过侧栏改造（issue #8）', () => {
+  // 安全闸：只允许 .ch-brand / .ch-collapse 及其祖先后代，其余可见元素即判定不安全
+  assert.match(widgetSource, /function sidebarHeaderTidySafe\(\)/);
+  assert.match(widgetSource, /for \(const selector of \['\.ch-brand', '\.ch-collapse'\]\)/);
+  assert.match(widgetSource, /!allowed\.has\(el\) && el\.getClientRects\(\)\.length > 0/);
+  assert.match(widgetSource, /pet\?\.show !== 'hidden' && sidebarHeaderTidySafe\(\)/);
+  // 头部内容随 SPA 异步变化，路由轮询里持续重新评估
+  assert.match(source, /if \(!ensureWidget\(\)\) return;[\s\S]{0,200}?applySidebarTidy\(\);/);
+});
+
+test('RC 设备选择器（.rc-dev）收缩到收起按钮同一行，右侧让出按钮位（issue #8）', () => {
+  assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.rc-dev \{[\s\S]*?height: 26px;[\s\S]*?margin: 12px 46px 0 0;/);
+  assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.rc-dev-trigger \{[\s\S]*?height: 26px;/);
+});

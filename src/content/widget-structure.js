@@ -406,6 +406,23 @@ export function ensureWidget() {
   return true;
 }
 
+// 宿主挂载入口（独立面板页 panel-app 用，content.js 路径不走这里）：
+// 把 widget 挂到给定元素并完成结构渲染；#ksb-widget 已存在则直接复用。
+// 宠物初始化（petStart）由 renderWidgetStructure 在 canvas 落位后调用，时机天然正确。
+export function mountWidget(hostEl) {
+  if (!hostEl) return false;
+  let widget = document.getElementById('ksb-widget');
+  if (!widget) {
+    widget = createWidget();
+    hostEl.appendChild(widget);
+  } else if (widget.parentElement !== hostEl) {
+    hostEl.appendChild(widget);
+  }
+  renderWidgetStructure();
+  sparkResizeObserver.observe(widget);
+  return true;
+}
+
 export function setConnectionHint(text) {
   if (panel.els?.widget) panel.els.widget.title = text || '';
 }
@@ -430,11 +447,32 @@ function applyModeClasses() {
 }
 
 // 侧栏改造（去 logo + 新建对话上移对齐伸缩按钮）总开关，宠物 ≡ 菜单可切；
-// 宠物模块隐藏（在灰色区）时改造自动取消
-function applySidebarTidy() {
+// 宠物模块隐藏（在灰色区）时改造自动取消。
+// 安全闸：头部存在 logo 与收起按钮之外的可见内容时跳过改造——RC 环境的
+// 设备选择器会留在被压平的头部，与绝对定位的收起按钮重叠（issue #8）
+export function applySidebarTidy() {
   const pet = panel.widgetConfig.modules.pet;
-  const tidy = pet?.sidebarTidy !== false && pet?.show !== 'hidden';
+  const tidy = pet?.sidebarTidy !== false && pet?.show !== 'hidden' && sidebarHeaderTidySafe();
   document.documentElement.classList.toggle('ksb-sidebar-tidy', tidy);
+}
+
+// 头部允许出现的内容：品牌 logo（.ch-brand）与收起按钮（.ch-collapse）及各自的
+// 祖先/后代（.ch-collapse 在部分版本里包在 .ch-tail 容器中）。其余可见元素
+// （如 RC 头部的设备选择器）在头部被压成 height:0 后仍可见，会被右上角
+// 绝对定位的收起按钮压住
+function sidebarHeaderTidySafe() {
+  const header = document.querySelector('aside.side .ch');
+  if (!header) return true;
+  const allowed = new Set();
+  for (const selector of ['.ch-brand', '.ch-collapse']) {
+    const el = header.querySelector(selector);
+    if (!el) continue;
+    for (let node = el; node && node !== header; node = node.parentElement) allowed.add(node);
+    el.querySelectorAll('*').forEach((node) => allowed.add(node));
+  }
+  return ![...header.querySelectorAll('*')].some(
+    (el) => !allowed.has(el) && el.getClientRects().length > 0
+  );
 }
 
 function toggleMini() {
