@@ -1,14 +1,22 @@
 /**
  * 注入模式的直连数据源（CDP 注入 Kimi Code 桌面端页面时启用）
  *
- * 与桥接模式（macOS App WKWebView，Swift 推送）的差异：注入页面与 kap-server
- * 同源，REST/WS 直连即可，会话焦点直接读 location.pathname——比桥接模式还简单。
+ * 与桥接模式（macOS App WKWebView，Swift 推送）的差异：注入页面直接走
+ * kap-server 的 REST/WS，会话焦点直接读 location.pathname——比桥接模式还简单。
  * 全部数据翻译成与 bridge.js 相同的消息经 __vibepal.push 进入渲染层，
  * 两种模式的渲染/累计逻辑完全共用。
+ *
+ * 桌面端 1.0.2 起页面从 app://renderer 加载（早期版本直接加载 kap-server 源），
+ * 所以 kap 源不能写死相对路径：loader 注入时写入 window.__vibepalKapOrigin
+ * （http://127.0.0.1:<port>，kap 端口每次启动随机，注入器探测后动态下发），
+ * 读不到时回退相对路径（同源旧版）。跨源 fetch/WS 已实测不受 CORS 限制。
  *
  * 不可直连的部分：usageDaily（wire.jsonl 扫描在 Swift/App 侧），由注入器经
  * CDP Runtime.evaluate 推送给桥接管道（与本文件无冲突：都只进 push）。
  */
+
+// kap-server 源：惰性读取（kap 重启换端口后注入器会更新这个全局值）
+const kapOrigin = () => globalThis.__vibepalKapOrigin || '';
 
 // 活跃度模型：与 KapClient 同口径——证据事件 20s 无更新判空闲
 const ACTIVITY_TTL_MS = 20_000;
@@ -35,7 +43,7 @@ export function startDirectMode() {
 
   async function pollQuota() {
     try {
-      const r = await fetch('/api/v1/oauth/usage');
+      const r = await fetch(`${kapOrigin()}/api/v1/oauth/usage`);
       const body = await r.json();
       const usages = body?.data?.quota?.usages;
       if (usages) push({ v: 1, type: 'quota', quota: usages });
@@ -60,7 +68,7 @@ export function startDirectMode() {
     focusedSid = sid;
     let snapshot;
     try {
-      const r = await fetch(`/api/v1/sessions/${sid}`);
+      const r = await fetch(`${kapOrigin()}/api/v1/sessions/${sid}`);
       const body = await r.json();
       if (body?.data?.usage) snapshot = { usage: body.data.usage };
     } catch (error) {
@@ -109,7 +117,11 @@ export function startDirectMode() {
   }
 
   function connect() {
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/v1/ws?client_id=vibepal-injected`;
+    // kap 源已知就用绝对地址（app:// 页面跨源）；否则回退同源相对地址（旧版桌面端）
+    const base = kapOrigin();
+    const url = base
+      ? `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=vibepal-injected`
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/v1/ws?client_id=vibepal-injected`;
     try {
       ws = new WebSocket(url);
     } catch (error) {
