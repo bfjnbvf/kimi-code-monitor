@@ -1,6 +1,6 @@
 {
   "name": "kimi-code-monitor",
-  "version": "3.4.2",
+  "version": "3.4.3",
   "private": true,
   "type": "module",
   "description": "Kimi Code Web UI 底部 Agent 状态 HUD 浏览器扩展",
@@ -8,7 +8,8 @@
     "build": "node build.mjs",
     "pack": "bash build.sh",
     "lint": "eslint src/",
-    "test": "node build.mjs && node --test"
+    "test": "node build.mjs && node --test",
+    "pack:patch": "node build-patch.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

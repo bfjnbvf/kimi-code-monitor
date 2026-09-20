@@ -33,3 +33,7 @@ docs/kimi-pet-preview.png
 docs/rive-gallery.html
 docs/screenshot-studio.html
 docs/window.png
+
+# 桌面端补丁包构建产物
+kcm-desktop-patch-v*.zip
+dist-patch/
