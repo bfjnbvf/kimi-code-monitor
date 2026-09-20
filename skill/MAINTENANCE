@@ -1,0 +1,15 @@
+skill-version: 1
+patch-version: 3.4.3
+repo: https://github.com/bfjnbvf/kimi-code-monitor
+
+# 更新记录
+
+## 1（2026-09-21）
+
+首版技能，配套补丁 3.4.3：
+
+- 面板状态文案改为分级制（加载中 / 从现在统计 / 连接中 / 重试 / 异常），诊断串降为锁位第二行小字
+- 诊断六段（路径 / kap / 数据 / WS / 焦点 / 桥）与状态字典
+- 外部账户快照模式（fetch-external.mjs，key 不落盘）
+- doctor.sh 外部级自检（文件 / 标签 / 哈希 / 本地服务 / 数据文件 / 版本）
+- install.sh 幂等安装与完整卸载；安装时全量预填历史（与扩展同一套解析口径）
