@@ -83,8 +83,10 @@ import { t } from '../i18n.js';
     let totalSum = 0;
     const grid = document.createElement('div');
     grid.className = 'usage-heatmap';
-    // 格子边长按列数精确计算：正方形且铺满卡片内容宽度（212px）
-    const cell = (HEATMAP_INNER_PX - (weeks.length - 1) * HEATMAP_GAP_PX) / weeks.length;
+    // 格子边长按列数精确计算：正方形且铺满卡片内容宽度
+    // （运行时实测容器宽度，扩展 popup 固定 212px、macOS 右键面板更窄，都能适配）
+    const inner = usageChartEl.clientWidth || HEATMAP_INNER_PX;
+    const cell = (inner - (weeks.length - 1) * HEATMAP_GAP_PX) / weeks.length;
     grid.style.setProperty('--heat-cell', `${cell.toFixed(2)}px`);
     // 空白格：首列顶到首日的星期序、末列补满 7 格，热力图始终是完整矩形
     const blankCell = () => {
