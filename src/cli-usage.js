@@ -1,6 +1,7 @@
 'use strict';
 
 import * as KimiMetrics from './metrics.js';
+import { isSessionDirName, isSubagentAgentName, wirePathOf, parseWirePath } from './session-files.js';
 
 const DB_NAME = 'kimi-code-monitor';
 const HANDLE_STORE = 'file-handles';
@@ -13,6 +14,10 @@ const SESSIONS_STORAGE_KEY = 'kimiCliUsageSessions';
 const SECONDARY_MODEL_STORAGE_KEY = 'kimiCliSecondaryModel';
 // 按会话汇总只保留最近有活动的若干条，避免长期无限增长
 const SESSIONS_SUMMARY_LIMIT = 200;
+// 索引版本 = 网页版唯一的「一次性重建」开关：桶结构 / 统计口径有任何变更
+// 都必须 bump 这里，旧索引随即整体作废、下次扫描全量重建（真值在 wire.jsonl，
+// 可重建，因此不写逐版本迁移）。补丁侧的页内积累同构，见 panel-app/accumulate.js
+// 的 BUCKET_VERSION。
 // v4：meta 新增 modelAlias（config.update 里的真实模型名），旧缓存没有，必须全量重扫一次
 // v5：新增按小时聚合（hourly，供 24h 图表分柱），旧缓存没有，必须全量重扫一次
 const INDEX_VERSION = 5;
@@ -68,9 +73,8 @@ async function permissionState(handle) {
   }
 }
 
-function emptyBucket() {
-  return { input: 0, output: 0, cacheRead: 0 };
-}
+// 桶口径与页内积累（panel-app/accumulate.js）共用 metrics.js 的唯一真源
+const emptyBucket = KimiMetrics.emptyUsageBucket;
 
 function addBucket(target, source) {
   target.input += KimiMetrics.toNonNegativeInteger(source?.input);
@@ -85,16 +89,11 @@ function addUsageRecord(daily, record, isSubagent = false, meta = null) {
   const usage = KimiMetrics.normalizeUsage(record.usage);
   const key = KimiMetrics.usageDayKey(new Date(time));
   const bucket = { ...emptyBucket(), ...(daily[key] || {}) };
-  const input = KimiMetrics.totalInputTokens(usage);
-  bucket.input += input;
-  bucket.output += usage.outputTokens;
-  bucket.cacheRead += usage.cacheReadTokens;
+  const input = KimiMetrics.addUsageToBucket(bucket, usage);
   if (isSubagent) {
     // 子代理同额累加进 sub 子桶，供主/子代理堆叠展示
-    const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
-    sub.input += input;
-    sub.output += usage.outputTokens;
-    sub.cacheRead += usage.cacheReadTokens;
+    const sub = { ...emptyBucket(), ...(bucket.sub || {}) };
+    KimiMetrics.addUsageToBucket(sub, usage);
     bucket.sub = sub;
   }
   daily[key] = bucket;
@@ -116,15 +115,10 @@ function addHourlyRecord(hourly, record, isSubagent = false) {
   const usage = KimiMetrics.normalizeUsage(record.usage);
   const key = KimiMetrics.usageHourKey(new Date(time));
   const bucket = { ...emptyBucket(), ...(hourly[key] || {}) };
-  const input = KimiMetrics.totalInputTokens(usage);
-  bucket.input += input;
-  bucket.output += usage.outputTokens;
-  bucket.cacheRead += usage.cacheReadTokens;
+  KimiMetrics.addUsageToBucket(bucket, usage);
   if (isSubagent) {
-    const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
-    sub.input += input;
-    sub.output += usage.outputTokens;
-    sub.cacheRead += usage.cacheReadTokens;
+    const sub = { ...emptyBucket(), ...(bucket.sub || {}) };
+    KimiMetrics.addUsageToBucket(sub, usage);
     bucket.sub = sub;
   }
   hourly[key] = bucket;
@@ -254,7 +248,7 @@ async function listWireFiles(sessionsHandle) {
     // 权限/句柄类失败直接向上抛出，避免返回空数组导致背景误清空历史数据。
     // 缺失 agents 目录或 wire.jsonl 是正常情况，内部 catch 跳过。
     for await (const [sessionName, sessionHandle] of workspaceHandle.entries()) {
-      if (sessionHandle.kind !== 'directory' || !sessionName.startsWith('session_')) continue;
+      if (sessionHandle.kind !== 'directory' || !isSessionDirName(sessionName)) continue;
       let agentsHandle;
       try {
         agentsHandle = await sessionHandle.getDirectoryHandle('agents');
@@ -266,10 +260,9 @@ async function listWireFiles(sessionsHandle) {
         try {
           const wireHandle = await agentHandle.getFileHandle('wire.jsonl');
           files.push({
-            path: `${workspaceName}/${sessionName}/agents/${agentName}/wire.jsonl`,
+            path: wirePathOf(workspaceName, sessionName, agentName),
             handle: wireHandle,
-            // agents/main 为主代理，其余（agent-N 等）按子代理分桶
-            isSubagent: agentName !== 'main'
+            isSubagent: isSubagentAgentName(agentName)
           });
         } catch (error) {
           // 尚未生成 wire.jsonl 的代理跳过。
@@ -287,7 +280,7 @@ function combineFileDaily(files) {
       const bucket = { ...emptyBucket(), ...(combined[key] || {}) };
       addBucket(bucket, source);
       if (source?.sub) {
-        const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+        const sub = { ...emptyBucket(), ...(bucket.sub || {}) };
         addBucket(sub, source.sub);
         bucket.sub = sub;
       }
@@ -306,7 +299,7 @@ function combineFileHourly(files) {
       const bucket = { ...emptyBucket(), ...(combined[key] || {}) };
       addBucket(bucket, source);
       if (source?.sub) {
-        const sub = { input: 0, output: 0, cacheRead: 0, ...(bucket.sub || {}) };
+        const sub = { ...emptyBucket(), ...(bucket.sub || {}) };
         addBucket(sub, source.sub);
         bucket.sub = sub;
       }
@@ -324,14 +317,14 @@ function summarizeSessions(files) {
   const sessions = {};
   const lastDay = {};
   for (const [path, entry] of Object.entries(files || {})) {
-    const match = path.match(/^[^/]+\/(session_[^/]+)\/agents\/([^/]+)\/wire\.jsonl$/);
-    if (!match) continue;
-    const [, sid, agentName] = match;
-    const total = sessions[sid] || { input: 0, output: 0, cacheRead: 0 };
+    const parsed = parseWirePath(path);
+    if (!parsed) continue;
+    const { sessionId: sid, agentName } = parsed;
+    const total = sessions[sid] || emptyBucket();
     for (const [day, source] of Object.entries(entry?.daily || {})) {
       addBucket(total, source);
       if (source?.sub) {
-        const sub = { input: 0, output: 0, cacheRead: 0, ...(total.sub || {}) };
+        const sub = { ...emptyBucket(), ...(total.sub || {}) };
         addBucket(sub, source.sub);
         total.sub = sub;
       }
@@ -340,7 +333,7 @@ function summarizeSessions(files) {
     sessions[sid] = total;
     const agents = total.agents || (total.agents = {});
     const agentEntry = agents[agentName] || (agents[agentName] = {
-      input: 0, output: 0, cacheRead: 0, models: {}, firstAt: null, lastAt: null, modelAlias: null
+      ...emptyBucket(), models: {}, firstAt: null, lastAt: null, modelAlias: null
     });
     for (const source of Object.values(entry?.daily || {})) addBucket(agentEntry, source);
     mergeScanMeta(agentEntry, entry?.meta);

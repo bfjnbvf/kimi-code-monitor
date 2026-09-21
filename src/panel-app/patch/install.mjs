@@ -131,7 +131,6 @@ export function payloadHash(root) {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 8);
 }
 
-/** 去掉所有含 loader 标签的行（幂等重装 / 无备份卸载用）。 */
 /** 去掉所有含 loader 标签的行（幂等重装 / 无备份卸载用） */
 export function stripLoaderTagLines(html) {
   return html.split('\n').filter((line) => !line.includes(LOADER_SRC)).join('\n');
@@ -283,7 +282,8 @@ function main() {
     process.exit(1);
   }
   const dist = distDirOf(appRoot);
-  console.error(`[install] 客户端：${appRoot}`);
+  // 客户端版本只作信息展示（取不到为 '?'）：装错版本、报 bug 时能一眼对上
+  console.error(`[install] 客户端：${appRoot}（v${readClientVersion(appRoot)}）`);
   if (action === 'uninstall') uninstall(dist);
   else install(appRoot, dist);
 }

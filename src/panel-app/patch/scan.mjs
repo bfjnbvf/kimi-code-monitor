@@ -21,11 +21,12 @@ import os from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 import { pathToFileURL } from 'node:url';
 import { parseUsageLines } from '../../cli-usage.js';
+import { isSessionDirName, isSubagentAgentName } from '../../session-files.js';
 import * as KimiMetrics from '../../metrics.js';
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024;
 
-/** 枚举 sessions 下的 wire.jsonl（与 cli-usage.js listWireFiles 同规则） */
+/** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份） */
 export function listWireFiles(sessionsDir) {
   const files = [];
   let workspaces;
@@ -44,7 +45,7 @@ export function listWireFiles(sessionsDir) {
       continue;
     }
     for (const session of sessions) {
-      if (!session.isDirectory() || !session.name.startsWith('session_')) continue;
+      if (!session.isDirectory() || !isSessionDirName(session.name)) continue;
       const agentsDir = path.join(workspaceDir, session.name, 'agents');
       let agents;
       try {
@@ -57,9 +58,9 @@ export function listWireFiles(sessionsDir) {
         const wire = path.join(agentsDir, agent.name, 'wire.jsonl');
         if (!fs.existsSync(wire)) continue;
         files.push({
-          // agents/main 为主代理，其余（agent-N 等）按子代理分桶
+          // 这里是文件系统路径（读取用），不是跨会话汇总键
           path: wire,
-          isSubagent: agent.name !== 'main'
+          isSubagent: isSubagentAgentName(agent.name)
         });
       }
     }

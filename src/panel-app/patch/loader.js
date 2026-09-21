@@ -1,7 +1,7 @@
 /* 面板补丁 loader：由桌面端 desktop-dist/index.html 末尾的
    <script src="/kcm/loader.js?v=N"> 引入（N 为载荷内容哈希，
    Electron 子资源缓存不发校验头，只能靠查询参数穿透）。
-   职责：kap 源解析 / 资产映射 / 挂载点 / usage-daily.js 数据桥。
+   职责：kap 源解析 / 资产映射 / 挂载点 / 落盘快照数据桥（usage-daily、external、wallet）。
    数据由 panel-app.js 的直连模式（direct.js）连 kap-server。 */
 (() => {
   if (window.__kcmInjected) return;
@@ -36,91 +36,119 @@
     }
   } catch (e) { /* 忽略，走兜底 */ }
 
-  // 长期统计：usage-daily.js 由安装器落盘（wire.jsonl 全量扫描结果，
-  // 每次重装/重跑扫描脚本时重新生成），用 script 标签加载——与 loader
-  // 自身同一通路，不受页面 CSP 对 fetch 的限制；30s 轮询（时间戳穿透
-  // 缓存），内容变化才推。
+  // 落盘快照：usage-daily.js（安装器 wire.jsonl 全量扫描）/ external.js /
+  // wallet.js 三个文件由安装器与技能写入，都用 script 标签加载——与 loader
+  // 自身同一通路，不受页面 CSP 对 fetch 的限制；内容变化才推。
   // 文件缺席（全新环境未预填）属正常：面板从安装时刻开始积累。
-  // 时序坑：loader 比 panel-app 先跑，bridge（__kcm）还没装好时的推送会被丢，
-  // 所以等面板就绪事件补推一次。
-  let lastUsageDaily = '';
+  //
+  // 诊断状态写全局：面板的状态文案 ticker（status-copy.js）从这里取
+  // fileState / kapKnown 归并等级；六段技术串仍由下方状态行展示
   let usageFileState = '载入中';
-  const pushUsageDaily = (j) => {
-    window.__kcm && window.__kcm.push({
+  let usageLoadedOnce = false;
+  const publishDiag = () => {
+    try {
+      window.__kcmDebug = {
+        ...window.__kcmDebug,
+        fileState: usageFileState,
+        kapKnown: Boolean(window.__kcmKapOrigin)
+      };
+    } catch (e) { /* 忽略 */ }
+  };
+
+  // 轮询：连续失败按指数退避（上限 5 分钟）。文件长期缺席时不必每 30s
+  // 往控制台刷一条 404；一旦加载成功立即回到基础节奏。
+  const POLL_BACKOFF_MAX_MS = 5 * 60_000;
+  const startPolling = ({ src, baseMs, read, onState = () => {}, onPayload }) => {
+    let lastText = '';
+    let delay = baseMs;
+    let timer = null;
+
+    const arm = (ms) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => load(), ms);
+    };
+    function load(force = false) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      const s = document.createElement('script');
+      s.src = src + '?t=' + Date.now();
+      s.onload = () => {
+        s.remove();
+        delay = baseMs;
+        const j = read();
+        if (!j || typeof j !== 'object') {
+          onState('missing');
+          arm(baseMs);
+          return;
+        }
+        onState('loaded');
+        // 桥未就绪时不消费内容：去重标记只在推送真正送达后才更新，
+        // 否则首轮（bridge 未装好）的加载会把内容记成已推送，之后每轮
+        // 轮询都跳过，面板装配完成也等不来数据（panel-ready 补推除外）
+        if (!window.__kcm) { arm(baseMs); return; }
+        const text = JSON.stringify(j);
+        if (!force && text === lastText) { arm(baseMs); return; }
+        lastText = text;
+        onPayload(j);
+        arm(baseMs);
+      };
+      s.onerror = () => {
+        s.remove();
+        onState('error');
+        arm(delay); // 先按当前节奏重试一次
+        delay = Math.min(POLL_BACKOFF_MAX_MS, delay * 2); // 连续失败才逐级退避
+      };
+      document.head.appendChild(s);
+    }
+    load();
+    return { push: () => load(true) };
+  };
+
+  const usagePoller = startPolling({
+    src: '/kcm/usage-daily.js',
+    baseMs: 30_000,
+    read: () => window.__kcmUsageDaily,
+    onState: (state) => {
+      if (state === 'loaded') {
+        usageLoadedOnce = true;
+        usageFileState = '已载入';
+        return;
+      }
+      if (state === 'missing') {
+        usageFileState = '无历史';
+        return;
+      }
+      // 首次加载失败按「无历史」处理：全新环境安装器不落 usage-daily.js 属正常，
+      // 而 onerror 分辨不出「文件不存在」与「文件在但读不了」——只能按是否
+      // 成功过判断。文件确实读过一次之后再失败，才是真的异常
+      // （状态字典：无历史＝文件缺席；加载失败＝文件在但读不了 → 重装）
+      usageFileState = usageLoadedOnce ? '加载失败' : '无历史';
+    },
+    onPayload: (j) => window.__kcm.push({
       v: 1, type: 'usageDaily',
       daily: j.daily, hourly: j.hourly,
       secondaryModel: j.secondaryModel, connected: true
-    });
-  };
-  const syncUsageDaily = (force) => {
-    const s = document.createElement('script');
-    s.src = '/kcm/usage-daily.js?t=' + Date.now();
-    s.onload = () => {
-      s.remove();
-      const j = window.__kcmUsageDaily;
-      if (!j || typeof j !== 'object') { usageFileState = '无历史'; return; }
-      usageFileState = '已载入';
-      // 桥未就绪时不消费内容：去重标记只在推送真正送达后才更新，
-      // 否则首轮（bridge 未装好）的加载会把内容记成已推送，30s 轮询
-      // 永远跳过，面板装配完成也等不来数据（panel-ready 补推除外）
-      if (!window.__kcm) return;
-      const text = JSON.stringify(j);
-      if (!force && text === lastUsageDaily) return;
-      lastUsageDaily = text;
-      pushUsageDaily(j);
-    };
-    s.onerror = () => {
-      s.remove();
-      usageFileState = '加载失败';
-    };
-    document.head.appendChild(s);
-  };
-  syncUsageDaily();
+    })
+  });
   // 面板装配完成信号（panel-app bootstrap 派发）：补推一次，消掉首轮时序差
-  window.addEventListener('kcm:panel-ready', () => syncUsageDaily(true), { once: true });
-  setInterval(() => syncUsageDaily(false), 30000);
+  window.addEventListener('kcm:panel-ready', () => usagePoller.push(), { once: true });
 
   // 外部账户快照（fetch-external.mjs 产出，60s 轮询；内容变化才推）。
   // 与 usage-daily 同一 script 标签通路与防吞推送规则。
-  let lastExternal = '';
-  const syncExternal = () => {
-    const s = document.createElement('script');
-    s.src = '/kcm/external.js?t=' + Date.now();
-    s.onload = () => {
-      s.remove();
-      const j = window.__kcmExternal;
-      if (!j || typeof j !== 'object' || !window.__kcm) return;
-      const text = JSON.stringify(j);
-      if (text === lastExternal) return;
-      lastExternal = text;
-      window.__kcm.push({ v: 1, type: 'external', providers: j.providers });
-    };
-    s.onerror = () => s.remove();
-    document.head.appendChild(s);
-  };
-  syncExternal();
-  setInterval(syncExternal, 60000);
+  startPolling({
+    src: '/kcm/external.js',
+    baseMs: 60_000,
+    read: () => window.__kcmExternal,
+    onPayload: (j) => window.__kcm.push({ v: 1, type: 'external', providers: j.providers })
+  });
 
   // 加油包余额快照（fetch-wallet.mjs 产出）：以 quota 消息的 wallet 字段
   // 送达（handleQuota 里 limit5h/limit7d 可缺席，只更新余额位）
-  let lastWallet = '';
-  const syncWallet = () => {
-    const s = document.createElement('script');
-    s.src = '/kcm/wallet.js?t=' + Date.now();
-    s.onload = () => {
-      s.remove();
-      const j = window.__kcmWallet;
-      if (!j || typeof j !== 'object' || !window.__kcm) return;
-      const text = JSON.stringify(j);
-      if (text === lastWallet) return;
-      lastWallet = text;
-      window.__kcm.push({ v: 1, type: 'quota', quota: { wallet: j.wallet } });
-    };
-    s.onerror = () => s.remove();
-    document.head.appendChild(s);
-  };
-  syncWallet();
-  setInterval(syncWallet, 60000);
+  startPolling({
+    src: '/kcm/wallet.js',
+    baseMs: 60_000,
+    read: () => window.__kcmWallet,
+    onPayload: (j) => window.__kcm.push({ v: 1, type: 'quota', quota: { wallet: j.wallet } })
+  });
 
   // 面板资源同目录直链（shims.resolveResourcePath 优先命中这个映射）
   window.__kcmAssets = {
@@ -138,38 +166,12 @@
     return true;
   };
 
-  const boot = () => {
-    if (!document.head || !document.querySelector('aside.side > .col')) return false;
-    if (!document.getElementById('kcm-panel-css')) {
-      const link = document.createElement('link');
-      link.id = 'kcm-panel-css';
-      link.rel = 'stylesheet';
-      link.href = '/kcm/content.css?v=' + V;
-      document.head.appendChild(link);
-    }
-    // Rive 运行库先于面板装配（petStart 读 globalThis.rive）
-    const rive = document.createElement('script');
-    rive.src = '/kcm/rive/rive.js?v=' + V;
-    rive.onload = () => {
-      const app = document.createElement('script');
-      app.src = '/kcm/panel-app.js?v=' + V;
-      document.head.appendChild(app);
-    };
-    document.head.appendChild(rive);
-  // 诊断状态写全局：面板的状态文案 ticker（status-copy.js）从这里取
-  // fileState / kapKnown 归并等级；六段技术串仍由下方状态行展示
-  const publishDiag = () => {
-    try {
-      window.__kcmDebug = {
-        ...window.__kcmDebug,
-        fileState: usageFileState,
-        kapKnown: Boolean(window.__kcmKapOrigin)
-      };
-    } catch (e) { /* 忽略 */ }
-  };
-
-    // 看门狗：SPA 重绘把面板卸载时挂回；顺带刷新锁位上的诊断状态行
-    // （只在数据未到位、锁可见时展示；各环节状态来自 loader 与 direct.js 的 __kcmDebug）
+  // 看门狗：SPA 重绘把面板卸载时挂回；顺带刷新锁位上的诊断状态行
+  // （只在数据未到位、锁可见时展示；各环节状态来自 loader 与 direct.js 的 __kcmDebug）
+  let watchdogStarted = false;
+  const startWatchdog = () => {
+    if (watchdogStarted) return;
+    watchdogStarted = true;
     setInterval(() => {
       const host = document.getElementById('ksb-panel-host');
       if (host && !host.isConnected) window.__kcmMountInto(host);
@@ -190,6 +192,27 @@
         ].join(' · ');
       }
     }, 1000);
+  };
+
+  const boot = () => {
+    if (!document.head || !document.querySelector('aside.side > .col')) return false;
+    if (!document.getElementById('kcm-panel-css')) {
+      const link = document.createElement('link');
+      link.id = 'kcm-panel-css';
+      link.rel = 'stylesheet';
+      link.href = '/kcm/content.css?v=' + V;
+      document.head.appendChild(link);
+    }
+    // Rive 运行库先于面板装配（petStart 读 globalThis.rive）
+    const rive = document.createElement('script');
+    rive.src = '/kcm/rive/rive.js?v=' + V;
+    rive.onload = () => {
+      const app = document.createElement('script');
+      app.src = '/kcm/panel-app.js?v=' + V;
+      document.head.appendChild(app);
+    };
+    document.head.appendChild(rive);
+    startWatchdog();
     return true;
   };
   if (!boot()) {

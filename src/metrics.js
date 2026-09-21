@@ -14,26 +14,53 @@ function firstDefined(source, keys) {
   return 0;
 }
 
+// 归一化：出参自己的字段名也列在候选里，于是 normalizeUsage 幂等——
+// 已经归一化过的对象再传一次不会被清零（调用链上「谁该先归一化」不再脆弱）。
 function normalizeUsage(raw) {
   const usage = raw && typeof raw === 'object' ? raw : {};
   return {
     inputTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputOther', 'input_tokens', 'prompt_tokens'
+      'inputOther', 'input_tokens', 'prompt_tokens', 'inputTokens'
     ])),
     outputTokens: toNonNegativeInteger(firstDefined(usage, [
-      'output', 'output_tokens', 'completion_tokens'
+      'output', 'output_tokens', 'completion_tokens', 'outputTokens'
     ])),
     cacheReadTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputCacheRead', 'cache_read_input_tokens', 'cache_read_tokens'
+      'inputCacheRead', 'cache_read_input_tokens', 'cache_read_tokens', 'cacheReadTokens'
     ])),
     cacheCreationTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputCacheCreation', 'cache_creation_input_tokens', 'cache_creation_tokens'
+      'inputCacheCreation', 'cache_creation_input_tokens', 'cache_creation_tokens', 'cacheCreationTokens'
     ]))
   };
 }
 
+// 入参可以是 wire 原始形状或归一化后的形状（幂等），非数字一律按 0 计
 function totalInputTokens(usage) {
-  return usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens;
+  return toNonNegativeInteger(usage?.inputTokens)
+    + toNonNegativeInteger(usage?.cacheReadTokens)
+    + toNonNegativeInteger(usage?.cacheCreationTokens);
+}
+
+/* ---------- 按天/按小时桶的唯一口径 ---------- */
+
+// 桶里的 input 记「全部输入」＝非缓存 + 缓存读 + 缓存创建，cacheRead 单列
+// 供缓存命中率用（hitRate = cacheRead / input，含缓存才是完整分母）。
+// CLI 文件扫描（cli-usage.js）与桌面补丁的页内积累（accumulate.js）都走
+// 这两个函数：两边各写一份口径迟早漂移，而「按天取大」的合并会拿两种
+// 口径互相压制（页内积累的 input 若少算缓存，永远被文件侧顶掉）。
+function emptyUsageBucket() {
+  return { input: 0, output: 0, cacheRead: 0 };
+}
+
+/** 把一条 usage 累加进桶，返回该条记录的输入总量（子桶同口径再调一次）。
+ *  入参形状不限（wire 原始 / 已归一化皆可，normalizeUsage 幂等）。 */
+function addUsageToBucket(bucket, usage) {
+  const normalized = normalizeUsage(usage);
+  const input = totalInputTokens(normalized);
+  bucket.input += input;
+  bucket.output += normalized.outputTokens;
+  bucket.cacheRead += normalized.cacheReadTokens;
+  return input;
 }
 
 function cacheReadPercentage(usage) {
@@ -351,7 +378,8 @@ function quotaPercentage(detail) {
   return (used / limit) * 100;
 }
 
-const KimiMetrics = {
+export {
+  addUsageToBucket,
   boosterBalanceYuan,
   buildHeatmapData,
   cacheReadPercentage,
@@ -359,6 +387,7 @@ const KimiMetrics = {
   aggregateSpeed,
   decodeSpeed,
   defaultWidgetConfig,
+  emptyUsageBucket,
   formatTokenCount,
   formatPercentage,
   listDayKeysBetween,
@@ -375,31 +404,4 @@ const KimiMetrics = {
   usageHourKey,
   WIDGET_MODULE_IDS,
   WIDGET_SHOW_STATES
-};
-
-export {
-  boosterBalanceYuan,
-  buildHeatmapData,
-  cacheReadPercentage,
-  CHART_RANGES,
-  aggregateSpeed,
-  decodeSpeed,
-  defaultWidgetConfig,
-  formatTokenCount,
-  formatPercentage,
-  listDayKeysBetween,
-  normalizeUsage,
-  normalizeWidgetConfig,
-  PET_STATS,
-  pruneDailyUsage,
-  pruneHourlyUsage,
-  quotaPercentage,
-  sumUsageBetween,
-  toNonNegativeInteger,
-  totalInputTokens,
-  usageDayKey,
-  usageHourKey,
-  WIDGET_MODULE_IDS,
-  WIDGET_SHOW_STATES,
-  KimiMetrics
 };
