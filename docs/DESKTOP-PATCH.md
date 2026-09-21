@@ -18,12 +18,12 @@
 
 ## 安装提示词
 
-正式版（发布后把 URL 替换为 GitHub Release 地址）：
+正式版（与 README 头部内嵌的提示词一致，v3.5.0 起可直接复制）：
 
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
-1. 下载补丁包：<RELEASE_URL>/kcm-desktop-patch-v<版本>.zip
+1. 下载补丁包：到 https://github.com/bfjnbvf/kimi-code-monitor/releases 下载最新的 kcm-desktop-patch-v*.zip
 2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
 3. 解压到一个临时目录
 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）

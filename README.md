@@ -4,9 +4,30 @@
 
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
-Kimi Code Web 的侧边栏监控扩展。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
+Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌面客户端（macOS / Windows，补丁形式安装）。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
 
 ![面板完整模式与 Mini 模式对比](docs/screenshots/hero.png)
+
+> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。把下面这段话发给桌面客户端里的 Kimi，即可完成安装：
+>
+> ```text
+> 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
+>
+> 1. 下载补丁包：到 https://github.com/bfjnbvf/kimi-code-monitor/releases 下载最新的 kcm-desktop-patch-v*.zip
+> 2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
+> 3. 解压到一个临时目录
+> 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
+> 5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
+> 6. 完成后把这些告诉我：
+>    - install.mjs 的完整输出
+>    - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
+>    - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
+> 7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
+>
+> 要求：只运行补丁包里的 install.mjs（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+> ```
+>
+> 卸载与日常运维（自检 / 外部账户代查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
 
 ## 主要特性
 
