@@ -85,11 +85,11 @@ test('子代理文件同额累加进 sub 子桶，合流后保留主/子拆分',
   });
 });
 
-test('按会话汇总包含按代理拆分：模型分布与起止时间', () => {
+test('按会话汇总：一个代理一个模型一行，Σ 行 == 会话总计', () => {
   const main = {};
   const sub = {};
-  const mainMeta = { models: {}, firstAt: null, lastAt: null };
-  const subMeta = { models: {}, firstAt: null, lastAt: null };
+  const mainMeta = KimiCliUsage.emptyScanMeta();
+  const subMeta = KimiCliUsage.emptyScanMeta();
   KimiCliUsage.parseUsageLines(
     usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 }),
     main, null, false, mainMeta
@@ -109,13 +109,72 @@ test('按会话汇总包含按代理拆分：模型分布与起止时间', () =>
     'ws/session_a/agents/agent-0/wire.jsonl': { daily: sub, meta: subMeta }
   });
   const entry = sessions.session_a;
+  // 会话总计仍是两个代理相加（input 含缓存读，与文件扫描同口径）
   assert.equal(entry.input, 42);
-  assert.deepEqual(entry.sub, { input: 12, output: 2, cacheRead: 7 });
-  assert.equal(entry.agents.main.input, 30);
-  assert.equal(entry.agents['agent-0'].input, 12);
-  assert.equal(entry.agents['agent-0'].models['kimi-code/k3'], 14);
+  assert.equal(entry.output, 5);
+  assert.equal(entry.cacheRead, 27);
+  // 每个代理按模型分桶：桶里 input 记全部输入、cacheRead 单列（不再是「权重数字」）
+  assert.deepEqual(entry.agents.main.models['kimi-code/test'], {
+    input: 30, output: 3, cacheRead: 20, records: 1
+  });
+  assert.deepEqual(entry.agents['agent-0'].models['kimi-code/k3'], {
+    input: 12, output: 2, cacheRead: 7, records: 1
+  });
   assert.equal(entry.agents['agent-0'].firstAt, 1785686500000);
   assert.equal(entry.agents.main.lastAt, 1785686400000);
+  // 不变式：Σ(代理 × 模型) == 会话总计 —— 面板「各行之和 == 合计」靠它成立
+  const sum = { input: 0, output: 0, cacheRead: 0 };
+  for (const agent of Object.values(entry.agents)) {
+    for (const bucket of Object.values(agent.models)) {
+      sum.input += bucket.input;
+      sum.output += bucket.output;
+      sum.cacheRead += bucket.cacheRead;
+    }
+  }
+  assert.deepEqual(sum, { input: entry.input, output: entry.output, cacheRead: entry.cacheRead });
+});
+
+test('同一代理换过模型各占一行；子代理占位符用 config.update 的真名归一', () => {
+  const mainMeta = KimiCliUsage.emptyScanMeta();
+  const subMeta = KimiCliUsage.emptyScanMeta();
+  // 主代理：先 k3-256k、后 k3（同一个代理用过两个模型）
+  const record = (model, time, usage) => JSON.stringify({
+    type: 'usage.record',
+    model,
+    usage: usage || { inputOther: 1, output: 1 },
+    usageScope: 'turn',
+    time
+  });
+  KimiCliUsage.parseUsageLines(record('kimi-code/k3-256k', 1785686400000), {}, null, false, mainMeta);
+  KimiCliUsage.parseUsageLines(
+    record('kimi-code/k3', 1785686500000, { inputOther: 2, inputCacheRead: 4, output: 2 }),
+    {}, null, false, mainMeta
+  );
+  // 子代理：记录里只有占位符，真名在 config.update
+  const subText = [
+    record('__secondary__', 1785686600000),
+    JSON.stringify({ type: 'config.update', modelAlias: 'StepFun Step Plan/step-5-preview' })
+  ].join('\n');
+  KimiCliUsage.parseUsageLines(subText, {}, null, true, subMeta);
+
+  const sessions = KimiCliUsage.summarizeSessions({
+    'ws/session_b/agents/main/wire.jsonl': { daily: {}, meta: mainMeta },
+    'ws/session_b/agents/agent-1/wire.jsonl': { daily: {}, meta: subMeta },
+    // 没有 config.update 的子代理：保留占位符，交给展示层回落到配置里的次级模型名
+    'ws/session_b/agents/agent-2/wire.jsonl': {
+      daily: {}, meta: { models: { __secondary__: { input: 2, output: 2, cacheRead: 0, records: 1 } }, firstAt: 1, lastAt: 1, modelAlias: null }
+    }
+  });
+  const agents = sessions.session_b.agents;
+  // 同一个代理的多个模型各自成键：不挑「主模型」、不合并
+  assert.deepEqual(Object.keys(agents.main.models).sort(), ['kimi-code/k3', 'kimi-code/k3-256k']);
+  assert.equal(agents.main.models['kimi-code/k3-256k'].input, 1);
+  assert.equal(agents.main.models['kimi-code/k3'].input, 6);
+  // 占位符归一成 config.update 里的真名，占位符本身不再出现在键里
+  assert.deepEqual(Object.keys(agents['agent-1'].models), ['StepFun Step Plan/step-5-preview']);
+  // 同一模型的多个子代理各占一行：键是代理目录名，不是模型名
+  assert.deepEqual(Object.keys(agents['agent-2'].models), ['__secondary__']);
+  assert.equal(sessions.session_b.agents['agent-1'].models['StepFun Step Plan/step-5-preview'].records, 1);
 });
 
 test('目录扫描按实际读取量报告百分比，并以 100 结束', async () => {
@@ -232,7 +291,7 @@ test('单个 wire getFile 失败保留旧索引并打标 failed，下次不再 u
     `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const previousIndex = {
-    version: 5,
+    version: KimiCliUsage.INDEX_VERSION,
     files: {
       // 好文件与旧索引一致，走 unchanged 短路
       'ws/session_1/agents/main/wire.jsonl': {

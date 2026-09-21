@@ -69,7 +69,7 @@
 
 - `skill/SKILL.md`、`skill/MAINTENANCE`
 - `skill/references/` 下全部 `.md`（doctor、external-accounts、faq、guide-scripts、install、status-dictionary、update）
-- `skill/scripts/` 下 `doctor.mjs`、`fetch-external.mjs`、`doctor.sh`
+- `skill/scripts/` 下 `doctor.mjs`、`refresh-stats.mjs`、`client-providers.mjs`、`doctor.sh`
 
 直链形如 `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`。
 
@@ -80,22 +80,28 @@
 1. **确定补丁包**：GitHub Releases 最新版，固定名直链（始终最新；与 MAINTENANCE 的 patch-version 对照，别装旧包）：
    `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip`
 2. **下载并解压**到临时目录。下载失败 → 同上面的网络回退说明。
-3. **确认有 Node**：`node -v`（安装器是 Node 脚本，需 Node ≥16）。没有就先引导用户装（macOS：`brew install node` 或官网；Windows：`winget install OpenJS.NodeJS.LTS`），不要尝试其他安装方式。
-4. **执行**：`node install.mjs`（客户端不在默认位置时 `node install.mjs --app "<客户端目录>"`；也认环境变量 `KIMI_CODE_APP_DIR`）。旧版 bash 安装器 `install.sh` 仍在包内，行为等价，仅作无 Node 时的备选。
+3. **不需要确认 Node**：安装器自带运行时兜底——`install.sh` / `install.cmd` 会优先借 Kimi Code 客户端自带的 Node（Electron 内置，版本恒定），系统装了 Node 就用系统的。唯一前提是客户端已安装。
+4. **执行**（在补丁解压目录）：
+   - macOS / Linux：`bash install.sh`
+   - Windows：`install.cmd`（cmd 直接跑，或资源管理器双击）
+   客户端不在默认位置时追加 `--app "<客户端目录>"`（也认环境变量 `KIMI_CODE_APP_DIR`）。
 5. **核对输出**应包含：客户端路径、备份（新建或已存在）、载荷同步、`[scan]` 扫描摘要（文件数/天数）、`历史统计已预填` 或明确的跳过原因、`完成（载荷 v=…）`。任何一行报错 → 停止并原样上报。
-6. **跑一遍外部自检**：`node <技能目录>/scripts/doctor.mjs`，全部 PASS 才算装好。
-7. **提醒用户重载客户端**（macOS Cmd+R，Windows Ctrl+R），然后按 guide-scripts.md 做首装引导。
+6. **跑一遍外部自检**：`node <技能目录>/scripts/doctor.mjs`（无系统 node 时用客户端的：`ELECTRON_RUN_AS_NODE=1 "<客户端>/Contents/MacOS/Kimi Code" <技能目录>/scripts/doctor.mjs`），全部 PASS 才算装好。
+7. **自动探测客户端里的供应商**（这一步就是首装探测，不需要用户做任何事）：
+   `node <技能目录>/scripts/client-providers.mjs`
+   把输出里的 `SUMMARY` 一行按 guide-scripts.md 的模板报给用户——已接入几个、有几个暂不支持余额查询。退出码 1 说明客户端没开着，先让用户打开客户端再跑（不要当成安装失败）。
+8. **提醒用户重载客户端**（macOS Cmd+R，Windows Ctrl+R），然后按 guide-scripts.md 做首装引导。
 
-注意：全新机器没有历史会话时，`install.mjs` 会跳过预填并明说——这是正常分支，不是故障；面板会从安装时刻开始统计。
+注意：全新机器没有历史会话时，安装器会跳过预填并明说——这是正常分支，不是故障；面板会从安装时刻开始统计。
 
 ## 3. 重装（客户端更新后面板消失 / 自检发现文件缺失）
 
-与首次安装完全相同的流程（install.mjs 幂等）。要向用户说明两点：历史会重新扫描补齐、页面内积累的数据在客户端自己的存储里不受影响。
+与首次安装完全相同的流程（安装器幂等）。要向用户说明两点：历史会重新扫描补齐、页面内积累的数据在客户端自己的存储里不受影响。
 
 ## 4. 卸载
 
 用户明确要求时：
 
-1. 在补丁解压目录（或重新下载补丁包解压）执行 `node install.mjs --uninstall`。
+1. 在补丁解压目录（或重新下载补丁包解压）执行 `bash install.sh --uninstall`（Windows：`install.cmd --uninstall`）。
 2. 核对输出：已还原原始 index.html（或已移除注入行）、补丁目录已删除。
 3. 告知：面板写在页面存储里的少量配置（布局等）仍留在客户端用户数据里，不影响运行；彻底清掉需要用户在客户端里自行清除站点数据。

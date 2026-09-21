@@ -20,7 +20,9 @@ const SESSIONS_SUMMARY_LIMIT = 200;
 // 的 BUCKET_VERSION。
 // v4：meta 新增 modelAlias（config.update 里的真实模型名），旧缓存没有，必须全量重扫一次
 // v5：新增按小时聚合（hourly，供 24h 图表分柱），旧缓存没有，必须全量重扫一次
-const INDEX_VERSION = 5;
+// v6：meta.models 由「模型 → token 权重数字」改为「模型 → 用量桶」，按会话汇总
+//     随之改成一行一个（代理 × 模型），旧缓存没有桶结构，必须全量重扫一次
+const INDEX_VERSION = 6;
 const READ_CHUNK_BYTES = 1024 * 1024;
 
 function openHandleDb() {
@@ -89,7 +91,7 @@ function addUsageRecord(daily, record, isSubagent = false, meta = null) {
   const usage = KimiMetrics.normalizeUsage(record.usage);
   const key = KimiMetrics.usageDayKey(new Date(time));
   const bucket = { ...emptyBucket(), ...(daily[key] || {}) };
-  const input = KimiMetrics.addUsageToBucket(bucket, usage);
+  KimiMetrics.addUsageToBucket(bucket, usage);
   if (isSubagent) {
     // 子代理同额累加进 sub 子桶，供主/子代理堆叠展示
     const sub = { ...emptyBucket(), ...(bucket.sub || {}) };
@@ -98,10 +100,8 @@ function addUsageRecord(daily, record, isSubagent = false, meta = null) {
   }
   daily[key] = bucket;
   if (meta) {
-    // 按模型分 token 权重与记录时间范围，供按代理展示（不记录任何文本内容）
-    const total = input + usage.outputTokens;
-    const model = typeof record.model === 'string' && record.model ? record.model : 'unknown';
-    meta.models[model] = (meta.models[model] || 0) + total;
+    // 按模型分桶与记录时间范围，供按「代理 × 模型」展示（不记录任何文本内容）
+    KimiMetrics.addModelUsage(meta.models, record.model, usage);
     if (meta.firstAt == null || time < meta.firstAt) meta.firstAt = time;
     if (meta.lastAt == null || time > meta.lastAt) meta.lastAt = time;
   }
@@ -124,15 +124,15 @@ function addHourlyRecord(hourly, record, isSubagent = false) {
   hourly[key] = bucket;
 }
 
+/** 逐文件扫描的累积器：daily/hourly 之外还要 meta（按模型分桶 + 起止时间 +
+ *  config.update 里的真名）——按代理 × 模型的展示全靠它，扫描侧与扩展侧同形。 */
 function emptyScanMeta() {
   return { models: {}, firstAt: null, lastAt: null, modelAlias: null };
 }
 
 function mergeScanMeta(target, source) {
   if (!source) return target;
-  for (const [model, tokens] of Object.entries(source.models || {})) {
-    target.models[model] = (target.models[model] || 0) + KimiMetrics.toNonNegativeInteger(tokens);
-  }
+  KimiMetrics.mergeModelUsage(target.models, source.models);
   if (source.firstAt != null && (target.firstAt == null || source.firstAt < target.firstAt)) {
     target.firstAt = source.firstAt;
   }
@@ -311,8 +311,10 @@ function combineFileHourly(files) {
 }
 
 // 由逐文件索引合并出按会话汇总（纯内存计算，零额外 IO）：
-// 面板刷新/切会话时用它做本地恢复底数；sub 为其中子代理的部分；
-// agents 按代理目录逐个拆分（含模型分布与起止时间），供子代理模块展示。
+// 面板刷新/切会话时用它做本地恢复底数。
+// agents 按「代理目录 × 模型」拆分：同一个代理中途换过模型就是多行，同一个模型
+// 的多个子代理各占一行（键是代理目录名，如 main / agent-1）——一律不合并，合并了
+// 就答不出「这段用量是哪个子代理、用的哪个模型」。用量按模型桶相加，与日桶同口径。
 function summarizeSessions(files) {
   const sessions = {};
   const lastDay = {};
@@ -320,24 +322,32 @@ function summarizeSessions(files) {
     const parsed = parseWirePath(path);
     if (!parsed) continue;
     const { sessionId: sid, agentName } = parsed;
-    const total = sessions[sid] || emptyBucket();
+    const total = sessions[sid] || (sessions[sid] = { ...emptyBucket(), agents: {} });
     for (const [day, source] of Object.entries(entry?.daily || {})) {
       addBucket(total, source);
-      if (source?.sub) {
-        const sub = { ...emptyBucket(), ...(total.sub || {}) };
-        addBucket(sub, source.sub);
-        total.sub = sub;
-      }
       if (!lastDay[sid] || day > lastDay[sid]) lastDay[sid] = day;
     }
-    sessions[sid] = total;
-    const agents = total.agents || (total.agents = {});
-    const agentEntry = agents[agentName] || (agents[agentName] = {
-      ...emptyBucket(), models: {}, firstAt: null, lastAt: null, modelAlias: null
+    const meta = entry?.meta || null;
+    const agent = total.agents[agentName] || (total.agents[agentName] = {
+      models: {}, firstAt: null, lastAt: null, modelAlias: null
     });
-    for (const source of Object.values(entry?.daily || {})) addBucket(agentEntry, source);
-    mergeScanMeta(agentEntry, entry?.meta);
+    // 子代理记录的模型名是 `__secondary__` 占位符，用该代理自己的 config.update
+    // 真名归一（真名在文件末尾出现也没关系：meta 读完后才在这里落键）
+    const alias = typeof meta?.modelAlias === 'string' ? meta.modelAlias : '';
+    KimiMetrics.mergeModelUsage(
+      agent.models,
+      meta?.models,
+      (model) => KimiMetrics.modelKeyOf(model, alias)
+    );
+    if (meta?.firstAt != null && (agent.firstAt == null || meta.firstAt < agent.firstAt)) {
+      agent.firstAt = meta.firstAt;
+    }
+    if (meta?.lastAt != null && (agent.lastAt == null || meta.lastAt > agent.lastAt)) {
+      agent.lastAt = meta.lastAt;
+    }
+    if (alias) agent.modelAlias = alias;
   }
+  // sessions[sid].input/output/cacheRead 是全部代理合计，与 Σ(agents × models) 相等
   const ids = Object.keys(sessions);
   if (ids.length > SESSIONS_SUMMARY_LIMIT) {
     ids.sort((a, b) => (lastDay[b] || '').localeCompare(lastDay[a] || ''));
@@ -462,7 +472,9 @@ const KimiCliUsage = {
   clearDirectoryHandle,
   combineFileDaily,
   combineFileHourly,
+  emptyScanMeta,
   getDirectoryHandle,
+  INDEX_VERSION,
   parseUsageLines,
   permissionState,
   saveDirectoryHandle,
@@ -481,7 +493,9 @@ export {
   clearDirectoryHandle,
   combineFileDaily,
   combineFileHourly,
+  emptyScanMeta,
   getDirectoryHandle,
+  INDEX_VERSION,
   parseUsageLines,
   permissionState,
   saveDirectoryHandle,

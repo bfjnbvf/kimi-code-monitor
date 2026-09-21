@@ -14,8 +14,9 @@
  * 行为：
  *   1. 备份 desktop-dist/index.html 为 index.html.bak-kcm（仅在备份
  *      不存在时创建，重装永远保留最早的原始版本）
- *   2. 把补丁包里的 kcm/ 目录整体同步进 desktop-dist/（fetch-wallet.mjs
- *      若在包内，一并进驻载荷）
+ *   2. 把补丁包里的 kcm/ 目录整体同步进 desktop-dist/，并把包内的工具脚本
+ *      （fetch-wallet.mjs 抓余额、scan.mjs 扫历史）一并进驻载荷——技能后续
+ *      「刷新余额 / 刷新本地统计」直接运行它们
  *   3. 有 sessions 目录时全量扫描 ~/.kimi-code/sessions 生成 usage-daily.js
  *      （历史统计预填；KIMI_CODE_HOME 可改根目录）；没有则跳过
  *   4. 有本机凭据时抓加油包余额快照 wallet.js（尽力而为，失败只降级余额显示）
@@ -39,8 +40,8 @@ const LOADER_SRC = '/kcm/loader.js';
 const PAYLOAD_DIR = 'kcm';
 const BACKUP_SUFFIX = '.bak-kcm';
 // 机器数据 / 工具文件不进载荷哈希（与 install.sh 的排除项保持一致）：
-// usage-daily/external 是扫描与代查产物，wallet 是余额快照，fetch-wallet 是工具本体
-const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'external.js', 'wallet.js', 'fetch-wallet.mjs']);
+// usage-daily 是扫描产物，wallet 是余额快照，fetch-wallet 是工具本体
+const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']);
 
 /* ---------- 平台差异区（仅此区读 process.platform / env） ---------- */
 
@@ -113,7 +114,7 @@ function copyDirSync(src, dst) {
 }
 
 /** 载荷内容哈希：与旧 bash 管线（find|shasum|sort|shasum）逐字节兼容，
- *  排除机器数据文件（usage-daily.js / external.js）。 */
+ *  排除机器数据文件（usage-daily.js）。 */
 export function payloadHash(root) {
   const files = [];
   const walk = (dir, rel) => {
@@ -192,6 +193,30 @@ function fetchWalletSnapshot(dist) {
   }
 }
 
+/** 把补丁载荷同步进 desktop-dist/：先整份拷到临时目录、再替换旧载荷。
+ *  不能先删后拷：客户端目录受 macOS「App 管理」保护时，创建会被拒（EPERM）
+ *  而删除已经生效，留下「没有载荷、index.html 却仍引用 loader」的坏状态。
+ *  先在目标目录里建出暂存目录，等于把「这里能不能写」验证在动手之前。 */
+function syncPayload(dist) {
+  const staged = path.join(dist, `${PAYLOAD_DIR}.new-${process.pid}`);
+  fs.rmSync(staged, { recursive: true, force: true });
+  try {
+    copyDirSync(path.join(HERE, PAYLOAD_DIR), staged);
+    // 工具随载荷进驻补丁目录：余额抓取（技能「刷新余额」用）、
+    // 历史统计扫描（技能「刷新本地统计」用——默认原地重写同目录的 usage-daily.js）
+    for (const tool of ['fetch-wallet.mjs', 'scan.mjs']) {
+      const source = path.join(HERE, tool);
+      if (fs.existsSync(source)) fs.copyFileSync(source, path.join(staged, tool));
+    }
+    const payload = path.join(dist, PAYLOAD_DIR);
+    fs.rmSync(payload, { recursive: true, force: true });
+    fs.renameSync(staged, payload);
+  } catch (error) {
+    fs.rmSync(staged, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function install(appRoot, dist) {
   if (!fs.existsSync(path.join(HERE, PAYLOAD_DIR, 'loader.js'))) {
     console.error(`[install] 补丁载荷不完整：缺 ${PAYLOAD_DIR}/loader.js（请确认解压了完整补丁包）`);
@@ -211,12 +236,16 @@ function install(appRoot, dist) {
     console.error('[install] 备份已存在，保留最早的原始版本');
   }
 
-  fs.rmSync(path.join(dist, PAYLOAD_DIR), { recursive: true, force: true });
-  copyDirSync(path.join(HERE, PAYLOAD_DIR), path.join(dist, PAYLOAD_DIR));
-  // 余额抓取工具随载荷进驻补丁目录（技能后续「刷新余额」直接运行它）
-  const walletTool = path.join(HERE, 'fetch-wallet.mjs');
-  if (fs.existsSync(walletTool)) {
-    fs.copyFileSync(walletTool, path.join(dist, PAYLOAD_DIR, 'fetch-wallet.mjs'));
+  try {
+    syncPayload(dist);
+  } catch (error) {
+    console.error(`[install] 载荷写入失败：${error?.message || error}`);
+    if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+      console.error('[install] 客户端目录被系统保护（macOS「App 管理」/ Windows 目录权限）：');
+      console.error('[install] 系统设置 → 隐私与安全性 →「App 管理」里允许当前终端/应用后重试');
+    }
+    console.error('[install] 已中止：原有载荷与 index.html 都未改动');
+    process.exit(1);
   }
   console.error('[install] 载荷已同步');
 

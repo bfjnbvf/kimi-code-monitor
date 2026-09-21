@@ -3,8 +3,9 @@
  *
  * 由补丁 loader 注入 Kimi Code 桌面端页面（desktop-dist/index.html 的
  * script 标签）：不注入自己的页面、不碰 chrome.* 真实 API（shims 兜底）、
- * 数据由 direct.js 直连同机 kap-server（WS 事件流 + REST 轮询）与 loader
- * 的 usage-daily/external 快照，经 window.__kcm.push 进入渲染层。
+ * 数据由 direct.js 直连同机 kap-server（WS 事件流 + REST 轮询 + 外部账户
+ * 直连抓取）与 loader 的落盘快照（usage-daily / wallet），经
+ * window.__kcm.push 进入渲染层。
  * 面板本体（widget-structure）、渲染（render）、状态（panel-state）、
  * 宠物（pet-panel）、i18n 与 content.js 完全共用，样式用 content.css 原样引用。
  *
@@ -69,7 +70,7 @@ initWidgetStructure({
     panel.turnDurations.length = 0;
     renderAll();
   },
-  // 授权 / 额度 / 外部账户的数据都由直连与 loader 快照提供，这里只留空桩
+  // 授权 / 额度 / 外部账户的数据都由 direct.js 直连提供，这里只留空桩
   // （widget-structure 与扩展共用，注入模式无对应动作）
   beginOAuth: () => {},
   fetchQuota: () => {},
@@ -134,7 +135,7 @@ async function bootstrap() {
   } catch (error) {
     console.error('[Kimi Status] 直连模式启动失败', error);
   }
-  // loader 的就绪信号：补推直连启动前到达的 usage-daily / external 快照
+  // loader 的就绪信号：补推直连启动前到达的 usage-daily / wallet 快照
   window.dispatchEvent(new Event('kcm:panel-ready'));
 }
 

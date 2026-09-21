@@ -36,6 +36,16 @@ unzip -l "$OUT"
 SKILL_OUT="kimi-code-monitor-skill.zip"
 SKILL_STAGE="$(mktemp -d)"
 cp -R skill "$SKILL_STAGE/kimi-code-monitor"
+# 技能脚本打成零依赖单文件：技能包不含 src/，脚本里对 ../../src/* 的导入
+# 装到 ~/.kimi-code/skills/ 后会解析失败（曾导致「刷新余额」报模块不存在）
+# 从仓库源码打包（不能打包暂存目录里的副本：脚本里的 ../../src/* 是相对
+# 仓库根的，复制到暂存目录后解析不到），产物直接覆盖暂存目录里的同名文件
+for script in skill/scripts/*.mjs; do
+  name="$(basename "$script")"
+  ./node_modules/.bin/esbuild "$script" \
+    --bundle --platform=node --format=esm --target=node16 --log-level=warning \
+    --outfile="$SKILL_STAGE/kimi-code-monitor/scripts/$name"
+done
 rm -f "$SKILL_OUT"
 (cd "$SKILL_STAGE" && zip -rq "$OLDPWD/$SKILL_OUT" kimi-code-monitor -x "*.DS_Store")
 rm -rf "$SKILL_STAGE"

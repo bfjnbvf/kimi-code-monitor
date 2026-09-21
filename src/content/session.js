@@ -10,7 +10,7 @@
 
 import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metrics.js';
 import * as KimiCliUsage from '../cli-usage.js';
-import { panel, clearSessionHistory, resetMetrics } from './panel-state.js';
+import { panel, clearSessionHistory, resetMetrics, resetSessionAgents, seedSessionAgent } from './panel-state.js';
 import { toNumber, PET_ANSWER_STATUSES, rcApiPrefix, isRemoteControl, localApiAuthHeaders } from './utils.js';
 import { renderAll, setAgentStatus, resetAgentStatusThrottle } from './render.js';
 import {
@@ -20,7 +20,7 @@ import {
   setPetStatusSince
 } from './pet-panel.js';
 
-const { metrics, sessionSamples, turnDurations, agentTotals, sessionAgentOrder, agentTopModels, activeSubagents } = panel;
+const { metrics, sessionSamples, turnDurations, sessionAgentOrder, activeSubagents } = panel;
 
 // 会话身份与请求代际（切换会话时作废旧请求）
 let currentSessionId = '';
@@ -76,10 +76,10 @@ function applySessionSeed(seed) {
   metrics.cacheReadTokens = toNonNegativeInteger(seed.cacheRead);
   metrics.cacheCreationTokens = 0;
 
-  // 按代理拆分：主代理置顶，子代理按最早记录时间排序；模型取 token 权重最高者
-  Object.keys(agentTotals).forEach((key) => delete agentTotals[key]);
-  sessionAgentOrder.length = 0;
-  Object.keys(agentTopModels).forEach((key) => delete agentTopModels[key]);
+  // 按代理拆分：主代理置顶，子代理按最早记录时间排序。每个代理下的模型由
+  // 状态层展开成多行（同一代理换过模型就是多行，同一模型的多个子代理各占一行）——
+  // 展示层不合并，也不在这里挑「主模型」
+  resetSessionAgents();
   const agents = seed.agents && typeof seed.agents === 'object' ? seed.agents : {};
   const names = Object.keys(agents).sort((a, b) => {
     if (a === 'main') return -1;
@@ -87,22 +87,7 @@ function applySessionSeed(seed) {
     return (agents[a].firstAt || 0) - (agents[b].firstAt || 0);
   });
   for (const name of names.length ? names : ['main']) {
-    const entry = agents[name];
-    agentTotals[name] = {
-      inputTokens: Math.max(
-        0,
-        toNonNegativeInteger(entry?.input) - toNonNegativeInteger(entry?.cacheRead)
-      ),
-      outputTokens: toNonNegativeInteger(entry?.output),
-      cacheReadTokens: toNonNegativeInteger(entry?.cacheRead),
-      cacheCreationTokens: 0
-    };
-    sessionAgentOrder.push(name);
-    // config.update 的 modelAlias 是解析后的真实模型名（子代理的 usage 记录只有占位符）
-    const alias = typeof entry?.modelAlias === 'string' ? entry.modelAlias : '';
-    const models = entry?.models && typeof entry.models === 'object' ? entry.models : {};
-    const top = Object.entries(models).sort((x, y) => y[1] - x[1])[0];
-    if (alias || top) agentTopModels[name] = alias || top[0];
+    seedSessionAgent(name, agents[name]?.models);
   }
 }
 
@@ -254,9 +239,10 @@ function cachePanelState(sid) {
     petStatusSince: getPetStatusSince(),
     sessionSamples: sessionSamples.slice(),
     turnDurations: turnDurations.slice(),
-    agentTotals: JSON.parse(JSON.stringify(agentTotals)),
-    sessionAgentOrder: sessionAgentOrder.slice(),
-    agentTopModels: { ...agentTopModels }
+    agentTotals: JSON.parse(JSON.stringify(panel.agentTotals)),
+    agentModels: JSON.parse(JSON.stringify(panel.agentModels)),
+    agentModelHint: { ...panel.agentModelHint },
+    sessionAgentOrder: sessionAgentOrder.slice()
   });
   while (panelSessionCache.size > PANEL_SESSION_CACHE_LIMIT) {
     panelSessionCache.delete(panelSessionCache.keys().next().value);
@@ -279,12 +265,14 @@ function restorePanelState(sid) {
   sessionSamples.push(...cached.sessionSamples);
   turnDurations.length = 0;
   turnDurations.push(...cached.turnDurations);
-  Object.keys(agentTotals).forEach((key) => delete agentTotals[key]);
-  Object.assign(agentTotals, cached.agentTotals);
+  Object.keys(panel.agentTotals).forEach((key) => delete panel.agentTotals[key]);
+  Object.assign(panel.agentTotals, cached.agentTotals);
+  Object.keys(panel.agentModels).forEach((key) => delete panel.agentModels[key]);
+  Object.assign(panel.agentModels, cached.agentModels || {});
+  Object.keys(panel.agentModelHint).forEach((key) => delete panel.agentModelHint[key]);
+  Object.assign(panel.agentModelHint, cached.agentModelHint || {});
   sessionAgentOrder.length = 0;
   sessionAgentOrder.push(...cached.sessionAgentOrder);
-  Object.keys(agentTopModels).forEach((key) => delete agentTopModels[key]);
-  Object.assign(agentTopModels, cached.agentTopModels);
   // 计时起点在 setAgentStatus 之后由调用方恢复（状态切换会重置它）
   restoredPetStatusSince = cached.petStatusSince;
   return true;

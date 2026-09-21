@@ -13,7 +13,7 @@
 ## 数据来源（三层）
 
 1. **实时**：面板直连客户端内嵌的本地服务（kap-server），WS 事件流 + REST 轮询，与客户端页面同机回环，无任何外发；
-2. **历史预填**：安装时全量扫描 `~/.kimi-code/sessions`（Kimi Code 自己的会话日志，桌面端与 CLI 共享），生成 `usage-daily.js`——需要本机有 node，没有则跳过；
+2. **历史预填**：安装时全量扫描 `~/.kimi-code/sessions`（Kimi Code 自己的会话日志，桌面端与 CLI 共享），生成 `usage-daily.js`——需要本机有 node，没有则跳过。该文件里既带按天/按小时统计，也带**按会话的「代理 × 模型」汇总**（切会话时的本地恢复底数）；之后想刷新，跑载荷里的 `kcm/scan.mjs`（无参即原地重写）或技能脚本 `refresh-stats.mjs`，面板 30 秒内自己跟上；
 3. **页内积累**：面板把每轮用量按天攒进页面 localStorage（存于客户端用户数据目录，**客户端更新不会清掉**），与历史文件按天取大合并，不双算。
 
 ## 安装提示词
@@ -25,17 +25,17 @@
 
 1. 下载补丁包（Release 资产，固定名直链，始终最新）：
    https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip
-2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、fetch-wallet.mjs、kcm/ 即可）
+2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/ 即可）
 3. 解压到一个临时目录
 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
-5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
+5. 在该目录执行：bash install.sh（Windows：install.cmd；客户端不在默认位置时追加 --app "<客户端目录>"）。不需要系统 Node——壳会优先借客户端自带的 Node
 6. 完成后把这些告诉我：
-   - install.mjs 的完整输出
+   - 安装器的完整输出
    - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
    - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
 7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
 
-要求：只运行补丁包里的 install.mjs（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+要求：只运行补丁包里的安装入口（macOS `bash install.sh` / Windows `install.cmd`，它们只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
 ```
 
 本机测试版（未发布前，把第一二步换成本地路径）：
@@ -44,22 +44,22 @@
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
 1. 补丁包在本地：/Users/gabriel/Documents/Coding/kimi-code-monitor/kcm-desktop-patch.zip
-2. 解压到一个临时目录，确认有 Node（node -v，需 ≥16），在其中执行：node install.mjs
-3. 完成后把这些告诉我：install.mjs 的完整输出、客户端版本（macOS 读 Info.plist 的 CFBundleShortVersionString；Windows 读 Kimi Code.exe 的文件版本）、是否弹出权限确认
+2. 解压到一个临时目录，在其中执行：bash install.sh（Windows：install.cmd）。不需要系统 Node（安装入口会借客户端自带的 Node）
+3. 完成后把这些告诉我：安装器的完整输出、客户端版本（macOS 读 Info.plist 的 CFBundleShortVersionString；Windows 读 Kimi Code.exe 的文件版本）、是否弹出权限确认
 4. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）
 
-要求：只运行补丁包里的 install.mjs；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+要求：只运行补丁包里的安装入口（macOS `bash install.sh` / Windows `install.cmd`）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
 ```
 
 ## 卸载提示词
 
 ```text
-请卸载 Kimi Code 桌面客户端的用量面板补丁：在之前解压的补丁目录执行 node install.mjs --uninstall，把输出告诉我，并提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）。如果找不到原目录，重新下载/解压同一个补丁包后执行同样命令即可。
+请卸载 Kimi Code 桌面客户端的用量面板补丁：在之前解压的补丁目录执行 bash install.sh --uninstall（Windows：install.cmd --uninstall），把输出告诉我，并提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）。如果找不到原目录，重新下载/解压同一个补丁包后执行同样命令即可。
 ```
 
 ## 明确不做 / 边界
 
 - 不修改客户端程序逻辑（app.asar 不动），只放静态资源 + 一行 script 标签；
 - 注入面板的配置存页面 localStorage，与 Chrome 扩展的配置互不相通；
-- 安装需 Node ≥16（历史预填与安装器同用）；没有 sessions 目录的机器跳过预填，面板从安装时刻开始积累（面板锁位会如实显示「统计积累中」与状态行）；
+- 安装零前提：只需要装了客户端（安装入口优先借客户端自带的 Node）。没有 sessions 目录的机器跳过预填，面板从安装时刻开始积累（面板锁位会如实显示「统计积累中」与状态行）；
 - 客户端大版本更新若改动侧栏 DOM 或本地服务接口，面板可能挂载失败（表现为不显示，无残缺 UI）——把安装提示词再发一遍，智能体会报告客户端版本，等待适配。

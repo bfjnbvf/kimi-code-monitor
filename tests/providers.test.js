@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   PROVIDERS,
+  adapterForBaseUrl,
+  classifyClientProvider,
+  hostOf,
   parseDeepSeek,
   parseKimiApi,
   parseZhipu,
@@ -104,4 +107,66 @@ test('四家 provider 都有国内端点与凭据提示', () => {
   }
   assert.equal(PROVIDERS.zhipu.origin, 'https://open.bigmodel.cn');
   assert.equal(PROVIDERS.kimiapi.origin, 'https://api.moonshot.cn');
+});
+
+/* ---------- 客户端供应商的识别与分类 ----------
+ * 外部账户的来源是客户端自己的 provider 配置，名字是用户随便起的（本机真实
+ * 数据里就有 `StepFun Step Plan` 这种带空格的 id），所以只能按 base_url 的
+ * 域名认。面板与技能脚本共用这一份判断。 */
+
+test('hostOf：取主机名、统一小写、去端口', () => {
+  assert.equal(hostOf('https://api.deepseek.com'), 'api.deepseek.com');
+  assert.equal(hostOf('https://API.DeepSeek.com/user/balance'), 'api.deepseek.com');
+  assert.equal(hostOf('http://127.0.0.1:11434/v1'), '127.0.0.1');
+  assert.equal(hostOf('不是URL'), '');
+  assert.equal(hostOf(''), '');
+  assert.equal(hostOf(undefined), '');
+});
+
+test('按域名识别适配器：子域、大小写、路径都不影响', () => {
+  assert.equal(adapterForBaseUrl('https://api.deepseek.com')?.adapterId, 'deepseek');
+  assert.equal(adapterForBaseUrl('https://api.deepseek.com/v1/')?.adapterId, 'deepseek');
+  assert.equal(adapterForBaseUrl('https://API.MOONSHOT.CN/v1')?.adapterId, 'kimiapi');
+  assert.equal(adapterForBaseUrl('https://open.bigmodel.cn/api/paas/v4')?.adapterId, 'zhipu');
+  assert.equal(adapterForBaseUrl('https://www.minimaxi.com/v1')?.adapterId, 'minimax');
+  // 未适配的域名不做猜测：各家的余额路径/鉴权/字段都不一样，猜就是误报
+  assert.equal(adapterForBaseUrl('https://api.stepfun.com/step_plan/v1'), null);
+  assert.equal(adapterForBaseUrl('http://127.0.0.1:11434/v1'), null);
+});
+
+test('三类分类：已接入 / 未适配 / 客户端托管账号', () => {
+  const supported = classifyClientProvider({
+    id: 'deepseek', type: 'openai', base_url: 'https://api.deepseek.com', has_api_key: true
+  });
+  assert.equal(supported.kind, 'supported');
+  assert.equal(supported.adapterId, 'deepseek');
+  assert.equal(supported.host, 'api.deepseek.com');
+
+  // 名字带空格、大小写混杂也要认出来（真实数据里就是这样）
+  const weirdName = classifyClientProvider({
+    id: 'StepFun Step Plan', type: 'openai', base_url: 'https://api.stepfun.com/step_plan/v1', has_api_key: true
+  });
+  assert.equal(weirdName.kind, 'unsupported');
+  assert.equal(weirdName.host, 'api.stepfun.com');
+
+  // 客户端托管账号：额度走 /api/v1/oauth/usage，面板顶部已在显示，不重复列
+  const managed = classifyClientProvider({
+    id: 'managed:kimi-code', type: 'kimi', base_url: 'https://api.kimi.com/coding/v1', has_api_key: true
+  });
+  assert.equal(managed.kind, 'managed');
+
+  // 地址缺失 / 非法：按未适配处理，绝不当成支持
+  assert.equal(classifyClientProvider({ id: 'x', type: 'openai' }).kind, 'unsupported');
+  assert.equal(classifyClientProvider({ id: 'x', type: 'openai', base_url: 'nope' }).kind, 'unsupported');
+  assert.equal(classifyClientProvider(null).kind, 'unsupported');
+});
+
+test('适配表每家都带小写的 hosts（识别只认它，不看 provider 名字）', () => {
+  for (const [id, provider] of Object.entries(PROVIDERS)) {
+    assert.ok(Array.isArray(provider.hosts) && provider.hosts.length > 0, `${id} 缺 hosts`);
+    for (const host of provider.hosts) {
+      assert.equal(typeof host, 'string');
+      assert.equal(host, host.toLowerCase(), `${id} 的 host 应小写：${host}`);
+    }
+  }
 });

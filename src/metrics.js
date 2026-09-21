@@ -68,6 +68,74 @@ function cacheReadPercentage(usage) {
   return total > 0 ? (usage.cacheReadTokens / total) * 100 : null;
 }
 
+/* ---------- 按模型分桶的唯一口径 ---------- */
+
+// 子代理的 usage.record 只写这个占位符：真实模型名在同一个文件的
+// config.update（modelAlias）里，解析不到就保留占位符，由展示层兜底文案。
+const SECONDARY_MODEL_PLACEHOLDER = '__secondary__';
+
+/** 模型键归一：记录里是真名就用真名；是占位符（子代理记录只写 `__secondary__`）
+ *  或干脆没写，就用该代理 config.update 里的 modelAlias；实在没有则保留原样
+ *  （占位符留给展示层回落到配置里的次级模型名，空串表示「归不到具体模型」）。 */
+function modelKeyOf(model, modelAlias = '') {
+  const name = typeof model === 'string' ? model.trim() : '';
+  if (name && name !== SECONDARY_MODEL_PLACEHOLDER) return name;
+  const alias = typeof modelAlias === 'string' ? modelAlias.trim() : '';
+  return alias || name;
+}
+
+/** 把一条 usage 累加进该代理的模型桶：models[模型名] = 桶 + 记录数。
+ *  同一代理用过多个模型时各自成键、绝不合并——「按代理取一个主模型」会把
+ *  中途换模型那段的用量算到别的模型头上。
+ *  这里只按记录里的原始模型名落键（缺失记空串）：占位符的真名要等整个文件
+ *  读完（config.update 可能在记录之后才出现），所以归一放在读取侧
+ *  （mergeModelUsage 的 mapKey / modelKeyOf）。 */
+function addModelUsage(models, model, usage) {
+  const key = typeof model === 'string' && model.trim() ? model.trim() : '';
+  const bucket = models[key] || (models[key] = { ...emptyUsageBucket(), records: 0 });
+  addUsageToBucket(bucket, usage);
+  bucket.records += 1;
+  return key;
+}
+
+/** 合并两份模型桶（增量扫描沿用旧索引、或把占位符归一成真名时用）。
+ *  mapKey 可选：把源键映射为目标键（同键自动相加）。 */
+function mergeModelUsage(target, source, mapKey = null) {
+  for (const [model, bucket] of Object.entries(source || {})) {
+    const key = mapKey ? mapKey(model) : model;
+    const into = target[key] || (target[key] = { ...emptyUsageBucket(), records: 0 });
+    into.input += toNonNegativeInteger(bucket?.input);
+    into.output += toNonNegativeInteger(bucket?.output);
+    into.cacheRead += toNonNegativeInteger(bucket?.cacheRead);
+    into.records += toNonNegativeInteger(bucket?.records);
+  }
+  return target;
+}
+
+/** 一个代理的模型桶求和 → 该代理的合计（与桶同口径：input 含缓存）。 */
+function sumModelBuckets(models) {
+  const total = emptyUsageBucket();
+  for (const bucket of Object.values(models || {})) addUsageToBucket(total, bucket);
+  return total;
+}
+
+/** 模型桶 → 展示行，一行一个模型，按用量（输入+输出）降序；
+ *  空模型键排在最后（实时事件无法归属模型时的兜底行）。 */
+function modelRows(models) {
+  return Object.entries(models || {})
+    .map(([model, bucket]) => ({
+      model,
+      input: toNonNegativeInteger(bucket?.input),
+      output: toNonNegativeInteger(bucket?.output),
+      cacheRead: toNonNegativeInteger(bucket?.cacheRead)
+    }))
+    .sort((a, b) => {
+      if (!a.model !== !b.model) return a.model ? -1 : 1;
+      const usageDiff = (b.input + b.output) - (a.input + a.output);
+      return usageDiff !== 0 ? usageDiff : String(a.model).localeCompare(String(b.model));
+    });
+}
+
 // 百分比统一显示一位小数，向下截断而非四舍五入：使用率类指标宁少算不多算，
 // 99.95% 显示 99.9%，不会提前跳到 100.0%。显示上限仍为 100（超用不展示真实比例）。
 function formatPercentage(value, decimals = 1) {
@@ -379,6 +447,7 @@ function quotaPercentage(detail) {
 }
 
 export {
+  addModelUsage,
   addUsageToBucket,
   boosterBalanceYuan,
   buildHeatmapData,
@@ -391,12 +460,17 @@ export {
   formatTokenCount,
   formatPercentage,
   listDayKeysBetween,
+  mergeModelUsage,
+  modelKeyOf,
+  modelRows,
   normalizeUsage,
   normalizeWidgetConfig,
   PET_STATS,
   pruneDailyUsage,
   pruneHourlyUsage,
   quotaPercentage,
+  SECONDARY_MODEL_PLACEHOLDER,
+  sumModelBuckets,
   sumUsageBetween,
   toNonNegativeInteger,
   totalInputTokens,

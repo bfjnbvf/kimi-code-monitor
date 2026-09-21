@@ -52,7 +52,7 @@ elif [ -f "$DIST/index.html.bak-kcm" ]; then
 else
   warn "注入标签存在（${TAG}），但原始备份缺失（卸载时只能删标签无法整体还原）"
 fi
-EXPECT_V=$(cd "$VIB" && find . -type f ! -name 'usage-daily.js' ! -name 'external.js' ! -name 'wallet.js' ! -name 'fetch-wallet.mjs' -exec shasum -a 256 {} \; 2>/dev/null | sort | shasum -a 256 | cut -c1-8)
+EXPECT_V=$(cd "$VIB" && find . -type f ! -name 'usage-daily.js' ! -name 'wallet.js' ! -name 'fetch-wallet.mjs' -exec shasum -a 256 {} \; 2>/dev/null | sort | shasum -a 256 | cut -c1-8)
 ACTUAL_V=$(echo "$TAG" | sed 's/.*v=//')
 if [ "$EXPECT_V" = "$ACTUAL_V" ]; then
   ok "缓存参数与载荷哈希一致（${ACTUAL_V}）"
@@ -71,8 +71,7 @@ if [ -s "$VIB/usage-daily.js" ]; then
 else
   warn "无历史统计数据文件（全新环境正常；否则重跑安装预填）"
 fi
-[ -s "$VIB/external.js" ] && ok "外部账户快照在位（$(stat -f '%Sm' -t '%m-%d %H:%M' "$VIB/external.js")）" \
-  || echo "INFO  无外部账户快照（未配置外部账户，正常）"
+[ -s "$VIB/external.js" ] && echo "INFO  发现旧版外部账户快照 external.js（新版不再使用，重跑安装即可清掉）"
 [ -s "$VIB/wallet.js" ] && ok "加油包余额快照在位（$(stat -f '%Sm' -t '%m-%d %H:%M' "$VIB/wallet.js")）" \
   || warn "无加油包余额快照（面板余额位显示 --；可让技能刷新余额）"
 

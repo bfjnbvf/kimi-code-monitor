@@ -39,6 +39,13 @@ const EN = {
   '消耗量': 'Usage',
   '宠物': 'Pet',
   '外部账户': 'External accounts',
+  '刚刚': 'just now',
+  '{count} 分钟前': '{count} min ago',
+  '{count} 小时前': '{count} h ago',
+  '{count} 天前': '{count} d ago',
+  '不支持余额查询': 'balance N/A',
+  '在客户端里添加供应商后自动显示余额': 'Add a provider in the client to show its balance',
+  '已配置 {count} 个供应商，暂不支持余额查询（见本模块设置）': '{count} provider(s) configured — balance query not supported yet (see this module settings)',
   // 模块内容
   '上轮': 'Last',
   '本周': 'Week',

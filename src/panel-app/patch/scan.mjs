@@ -11,6 +11,7 @@
  * 面板从安装时刻开始积累（页内 accumulate.js 兜底）。
  *
  * 用法：
+ *   node scan.mjs                     # 原地重写同目录的 usage-daily.js（技能刷新用）
  *   node scan.mjs --sessions ~/.kimi-code/sessions --out <path>/usage-daily.js
  *   node scan.mjs --stdout            # 结果打到标准输出
  */
@@ -19,14 +20,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
-import { pathToFileURL } from 'node:url';
-import { parseUsageLines } from '../../cli-usage.js';
-import { isSessionDirName, isSubagentAgentName } from '../../session-files.js';
-import * as KimiMetrics from '../../metrics.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  combineFileDaily,
+  combineFileHourly,
+  emptyScanMeta,
+  parseUsageLines,
+  summarizeSessions
+} from '../../cli-usage.js';
+import { isSessionDirName, isSubagentAgentName, wirePathOf } from '../../session-files.js';
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024;
 
-/** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份） */
+/** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份）。
+ *  返回 path（文件系统路径，读取用）与 key（跨会话汇总键，与扩展侧索引同形）。 */
 export function listWireFiles(sessionsDir) {
   const files = [];
   let workspaces;
@@ -58,8 +65,9 @@ export function listWireFiles(sessionsDir) {
         const wire = path.join(agentsDir, agent.name, 'wire.jsonl');
         if (!fs.existsSync(wire)) continue;
         files.push({
-          // 这里是文件系统路径（读取用），不是跨会话汇总键
           path: wire,
+          key: wirePathOf(workspace.name, session.name, agent.name),
+          // agents/main 为主代理，其余（agent-N 等）按子代理分桶
           isSubagent: isSubagentAgentName(agent.name)
         });
       }
@@ -70,7 +78,7 @@ export function listWireFiles(sessionsDir) {
 
 /** 流式读单个文件：按完整行喂给 parseUsageLines，跨块的多字节字符由
  *  StringDecoder 兜住；末尾未写完的行（无换行符）跳过，下次重扫补齐 */
-function scanFileStream(filePath, daily, hourly, isSubagent) {
+function scanFileStream(filePath, daily, hourly, isSubagent, meta) {
   const decoder = new StringDecoder('utf8');
   let carry = '';
   let records = 0;
@@ -86,12 +94,12 @@ function scanFileStream(filePath, daily, hourly, isSubagent) {
         continue;
       }
       carry = text.slice(lastNewline + 1);
-      records += parseUsageLines(text.slice(0, lastNewline + 1), daily, hourly, isSubagent);
+      records += parseUsageLines(text.slice(0, lastNewline + 1), daily, hourly, isSubagent, meta);
     }
     const tail = carry + decoder.end();
     if (tail.includes('\n')) {
       // 末块解码尾巴恰好凑出完整行时也计入（罕见但零成本）
-      records += parseUsageLines(tail.slice(0, tail.lastIndexOf('\n') + 1), daily, hourly, isSubagent);
+      records += parseUsageLines(tail.slice(0, tail.lastIndexOf('\n') + 1), daily, hourly, isSubagent, meta);
     }
   } finally {
     fs.closeSync(fd);
@@ -110,26 +118,33 @@ function readSecondaryModel(kimiHome) {
   }
 }
 
-/** 全量扫描：返回 { daily, hourly, secondaryModel, fileCount, recordCount, failures } */
+/** 全量扫描：返回 { daily, hourly, sessions, secondaryModel, fileCount, recordCount, failures }
+ *
+ *  逐文件的 daily/hourly/meta 先落进索引，再交给扩展侧的合并函数——
+ *  「按天/按小时」的合流与「按会话（代理 × 模型）」的汇总都只有一份实现，
+ *  面板预填与扩展扫描永远同口径。 */
 export function scanSessions(sessionsDir) {
-  const daily = {};
-  const hourly = {};
+  const files = {};
   const failures = [];
-  const files = listWireFiles(sessionsDir);
   let recordCount = 0;
-  for (const entry of files) {
+  for (const entry of listWireFiles(sessionsDir)) {
+    // 单文件损坏/权限抖动跳过，不中断整次扫描（与扩展扫描同策略）
+    const meta = emptyScanMeta();
+    const fileDaily = {};
+    const fileHourly = {};
     try {
-      recordCount += scanFileStream(entry.path, daily, hourly, entry.isSubagent);
+      recordCount += scanFileStream(entry.path, fileDaily, fileHourly, entry.isSubagent, meta);
+      files[entry.key] = { daily: fileDaily, hourly: fileHourly, meta };
     } catch (error) {
-      // 单文件损坏/权限抖动跳过，不中断整次扫描（与扩展扫描同策略）
       failures.push(`${entry.path}: ${error?.message || error}`);
     }
   }
   return {
-    daily: KimiMetrics.pruneDailyUsage(daily),
-    hourly: KimiMetrics.pruneHourlyUsage(hourly),
+    daily: combineFileDaily(files),
+    hourly: combineFileHourly(files),
+    sessions: summarizeSessions(files),
     secondaryModel: readSecondaryModel(path.dirname(path.resolve(sessionsDir))),
-    fileCount: files.length,
+    fileCount: Object.keys(files).length,
     recordCount,
     failures
   };
@@ -140,6 +155,8 @@ export function renderUsageDailyJs(data) {
   const payload = {
     daily: data.daily || {},
     hourly: data.hourly || {},
+    // 按会话（代理 × 模型）汇总：切会话时做本地恢复底数，服务端不给历史时唯一的真值来源
+    sessions: data.sessions || {},
     secondaryModel: typeof data.secondaryModel === 'string' ? data.secondaryModel : ''
   };
   return `window.__kcmUsageDaily = ${JSON.stringify(payload)};\n`;
@@ -148,7 +165,13 @@ export function renderUsageDailyJs(data) {
 /* ---------- CLI ---------- */
 
 function parseArgs(argv) {
-  const args = { sessions: path.join(os.homedir(), '.kimi-code', 'sessions'), out: '', stdout: false };
+  const args = {
+    sessions: path.join(os.homedir(), '.kimi-code', 'sessions'),
+    // 默认原地重写：脚本自己就在补丁载荷目录（desktop-dist/kcm/）里，
+    // 技能「刷新本地统计」因此不需要知道任何路径
+    out: path.join(path.dirname(fileURLToPath(import.meta.url)), 'usage-daily.js'),
+    stdout: false
+  };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--sessions') args.sessions = argv[(i += 1)];
     else if (argv[i] === '--out') args.out = argv[(i += 1)];
@@ -159,10 +182,6 @@ function parseArgs(argv) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.stdout && !args.out) {
-    console.error('用法: node scan.mjs --sessions <dir> --out <file> | --stdout');
-    process.exit(1);
-  }
   if (!fs.existsSync(args.sessions)) {
     console.error(`[scan] sessions 目录不存在：${args.sessions}（全新环境？无历史可预填）`);
     process.exit(2);
@@ -180,6 +199,7 @@ function main() {
   console.error(
     `[scan] 文件 ${result.fileCount} · 记录 ${result.recordCount} · 天数 ${days.length}`
     + (days.length ? `（${days[0]} ~ ${days[days.length - 1]}）` : '')
+    + ` · 会话 ${Object.keys(result.sessions).length}`
     + ` · 耗时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s`
     + (result.failures.length ? ` · 失败文件 ${result.failures.length}（已跳过）` : '')
   );

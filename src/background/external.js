@@ -58,7 +58,7 @@ export async function readExternalAccounts() {
   });
 }
 
-async function fetchExternalAccount(account) {
+async function fetchExternalAccount(account, lastGood) {
   const provider = KimiExternalProviders.PROVIDERS[account.provider];
   if (!provider) return { id: account.id, name: account.provider, error: '未知 provider' };
   const base = {
@@ -68,25 +68,34 @@ async function fetchExternalAccount(account) {
     name: account.label || provider.name,
     keyTail: account.keyTail || ''
   };
+  // 失败沿用上次成功的数值：余额变化慢，旧的真数字比「获取失败」有用；
+  // 渲染层靠 fetchedAt 显示「N 分钟前」，失败原因进悬停。
+  // 与桌面补丁（panel-app/direct.js 的 lastGood）同一语义。
+  const fail = (message) => (lastGood ? { ...lastGood, error: message } : { ...base, error: message });
   const hasPermission = await chrome.permissions.contains({ origins: [`${provider.origin}/*`] });
-  if (!hasPermission) return { ...base, error: '未授予域名权限' };
+  if (!hasPermission) return fail('未授予域名权限');
   let key;
   try {
     key = await decryptSecret(account.keyEnc);
   } catch (error) {
-    return { ...base, error: '本机密钥不可用，请删除后重新添加' };
+    return fail('本机密钥不可用，请删除后重新添加');
   }
   try {
     const result = await provider.fetch(key);
-    return { ...base, ...result, error: '' };
+    return { ...base, ...result, error: '', fetchedAt: Date.now() };
   } catch (error) {
-    return { ...base, error: error?.message || String(error) };
+    return fail(error?.message || String(error));
   }
 }
 
-export async function getExternalProvidersStatus() {
+/** 缓存条目：value = 最近一次结果（可能失败）；lastGood = 最近一次成功值。
+ *  分开存——失败不能把成功值冲掉，否则下一轮也无旧数可沿用。 */
+function cacheEntry(value, previousLastGood) {
+  return { at: Date.now(), value, lastGood: value.error ? (previousLastGood || null) : value };
+}
+
+export async function getExternalProvidersStatus({ now = Date.now() } = {}) {
   const accounts = await readExternalAccounts();
-  const now = Date.now();
   const results = [];
   for (const account of accounts) {
     const cached = externalProviderCache.get(account.id);
@@ -94,8 +103,8 @@ export async function getExternalProvidersStatus() {
       results.push(cached.value);
       continue;
     }
-    const value = await fetchExternalAccount(account);
-    externalProviderCache.set(account.id, { at: now, value });
+    const value = await fetchExternalAccount(account, cached?.lastGood);
+    externalProviderCache.set(account.id, cacheEntry(value, cached?.lastGood));
     results.push(value);
   }
   return { ok: true, providers: results };
@@ -121,8 +130,8 @@ export async function addExternalAccount(payload) {
     accounts.push(account);
     await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
     // 保存后立即试拉一次，让 popup 能即时反馈 key 是否有效
-    const result = await fetchExternalAccount(account);
-    externalProviderCache.set(account.id, { at: Date.now(), value: result });
+    const result = await fetchExternalAccount(account, null);
+    externalProviderCache.set(account.id, cacheEntry(result, null));
     return { ok: true, provider: result };
   });
 }
@@ -154,9 +163,12 @@ export async function renameExternalAccount(payload) {
     if (!account) return failure(new Error('账户不存在'));
     account.label = label;
     await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
-    // 缓存里带着旧名称，就地改掉，避免改名后还要等一次网络刷新
+    // 缓存里带着旧名称，就地改掉（value 与 lastGood 两份都改），避免改名后还要等一次网络刷新
     const cached = externalProviderCache.get(id);
-    if (cached) cached.value = { ...cached.value, name: label };
+    if (cached) {
+      if (cached.value) cached.value = { ...cached.value, name: label };
+      if (cached.lastGood) cached.lastGood = { ...cached.lastGood, name: label };
+    }
     return { ok: true };
   });
 }

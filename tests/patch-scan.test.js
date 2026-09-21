@@ -138,3 +138,74 @@ test('scan：经符号链接路径执行 CLI 正常产出（/tmp → /private/tm
     fs.rmSync(linkDir, { recursive: true, force: true });
   }
 });
+
+// 按会话汇总（面板的「切会话底数」与「代理 × 模型明细」都吃这份数据）：
+// 一个代理用过多个模型就多行，同一个模型的多个子代理也各占一行，绝不合并。
+test('scan：按会话汇总按「代理 × 模型」分行，Σ 分项 == 会话总计', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-summary-'));
+  const sessions = path.join(home, 'sessions');
+  const write = (session, agent, lines) => {
+    const dir = path.join(sessions, 'wd_test', session, 'agents', agent);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'wire.jsonl'), lines.join('\n') + '\n');
+  };
+  const rec = (model, time, usagePatch) => JSON.stringify({
+    type: 'usage.record',
+    model,
+    usage: Object.assign({ inputOther: 0, inputCacheRead: 0, inputCacheCreation: 0, output: 0 }, usagePatch),
+    time
+  });
+  try {
+    // 主代理中途换过模型：同一代理、两个模型
+    write('session_x', 'main', [
+      rec('kimi-code/k3-256k', ts(1, 10), { inputOther: 10, inputCacheRead: 20, output: 3 }),
+      rec('kimi-code/k3', ts(0, 10), { inputOther: 4, output: 1 })
+    ]);
+    // 子代理记录只写占位符，真名在 config.update 里
+    write('session_x', 'agent-1', [
+      rec('__secondary__', ts(0, 11), { inputOther: 5, inputCacheRead: 7, output: 2 }),
+      '{"type":"config.update","modelAlias":"step-5-preview"}'
+    ]);
+    // 同一个模型的三个子代理：键是代理目录名，各占一行
+    const extras = ['agent-2', 'agent-3', 'agent-4'];
+    extras.forEach((name, i) => {
+      write('session_x', name, [rec('kimi-code/small', ts(0, 12 + i), { inputOther: 1, output: 1 })]);
+    });
+
+    const result = scanSessions(sessions);
+    const session = result.sessions.session_x;
+    // 主代理两个模型各自成键，不被并成一个「主模型」
+    assert.deepEqual(Object.keys(session.agents.main.models).sort(), ['kimi-code/k3', 'kimi-code/k3-256k']);
+    assert.deepEqual(session.agents.main.models['kimi-code/k3-256k'], {
+      input: 30, output: 3, cacheRead: 20, records: 1
+    });
+    // 占位符归一成 config.update 的真名
+    assert.deepEqual(Object.keys(session.agents['agent-1'].models), ['step-5-preview']);
+    // 同模型多实例：三个代理各一行，不合并
+    for (const name of extras) {
+      assert.deepEqual(Object.keys(session.agents[name].models), ['kimi-code/small']);
+    }
+
+    const sum = { input: 0, output: 0, cacheRead: 0 };
+    for (const agent of Object.values(session.agents)) {
+      for (const bucket of Object.values(agent.models)) {
+        sum.input += bucket.input;
+        sum.output += bucket.output;
+        sum.cacheRead += bucket.cacheRead;
+      }
+    }
+    assert.deepEqual(sum, {
+      input: session.input, output: session.output, cacheRead: session.cacheRead
+    }, 'Σ(代理 × 模型) 必须等于会话总计，否则面板「各行之和」与总量对不上');
+
+    // 产物透传：面板按 window.__kcmUsageDaily.sessions 取用
+    const fakeWindow = {};
+    new Function('window', renderUsageDailyJs(result))(fakeWindow);
+    const payload = fakeWindow.__kcmUsageDaily;
+    assert.ok(payload.sessions && payload.sessions.session_x, 'usage-daily.js 应带上按会话汇总');
+    assert.deepEqual(Object.keys(payload.sessions.session_x.agents).sort(),
+      ['agent-1', 'agent-2', 'agent-3', 'agent-4', 'main']);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

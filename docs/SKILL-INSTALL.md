@@ -2,7 +2,7 @@
 
 ## 概述
 
-kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安装 / 重装 / 卸载、更新检查、外部自检、外部账户余额代查。本文是安装该技能的操作手册；技能装好后，面板的安装与运维一律按技能包内 `SKILL.md` 及其 `references/` 执行，不要在本文里找面板步骤。
+kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安装 / 重装 / 卸载、更新检查、外部自检、供应商余额排查（外部账户自动跟随客户端配置，无需用户提供 key）。本文是安装该技能的操作手册；技能装好后，面板的安装与运维一律按技能包内 `SKILL.md` 及其 `references/` 执行，不要在本文里找面板步骤。
 
 ## 适用场景（先判断，避免重复劳动）
 
@@ -40,12 +40,12 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 ⚠️ 三个坑：
 
 - **解压目标必须是技能目录本身**。解压到别处、或让技能目录外面再套一层（`skills/kimi-code-monitor/kimi-code-monitor/`），技能都不会被识别。
-- **Node ≥16 是后续面板安装的硬前提**：现在就跑 `node -v` 预检，缺了先引导用户装（macOS：`brew install node` 或官网；Windows：`winget install OpenJS.NodeJS.LTS`），不要等到装面板那一步才失败。
+- **面板安装零前提**：安装入口（`install.sh` / `install.cmd`）优先借客户端自带的 Node（Electron 内置），不需要用户装 Node。技能脚本（doctor / refresh-stats / client-providers）仍是 Node 脚本：有系统 node 就 `node xxx.mjs`，没有则用客户端的（`ELECTRON_RUN_AS_NODE=1 "<客户端>/Contents/MacOS/Kimi Code" xxx.mjs`）。
 - **技能包 URL 返回 404**（发版间隙或网络拦截）→ 用文末备选方案，不要改用其他来源的包。
 
 ## 二、接下来做什么
 
-技能就位后，按用户请求继续：安装面板、重装、自检、外部账户代查等，全部按 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 及其 `references/` 执行——入口是 `references/install.md`（含装面板前的环境预检与用户同意确认）。
+技能就位后，按用户请求继续：安装面板、重装、自检、供应商余额排查等，全部按 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 及其 `references/` 执行——入口是 `references/install.md`（含装面板前的环境预检与用户同意确认）。
 
 ## 备选：Release 不可达时逐文件拉取
 
@@ -54,6 +54,6 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 - `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`
 - `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE`
 - `.../skill/references/` 下全部 `.md`：`doctor`、`external-accounts`、`faq`、`guide-scripts`、`install`、`status-dictionary`、`update`
-- `.../skill/scripts/` 下：`doctor.mjs`、`fetch-external.mjs`、`doctor.sh`
+- `.../skill/scripts/` 下：`doctor.mjs`、`refresh-stats.mjs`、`client-providers.mjs`、`doctor.sh`
 
 拉取失败（网络不通）时不要硬试：向用户说明无法连接 GitHub，询问是否使用本地已有的技能文件继续，并提示本地版本可能过旧、与当前客户端可能不适配的风险。

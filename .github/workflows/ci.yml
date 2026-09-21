@@ -43,3 +43,27 @@ jobs:
           test -s kimi-code-monitor-skill.zip
           test -s kcm-desktop-patch.zip
           unzip -l kimi-code-monitor-v*.zip >/dev/null
+
+  # Windows 安装链路：install.cmd 的 node 分支 + 借客户端 Node 的分支
+  # （ELECTRON_RUN_AS_NODE 是「零依赖安装」唯一无法在 macOS 上验证的前提，
+  # 用 electron 包的真二进制在这里验证）
+  install-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖（electron 用于验证客户端自带运行时分支）
+        run: |
+          npm ci
+          npm install electron --no-save
+
+      - name: 构建面板产物
+        run: npm run build
+
+      - name: Windows 安装链路（install.cmd 双分支 + 卸载）
+        run: node tests/windows-install.js

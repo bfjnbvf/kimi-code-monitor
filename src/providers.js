@@ -171,6 +171,7 @@ const PROVIDERS = {
     name: 'DeepSeek',
     typeLabel: 'API余额',
     origin: 'https://api.deepseek.com',
+    hosts: ['api.deepseek.com'],
     hint: 'platform.deepseek.com → API keys',
     async fetch(key) {
       return parseDeepSeek(await getJson('https://api.deepseek.com/user/balance', key));
@@ -180,6 +181,7 @@ const PROVIDERS = {
     name: 'Kimi API',
     typeLabel: 'API余额',
     origin: 'https://api.moonshot.cn',
+    hosts: ['api.moonshot.cn'],
     hint: 'platform.moonshot.cn → API Key 管理',
     async fetch(key) {
       return parseKimiApi(await getJson('https://api.moonshot.cn/v1/users/me/balance', key));
@@ -189,6 +191,7 @@ const PROVIDERS = {
     name: '智谱',
     typeLabel: 'Token Plan',
     origin: 'https://open.bigmodel.cn',
+    hosts: ['open.bigmodel.cn'],
     hint: 'bigmodel.cn → API keys',
     async fetch(key) {
       return parseZhipu(await getJson('https://open.bigmodel.cn/api/monitor/usage/quota/limit', key));
@@ -198,6 +201,7 @@ const PROVIDERS = {
     name: 'MiniMax',
     typeLabel: 'Token Plan',
     origin: 'https://www.minimaxi.com',
+    hosts: ['minimaxi.com', 'minimax.io'],
     hint: 'platform.minimaxi.com → 订阅付费 → API Key',
     async fetch(key) {
       return parseMiniMax(
@@ -207,8 +211,61 @@ const PROVIDERS = {
   }
 };
 
+/* ---------- 客户端 provider 的识别与分类（面板与技能共用这一份） ---------- */
+
+/** base_url → 主机名（小写、去端口）；解析不了返回空串 */
+function hostOf(baseUrl) {
+  try {
+    return new URL(String(baseUrl || '')).hostname.toLowerCase();
+  } catch (error) {
+    return '';
+  }
+}
+
+/** 按 base_url 的域名找适配器。
+ *  只能按域名认：客户端里的 provider 名字是用户自己起的，本机就有
+ *  `StepFun Step Plan`（带空格）这种 id，按名字匹配必然漏。 */
+function adapterForBaseUrl(baseUrl) {
+  const host = hostOf(baseUrl);
+  if (!host) return null;
+  for (const [id, provider] of Object.entries(PROVIDERS)) {
+    const hosts = Array.isArray(provider.hosts) ? provider.hosts : [];
+    if (hosts.some((h) => host === h || host.endsWith(`.${h}`))) {
+      return { adapterId: id, adapter: provider, host };
+    }
+  }
+  return null;
+}
+
+/** 客户端 provider 条目 → 面板该怎么处理（三类）：
+ *  - supported：有余额/额度端点，可实时查询
+ *  - managed：客户端托管账号（额度走 /api/v1/oauth/usage，已在面板顶部显示，不重复列）
+ *  - unsupported：没有对应端点（厂商未开放余额接口，或我们还没适配） */
+function classifyClientProvider(entry) {
+  const baseUrl = typeof entry?.base_url === 'string' ? entry.base_url : '';
+  const host = hostOf(baseUrl);
+  const type = typeof entry?.type === 'string' ? entry.type : '';
+  if (type === 'kimi' || host === 'api.kimi.com') {
+    return { kind: 'managed', host, reason: '客户端托管账号（额度见面板顶部）' };
+  }
+  const match = adapterForBaseUrl(baseUrl);
+  if (match) {
+    return {
+      kind: 'supported',
+      host,
+      adapterId: match.adapterId,
+      adapter: match.adapter,
+      typeLabel: match.adapter.typeLabel
+    };
+  }
+  return { kind: 'unsupported', host, reason: '暂无该供应商的余额查询适配' };
+}
+
 const KimiExternalProviders = {
   PROVIDERS,
+  adapterForBaseUrl,
+  classifyClientProvider,
+  hostOf,
   parseDeepSeek,
   parseKimiApi,
   parseZhipu,
@@ -217,6 +274,9 @@ const KimiExternalProviders = {
 
 export {
   PROVIDERS,
+  adapterForBaseUrl,
+  classifyClientProvider,
+  hostOf,
   parseDeepSeek,
   parseKimiApi,
   parseZhipu,

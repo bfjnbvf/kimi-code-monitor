@@ -1,54 +1,74 @@
-# 外部账户与余额（快照代管）
+# 外部账户与余额（自动跟随客户端里的供应商）
 
-面板的「外部账户」模块显示第三方平台的 API 余额：DeepSeek、Kimi API（Moonshot）、智谱（BigModel）、MiniMax。Light 版没有配置界面——**你就是配置界面**：用户把 key 给你，你抓一次余额写成快照，面板显示「截至 HH:MM」的数字。
+面板的「外部账户」模块显示第三方平台的 API 余额/额度：DeepSeek、Kimi API（Moonshot）、智谱（BigModel）、MiniMax。
+
+**账户来源就是客户端自己的供应商配置**——用户在客户端「模型设置」里加的那个（落在 `~/.kimi-code/config.toml`）。所以：
+
+- **不需要向用户索取 key**，也不需要你代抓：面板每 60 秒自己去读客户端的本地服务，拿到该供应商的 key 后直接打厂商的余额端点。
+- key 由客户端自己的文件提供，面板只在内存里用一次：**不写任何文件、不进任何输出、不落盘**。
+- 用户加供应商之后，面板下一个周期（约 1 分钟）自动显示，不用重装、不用重载、不用再跟你说话。
+
+## 三类供应商（探测时分类报告）
+
+| 类别 | 面板上的表现 |
+|---|---|
+| **已接入** | 常规列表里显示余额/额度，表头带「外部账户 · N 分钟前」 |
+| **暂不支持余额查询** | 不进常规列表，只在模块的 ≡ 设置里列出来并标注原因（厂商未开放接口 / 还没适配 / 没配 key） |
+| **客户端托管账号**（`managed:kimi-code`） | 不列——它的额度显示在面板顶部的 5h/本周 |
+
+## 探测（安装后跑一次，也可随时跑）
+
+```bash
+node <技能目录>/scripts/client-providers.mjs
+```
+
+输出形如：
+
+```
+INFO  客户端服务：127.0.0.1:61545
+INFO  自动探测到 3 个供应商（来自客户端自己的配置）：
+       1) deepseek（api.deepseek.com）→ 已接入外部账户：API余额
+       2) StepFun Step Plan（api.stepfun.com）→ 暂不支持余额查询：暂无该供应商的余额查询适配
+       3) managed:kimi-code（api.kimi.com）→ 客户端托管账号（额度见面板顶部）
+SUMMARY 探测 3 个：已接入外部账户 1 个 · 不支持余额查询 1 个 · 客户端托管账号 1 个
+```
+
+- **退出码 1（探测不到客户端）**：客户端没开着，或补丁没装。让用户先打开客户端；刚更新过客户端就按 install.md 重装补丁。
+- 报告里只有供应商名与域名——这个脚本连 key 都不读（`/api/v1/providers` 只返回 `has_api_key` 布尔），更不会输出 key。
+
+## 用户想加一个平台
+
+在客户端里加供应商就行，本技能不存 key：
+
+- 用户自己在客户端「模型设置」里加；或
+- 让 Kimi 代劳（CLI 有 `kimi provider add` / `provider catalog` 子命令）。
+
+加完告诉用户：「面板一分钟内自己会出现，不用重装也不用重载。」
+
+## 用户问「我配的 X 怎么不显示」
+
+先跑一次探测，按 SUMMARY 的三类如实解释：
+
+- **暂不支持余额查询** → 那个厂商没开放余额接口（例如 StepFun 的 Step Plan，实测几个候选端点全是 404），不是没配上。面板把它列在模块设置里，等厂商开放或我们适配——**不要承诺时间**。
+- **未配置 API key** → 客户端里那个供应商只填了地址、没填 key。
+- **客户端托管账号** → Kimi Code 自己的账号，额度在面板顶部，不在外部账户里重复。
+- **一个都没有** → 用户在客户端里还没加过第三方供应商。
 
 ## 安全规则（不可让步）
 
-1. key **不回显**：你的任何输出里不出现完整 key（尾 4 位可以，用于让用户辨认）。
-2. key **不持久化**：不写进任何文件、不存进对话摘要、不放进 issue 报告。每次刷新由用户重新提供。
-3. 只允许请求 providers 白名单端点（脚本内部已限定），不要手动构造其他请求。
-4. 用户主动把 key 粘贴到对话里后，提醒一句「对话记录会保留这个 key，建议用可轮换的 key」。
+1. **不要向用户索取 provider key**：面板从客户端自己的配置里读，key 不经过你、不经过对话。
+2. 你的任何输出里不出现完整 key（尾 4 位可以，用于辨认）。
+3. 只允许调用脚本内置的白名单端点（`src/providers.js` 的适配表：api.deepseek.com / api.moonshot.cn / open.bigmodel.cn / minimaxi.com），不要手工构造其他请求。
+4. 若用户主动把 key 粘贴进对话，提醒一句「对话记录会保留这个 key，建议用可轮换的 key」，并说明面板并不需要它。
 
-## 添加 / 刷新（同一流程，整体替换快照）
+## 加油包余额（Kimi 自己的账户）——另一条通路
 
-1. 问用户要：哪家平台 + API key（可选：备注名）。key 获取入口：
-   - DeepSeek：platform.deepseek.com → API keys
-   - Kimi API：platform.moonshot.cn → API Key 管理
-   - 智谱：bigmodel.cn → API keys
-   - MiniMax：平台控制台 → API key
-2. 执行（key 通过参数传入脚本，脚本不落盘）：
+面板标题行的余额来自另一条链路：用客户端自己的凭据读官方 API 写成快照。
 
-   ```bash
-   node <技能目录>/scripts/fetch-external.mjs \
-     --fetch '[{"provider":"deepseek","key":"用户的key","label":"可选备注"}]' \
-     --out "<客户端>/Contents/Resources/desktop-dist/kcm/external.js"
-   ```
-
-   多家就数组里多个对象。客户端路径可用 doctor.mjs 第一行输出。
-3. 核对输出：每家「抓取成功」或明确的失败原因（401=key 无效）。失败的那家把原因转述给用户，其余照常写入。
-4. 告诉用户：面板稍后自动刷新（约一分钟内）或重载客户端立即生效；显示的是**快照**，之后的花费不会自动更新，想刷新就再说一声。
-
-## 移除
-
-```bash
- node <技能目录>/scripts/fetch-external.mjs --clear --out <同上路径>
-```
-
-移除单个平台 = 用剩下的账号重跑一次 --fetch（整体替换）。
-
-## 预期管理（对用户如实说）
-
-- 快照非实时：两次刷新之间的消耗不反映。
-- 客户端大版本更新可能清掉快照文件：重新提供 key 刷一次即可。
-
-## 加油包余额（Kimi 自己的账户）
-
-面板标题行的余额显示来自另一条通路：用客户端自己的凭据读官方 API 写成快照。
-
-- 刷新：运行已装补丁目录里的工具（doctor.mjs 第一行有客户端路径）：
+- 刷新（已装补丁目录里的工具，doctor.mjs 第一行有客户端路径）：
   ```bash
-  node "<客户端>/Contents/Resources/desktop-dist/kcm/fetch-wallet.mjs"        --out "<客户端>/Contents/Resources/desktop-dist/kcm/wallet.js"
+  node "<客户端>/Contents/Resources/desktop-dist/kcm/fetch-wallet.mjs" --out "<客户端>/Contents/Resources/desktop-dist/kcm/wallet.js"
   ```
 - 报「凭据已失效（401/403）」：请用户打开一次 Kimi Code 客户端（会自动续期凭据），再重试。
-- 同为快照：两次刷新之间的消耗不反映；安装器安装时会自动刷一次。
+- 同样是快照：两次刷新之间的消耗不反映；安装补丁时会自动刷一次。
 - 安全：凭据 token 只进请求头，不回显、不落盘；wallet.js 里只有余额数字。

@@ -98,7 +98,7 @@ test('payloadHash：机器数据与工具文件不参与哈希', () => {
   const vib = makeHashFixture();
   try {
     const before = payloadHash(vib);
-    for (const f of ['usage-daily.js', 'external.js', 'wallet.js', 'fetch-wallet.mjs']) {
+    for (const f of ['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']) {
       fs.writeFileSync(path.join(vib, f), `// ${f} fixture`);
     }
     assert.equal(payloadHash(vib), before);

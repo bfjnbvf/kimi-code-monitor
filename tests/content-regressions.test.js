@@ -168,10 +168,21 @@ test('订阅重放（ack 之前的事件）不改状态不播 Stars，历史重�
   assert.match(wsSource, /ackWatchdog = setTimeout/);
 });
 
+test('外部账户：未适配的供应商只进模块设置清单，不占常规列表', () => {
+  // 三类分类来自共享层；渲染侧只认「已接入」的，未适配的留给 ≡ 设置里的清单
+  assert.match(widgetSource, /panel\.externalUnsupported/);
+  assert.match(renderSource, /panel\.externalUnsupported\.length/);
+  // 数据时间：面板直连是 60 秒一轮，用户要能看出"这是刚抓的还是十分钟前的"
+  assert.match(renderSource, /function externalAgeText\(at\)/);
+  // 失败沿用上次成功数字：类型前缀位置换成数字年龄；从未成功过才显示「获取失败」
+  assert.match(renderSource, /provider\.error && !age\) return t\('获取失败'\)/);
+});
+
 test('子代理总览模块：注册、渲染与实时状态标记', () => {
   assert.match(renderSource, /function renderAgents\(\)/);
   assert.match(widgetSource, /agents: '子代理'/);
-  assert.match(renderSource, /agentTotals\[agentId\]/);
+  // 一行 = 一个代理实例 × 一个模型：按代理展开成多行，不按模型合并
+  assert.match(renderSource, /for \(const \{ model, totals \} of agentModelRows\(agentId\)\)/);
   assert.match(wsSource, /activeSubagents\.add/);
   assert.match(sessionSource, /seedAgentsFromScan/);
 });

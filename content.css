@@ -500,6 +500,16 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   color: var(--ksb-accent);
 }
 
+/* 只读项：客户端里配了但面板查不到用量的供应商（未适配/没 key），列出名字与原因 */
+.ksb-menu-opt.ksb-off {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ksb-menu-opt.ksb-off:hover {
+  background: var(--ksb-fill-2);
+}
+
 /* 编辑模式分区块：灰=隐藏、蓝=展开、绿=固定；浅色底 + 色点标题 + 同色模块描边，区块之间留真实间距 */
 
 #ksb-widget.ksb-editing .ksb-region {
@@ -1036,9 +1046,12 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
 
 /* 代理徽标：常态灰底灰字；对应代理工作时点亮（主淡蓝、子淡绿） */
 .ksb-agent-badge {
-  width: 14px;
+  /* 「主」占一个字符宽，「子3」这类带序号的子代理章自动撑宽（同模型多实例时区分） */
+  min-width: 14px;
   height: 14px;
-  border-radius: 50%;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

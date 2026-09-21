@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as KimiMetrics from '../src/metrics.js';
 import * as KimiCliUsage from '../src/cli-usage.js';
-import { loadBackgroundModule, runInBackgroundContext } from './background-test-helper.js';
+import { loadBackgroundModule, runInBackgroundContext, createIndexedDBMock } from './background-test-helper.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backgroundSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'background.js'), 'utf8');
@@ -43,86 +43,6 @@ function storageArea(initial = {}) {
     },
     async remove(keys) {
       for (const key of Array.isArray(keys) ? keys : [keys]) delete data[key];
-    }
-  };
-}
-
-function createIndexedDBMock() {
-  const dbs = new Map();
-  function request(result) {
-    const r = { result, onsuccess: null, onerror: null };
-    queueMicrotask(() => {
-      if (r.onsuccess) r.onsuccess({ target: r });
-    });
-    return r;
-  }
-  function getStore(db, name) {
-    if (!db.stores[name]) db.stores[name] = new Map();
-    return db.stores[name];
-  }
-  return {
-    open(dbName, version) {
-      let db = dbs.get(dbName);
-      let upgraded = false;
-      if (!db) {
-        db = {
-          name: dbName,
-          version: version || 1,
-          stores: {},
-          objectStoreNames: {
-            names: new Set(),
-            contains(name) { return this.names.has(name); },
-            [Symbol.iterator]() { return this.names.values(); }
-          },
-          createObjectStore(name) {
-            getStore(db, name);
-            this.objectStoreNames.names.add(name);
-            return {};
-          },
-          close() {}
-        };
-        db.createObjectStore = db.createObjectStore.bind(db);
-        db.transaction = (storeName, mode) => {
-          const store = getStore(db, storeName);
-          return {
-            objectStore() {
-              return {
-                get(key) { return request(store.get(key)); },
-                put(value, key) { store.set(key, value); return request(undefined); },
-                delete(key) { store.delete(key); return request(undefined); }
-              };
-            },
-            onabort: null
-          };
-        };
-        db.close = () => {};
-        dbs.set(dbName, db);
-        upgraded = true;
-      } else if (version && db.version < version) {
-        db.version = version;
-        upgraded = true;
-      }
-      const r = { result: db, onsuccess: null, onerror: null, onupgradeneeded: null };
-      queueMicrotask(() => {
-        if (upgraded && r.onupgradeneeded) {
-          r.onupgradeneeded({ target: r, oldVersion: 0, newVersion: version || 1 });
-        }
-        if (r.onsuccess) r.onsuccess({ target: r });
-      });
-      return r;
-    },
-    transaction(db, storeName, mode) {
-      const store = getStore(db, storeName);
-      return {
-        objectStore() {
-          return {
-            get(key) { return request(store.get(key)); },
-            put(value, key) { store.set(key, value); return request(undefined); },
-            delete(key) { store.delete(key); return request(undefined); }
-          };
-        },
-        onabort: null
-      };
     }
   };
 }

@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const APP_NAME = 'Kimi Code';
 const BACKUP_SUFFIX = '.bak-kcm';
 const LOADER_SRC = '/kcm/loader.js';
-const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'external.js', 'wallet.js', 'fetch-wallet.mjs']);
+const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']);
 
 /* ---------- 平台差异 ---------- */
 
@@ -94,12 +94,6 @@ function httpStatus(port, urlPath, timeoutMs = 2000) {
     req.on('timeout', () => { req.destroy(); resolve(0); });
     req.on('error', () => resolve(0));
   });
-}
-
-function fmtMtime(file) {
-  const d = fs.statSync(file).mtime;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /* ---------- 主流程 ---------- */
@@ -180,9 +174,10 @@ async function main() {
   } else {
     warnFn('无历史统计数据文件（全新环境正常；否则重跑安装预填）');
   }
-  const external = path.join(vib, 'external.js');
-  if (fs.existsSync(external) && fs.statSync(external).size > 0) ok(`外部账户快照在位（${fmtMtime(external)}）`);
-  else console.log('INFO  无外部账户快照（未配置外部账户，正常）');
+  // 旧版快照文件：外部账户已改为面板直连客户端配置，不再落盘；残留就提示重装清掉
+  if (fs.existsSync(path.join(vib, 'external.js'))) {
+    warnFn('发现旧版外部账户快照 external.js（新版不再使用，重跑安装即可清掉）');
+  }
 
   // 5. kap 本地服务（发现 + 探测）
   let kapPort = '';

@@ -1,7 +1,9 @@
 /* 面板补丁 loader：由桌面端 desktop-dist/index.html 末尾的
    <script src="/kcm/loader.js?v=N"> 引入（N 为载荷内容哈希，
    Electron 子资源缓存不发校验头，只能靠查询参数穿透）。
-   职责：kap 源解析 / 资产映射 / 挂载点 / 落盘快照数据桥（usage-daily、external、wallet）。
+   职责：kap 源解析 / 资产映射 / 挂载点 / 落盘快照数据桥（usage-daily、wallet）。
+   usage-daily.js 里既带按天/按小时统计，也带按会话（代理 × 模型）汇总——
+   后者是切会话时本地恢复的底数。
    数据由 panel-app.js 的直连模式（direct.js）连 kap-server。 */
 (() => {
   if (window.__kcmInjected) return;
@@ -36,9 +38,9 @@
     }
   } catch (e) { /* 忽略，走兜底 */ }
 
-  // 落盘快照：usage-daily.js（安装器 wire.jsonl 全量扫描）/ external.js /
-  // wallet.js 三个文件由安装器与技能写入，都用 script 标签加载——与 loader
-  // 自身同一通路，不受页面 CSP 对 fetch 的限制；内容变化才推。
+  // 落盘快照：usage-daily.js（安装器 wire.jsonl 全量扫描）/ wallet.js 两个
+  // 文件由安装器与技能写入，都用 script 标签加载——与 loader 自身同一通路，
+  // 不受页面 CSP 对 fetch 的限制；内容变化才推。
   // 文件缺席（全新环境未预填）属正常：面板从安装时刻开始积累。
   //
   // 诊断状态写全局：面板的状态文案 ticker（status-copy.js）从这里取
@@ -125,21 +127,15 @@
     },
     onPayload: (j) => window.__kcm.push({
       v: 1, type: 'usageDaily',
-      daily: j.daily, hourly: j.hourly,
+      daily: j.daily, hourly: j.hourly, sessions: j.sessions,
       secondaryModel: j.secondaryModel, connected: true
     })
   });
   // 面板装配完成信号（panel-app bootstrap 派发）：补推一次，消掉首轮时序差
   window.addEventListener('kcm:panel-ready', () => usagePoller.push(), { once: true });
 
-  // 外部账户快照（fetch-external.mjs 产出，60s 轮询；内容变化才推）。
-  // 与 usage-daily 同一 script 标签通路与防吞推送规则。
-  startPolling({
-    src: '/kcm/external.js',
-    baseMs: 60_000,
-    read: () => window.__kcmExternal,
-    onPayload: (j) => window.__kcm.push({ v: 1, type: 'external', providers: j.providers })
-  });
+  // 外部账户不走文件：direct.js 每 60 秒直连客户端自己的 provider 配置与厂商
+  // 余额接口，结果直接从 push 管道进来（这一层不需要任何落盘快照）。
 
   // 加油包余额快照（fetch-wallet.mjs 产出）：以 quota 消息的 wallet 字段
   // 送达（handleQuota 里 limit5h/limit7d 可缺席，只更新余额位）

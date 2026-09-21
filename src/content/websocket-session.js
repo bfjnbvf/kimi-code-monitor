@@ -14,6 +14,7 @@ import { toNumber, rcApiPrefix, isRemoteControl } from './utils.js';
 import { t } from '../i18n.js';
 import {
   panel,
+  noteAgentUsage,
   registerSessionAgent,
   pushStepSample,
   pushReplayedTurnDuration,
@@ -80,12 +81,9 @@ export function createWebSocketSession(deps) {
     metrics.cacheReadTokens += usage.cacheReadTokens;
     metrics.cacheCreationTokens += usage.cacheCreationTokens;
 
-    registerSessionAgent(agentId);
-    const totals = panel.agentTotals[agentId];
-    totals.inputTokens += usage.inputTokens;
-    totals.outputTokens += usage.outputTokens;
-    totals.cacheReadTokens += usage.cacheReadTokens;
-    totals.cacheCreationTokens += usage.cacheCreationTokens;
+    // 落进「代理 × 模型」：事件自带模型名就用它，不带就记到该代理的当前模型
+    // （从本地汇总种进来）。代理合计同步累加，两者不会各记一份、也不会对不上。
+    noteAgentUsage(agentId, payload.model || payload.modelAlias, usage);
 
     pushStepSample(payload);
     renderAll();

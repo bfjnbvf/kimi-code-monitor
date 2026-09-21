@@ -2,20 +2,26 @@
 
 **简体中文 | [English](README.en.md)**
 
+> **目录**
+> [主要特性](#主要特性)：[宠物](#通用-codex-桌面宠物) · [用量分析](#用量分析) · [AI 回复收藏](#ai-回复收藏) · [分享卡片](#用量分享卡片) · [吉祥物](#会反映状态的吉祥物) · [自定义面板](#模块化自定义面板) · [自动归档](#自动归档不活跃对话实验性) · [标题生成](#会话标题自动生成官方能力) · [更多](#更多)
+>
+> **[**安装与授权**](#安装与授权)：[客户端](#安装与授权) · [Chrome 插件](#安装与授权)**
+>
+> [数据与隐私](#数据与隐私) · [技术实现](#技术实现)
+
 > **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
 >
 > ```text
 > 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
 > ```
 >
-> 卸载与日常运维（自检 / 外部账户代查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
+> 卸载与日常运维（自检 / 供应商余额排查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
 
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
 Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌面客户端（macOS / Windows，补丁形式安装）。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
-
 
 ## 主要特性
 
@@ -92,16 +98,40 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 未开启时，「扩展功能」卡片提供「复制提示词」：粘贴到 kimi web 对话框发送，由 kimi 自动修改配置开启（完成后运行 /reload 生效）；官方实验已开启时该入口自动隐藏。也可以手动设置环境变量 `KIMI_CODE_EXPERIMENTAL_FLAG=1` 后用 /experiments 确认。
 
-### 中英文双语
-
-全部界面文案（面板、弹窗、收藏、分享卡片）支持中文与 English，**跟随 Kimi Web 的语言设置**，切换后约 1 秒热更新，无需刷新页面。
-
 ### 更多
 
 - 加油包余额显示，点击直达充值页（可改为控制台）
 - 侧栏美化（可开关）：隐藏侧栏顶部 logo，新建对话按钮上移，与伸缩按钮排成一行
 
 ## 安装与授权
+
+<details>
+<summary>客户端 Skill 版（macOS / Windows 桌面客户端，推荐）</summary>
+
+唯一前提：装好了 Kimi Code 桌面客户端。安装器会借客户端自带的运行时，**不需要安装 Node，也不产生任何系统级文件**（所有写入都在客户端自己的资源目录里）。
+
+**方式一（推荐）：让 Kimi 自己装**
+
+把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
+
+```text
+请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
+```
+
+**方式二：手动安装**
+
+1. 从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载 `kcm-desktop-patch.zip` 并解压
+2. macOS 在终端执行 `bash install.sh`；Windows 直接双击 `install.cmd`（或在 cmd 里运行）。客户端不在默认位置时追加 `--app "<客户端目录>"`
+3. 重载客户端（macOS `Cmd+R`，Windows `Ctrl+R`），面板出现在会话侧栏底部
+
+安装幂等，可反复执行；`--uninstall` 完整卸载（还原原始文件）。客户端大版本更新会清掉面板文件——重新执行一次安装即可，历史统计会重新扫描补齐，使用期间攒的数据存在客户端自己的存储里，不受影响。
+
+卸载与日常运维（自检 / 供应商余额排查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
+
+</details>
+
+<details>
+<summary>Pro 插件版（Chrome / Edge 浏览器扩展）</summary>
 
 需要 Chrome 120 或更高版本。
 
@@ -125,7 +155,12 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 扩展使用自己的 OAuth token，不读写 Kimi Code CLI 的凭据。CLI 目录授权仅用于可选的长期用量统计。
 
+</details>
+
 ## 数据与隐私
+
+<details>
+<summary>展开查看</summary>
 
 - 默认不持久化 WebSocket 会话历史；输入、输出、缓存、速度和折线图只维护当前页面数据
 - 未连接本地 CLI 时，24h、7天、30天长期统计保持锁定，其他实时功能不受影响
@@ -139,7 +174,16 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - 后台消息路由校验来源：扩展弹窗全量放行；内容脚本仅限本机回环与已授权站点，且只能使用面板功能所需的消息类型（`src/background/sender-guard.js`）
 - Rive 动画资产经 `web_accessible_resources` 对所有 http(s) 页面可见（动态授权的站点无法在 manifest 里静态列举，只能全量放开），理论上可被网页用于探测本机是否安装了本扩展；除此之外扩展不向任意网页暴露资源或接口
 
-## 项目结构
+</details>
+
+## 技术实现
+
+面板本体是一个注入 kimi web 页面的内容脚本：从页面 WebSocket 事件流还原会话状态，DOM 挂在侧边栏内，数据只进内存、不上传；额度与授权走扩展后台的 OAuth 通道，长期用量统计来自显式授权后对本地 CLI 会话文件的增量读取。
+
+桌面客户端（补丁形态）与扩展共用 `src/content/` 的同一套面板本体与渲染层，但数据链路完全不同——不经过扩展后台，全部直连客户端自己：`loader.js` 注入客户端页面（脚本标签带载荷内容哈希穿透缓存，原始 `index.html` 自动备份、卸载逐字节还原）；面板的 `direct.js` 直连同机 kap-server——WebSocket 事件流还原会话状态、REST 轮询额度与加油包余额；外部账户读取客户端自己的供应商配置（key 只在内存里用一次，不落盘），直连各厂商的余额端点，每 60 秒刷新、失败时沿用上次成功的数值并标注数据时间；长期统计由安装器全量扫描 `~/.kimi-code/sessions` 预填（按天 / 按小时 / 按会话的代理 × 模型汇总），之后在页面内继续实时积累。安装零前提的实现：两个「点火壳」（`install.sh` / `install.cmd`）优先借客户端内置的 Node 运行时（Electron 的 `ELECTRON_RUN_AS_NODE`），系统 Node 兜底；安装逻辑只有 `install.mjs` 一份，跨 macOS / Windows。
+
+<details>
+<summary>展开查看</summary>
 
 源码在 `src/`（ES modules），`npm run build` 用 esbuild 打出 `dist/`（content/background/popup/panel-app 四个 bundle），manifest 与 popup.html 只引用 `dist/` 产物。`npm test` 先构建再跑全部测试（含发版守卫），`npm run lint` 做引用检查（no-undef 等）。
 
@@ -156,5 +200,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - `src/session-files.js`：本地会话目录布局规则（wire.jsonl 的枚举与命名，扩展侧与安装器侧共用同一份）
 - `src/providers.js`：外部 provider 的端点与解析
 - `src/pet/`：桌面宠物——`sprites.js`（图集播放器 + 行为）、`install.js`（画廊命令解析与下载）、`store.js`（IndexedDB 素材库）
-- `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器、`install.mjs` 安装器（Node ≥16，跨 macOS/Windows，`install.sh` 为旧版备选）、`scan.mjs` 历史扫描）
+- `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器、`install.mjs` 安装器（跨 macOS/Windows 唯一逻辑，`install.sh`/`install.cmd` 为点火壳——借客户端自带的 Node，零安装前提）、`scan.mjs` 历史扫描）
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）
+
+</details>

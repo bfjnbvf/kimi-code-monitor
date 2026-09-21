@@ -1,8 +1,23 @@
-skill-version: 6
+skill-version: 8
 patch-version: 3.5.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 
 # 更新记录
+
+## 8（2026-09-21）
+
+配套补丁仍为 3.5.0（内容合并进同日发版）：
+
+- **安装零前提**：安装入口改为 `install.sh`（macOS）/ `install.cmd`（Windows，可双击）——优先借客户端自带的 Node（Electron 内置），系统 Node 兜底；不再要求用户装 Node。安装逻辑唯一保留在 install.mjs
+- **外部账户改为自动跟随客户端供应商配置**：不再代查、不向用户索取 key；新增 `scripts/client-providers.mjs`（探测 + 三类分类报告，含"不支持余额查询"话术），删除 `fetch-external.mjs` 与 external.js 兜底快照
+- 新增 `scripts/refresh-stats.mjs` 与 `references/refresh-stats.md`：「刷新本地统计」一句话入口（补丁载荷自带 `kcm/scan.mjs` 原地重写）
+- 技能脚本用 esbuild 打成零依赖单文件（修复已装技能跑不起来的问题）；doctor 的外部账户检查改为"残留旧快照提示重装"
+- faq / guide-scripts / SKILL-INSTALL 话术全面对齐当前行为（key 相关、代查相关、表头时间）
+
+
+## 7（2026-09-21）
+
+首装引导的「编辑模式详解」补第二步：每个模块右上角的 ≡ 小菜单，点击可调该模块的专属设置（图表范围/倒计时格式/匀速参照线/宠物数据位/小球跳转等）。
 
 ## 6（2026-09-21）
 

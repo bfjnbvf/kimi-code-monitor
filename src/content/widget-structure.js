@@ -615,7 +615,12 @@ function moduleMenuHTML(id) {
 // 外部账户模块的显隐开关：每个已配置账户一项，点亮为显示，可连续切换
 function externalVisibilityOpts() {
   const hidden = panel.widgetConfig.modules.external?.hiddenAccounts || [];
-  if (!panel.externalProviders.length) {
+  // 未适配的供应商只在这里出现（常规列表不占位），列出名字与原因，
+  // 让用户知道"面板看到了它、只是查不到用量"，而不是以为没配上
+  const unsupported = (panel.externalUnsupported || [])
+    .map((item) => `<span class="ksb-menu-opt ksb-off" title="${escapeHtml(item.reason || '')}">${escapeHtml(item.id)} · ${t('不支持余额查询')}</span>`)
+    .join('');
+  if (!panel.externalProviders.length && !unsupported) {
     return `<div class="ksb-menu-opts"><span class="ksb-menu-opt">${t('暂无已配置账户')}</span></div>`;
   }
   const opts = panel.externalProviders

@@ -19,7 +19,7 @@ import {
   usageDayKey,
   usageHourKey
 } from '../metrics.js';
-import { panel, agentModelLabel, emptyAgentMetric } from './panel-state.js';
+import { panel, agentDisplayName, agentModelRows, modelDisplayName } from './panel-state.js';
 import { STATUS_SHORT } from '../panel-app/status-copy.js';
 import {
   escapeHtml,
@@ -52,7 +52,6 @@ const {
   metrics,
   sessionSamples,
   turnDurations,
-  agentTotals,
   sessionAgentOrder,
   activeSubagents
 } = panel;
@@ -418,35 +417,12 @@ export function renderAgents() {
   const hiddenAgents = panel.widgetConfig.modules.agents?.hiddenAgents || [];
   const mainWorking = panel.petTurnActive || PET_ANSWER_STATUSES.includes(metrics.agentStatus);
 
-  // 子代理按模型名分组汇总
-  const groups = new Map();
-  for (const agentId of sessionAgentOrder) {
-    if (agentId === 'main' || hiddenAgents.includes(agentId)) continue;
-    const totals = agentTotals[agentId];
-    if (!totals) continue;
-    const key = agentModelLabel(agentId);
-    let group = groups.get(key);
-    if (!group) {
-      group = { ...emptyAgentMetric(), working: false, count: 0 };
-      groups.set(key, group);
-    }
-    group.inputTokens += totals.inputTokens;
-    group.outputTokens += totals.outputTokens;
-    group.cacheReadTokens += totals.cacheReadTokens;
-    group.cacheCreationTokens += totals.cacheCreationTokens;
-    group.working = group.working || activeSubagents.has(agentId);
-    group.count += 1;
-  }
-
   const rows = [];
-  const pushRow = ({ isMain, totals, working, name, title }) => {
+  const pushRow = ({ isMain, totals, working, badge, name, title }) => {
     const hasUsage = totalInputTokens(totals) > 0 || totals.outputTokens > 0;
-    // 无用量的子代理组只在「工作中」时占位；主代理始终显示
+    // 无用量的行只在「工作中」时占位；主代理始终显示
     if (!hasUsage && !working && !isMain) return;
     const hit = cacheReadPercentage(totals);
-    const badge = isMain
-      ? `<span class="ksb-agent-badge main${working ? ' on' : ''}">主</span>`
-      : `<span class="ksb-agent-badge sub${working ? ' on' : ''}">子</span>`;
     rows.push(`
       <div class="ksb-agent-row${isMain ? ' main' : ''}" title="${escapeHtml(title)}">
         <span class="ksb-agent-id">${badge}</span>
@@ -457,23 +433,30 @@ export function renderAgents() {
       </div>`);
   };
 
-  const mainModel = agentModelLabel('main');
-  pushRow({
-    isMain: true,
-    totals: agentTotals.main || emptyAgentMetric(),
-    working: mainWorking,
-    name: escapeHtml(mainModel),
-    title: `${t('主代理')}${mainModel ? ` · ${mainModel}` : ''}`
-  });
-  for (const [model, group] of groups) {
-    pushRow({
-      isMain: false,
-      totals: group,
-      working: group.working,
-      // 模型名缺失（未授权 CLI 读不到次级模型名）时兜底为「子代理」，避免裸 ×N
-      name: escapeHtml(`${model || t('子代理')}${group.count > 1 ? ` ×${group.count}` : ''}`),
-      title: `${t('子代理')}${model ? ` · ${model}` : ''}${group.count > 1 ? ` ×${group.count}` : ''}`
-    });
+  // 一行 = 一个代理实例 × 一个模型。同一个代理中途换过模型就是多行（各自显示
+  // 各自用过的模型），同一个模型的多个子代理也各占一行——代理 id 是会话日志里
+  // 的代理目录名（main / agent-1 / agent-2…），所以按模型合并会把它们糊成一行。
+  // 主代理一律带「主」章，子代理用「子 + 序号」区分同名的多个实例。
+  for (const agentId of sessionAgentOrder) {
+    if (hiddenAgents.includes(agentId)) continue;
+    const isMain = agentId === 'main';
+    const working = isMain ? mainWorking : activeSubagents.has(agentId);
+    const index = sessionAgentOrder.indexOf(agentId);
+    const badge = isMain
+      ? `<span class="ksb-agent-badge main${working ? ' on' : ''}">主</span>`
+      : `<span class="ksb-agent-badge sub${working ? ' on' : ''}">子${index}</span>`;
+    for (const { model, totals } of agentModelRows(agentId)) {
+      // 模型名缺失（未授权 CLI、实时事件不带模型）时兜底为代理名，避免空白单元格
+      const label = modelDisplayName(model) || t(isMain ? '主代理' : '子代理');
+      pushRow({
+        isMain,
+        totals,
+        working,
+        badge,
+        name: label,
+        title: `${agentDisplayName(agentId)} · ${label}`
+      });
+    }
   }
   panel.els.agentsList.innerHTML = rows.join('');
 }
@@ -483,7 +466,18 @@ export function renderAgents() {
 // 格式化单个账户的主数值与子数值：余额类「API余额 ¥4.46」；
 // 套餐类「5h 40.0% · 1w 12.0%」；半宽只取主数值 + 次要窗口做下角标
 function formatExternalValue(provider) {
-  if (provider.error) return { main: t('获取失败'), sub: '', note: provider.error };
+  // 失败沿用上次成功的数字：余额变化慢，旧的真数字比空白有用。
+  // 副位/悬停里给出这串数字的年龄与失败原因；从未成功过才显示「获取失败」
+  if (provider.error) {
+    const age = externalAgeText(provider.fetchedAt);
+    if (!age) return { main: t('获取失败'), sub: '', note: provider.error };
+    const ok = formatExternalValue({ ...provider, error: '' });
+    return {
+      main: ok.main,
+      sub: ok.sub || age,
+      note: [age, provider.error].filter(Boolean).join(' · ')
+    };
+  }
   if (provider.kind === 'balance') {
     const main = `${provider.currency}${provider.total.toFixed(2)}`;
     return {
@@ -504,6 +498,19 @@ function formatExternalValue(provider) {
     };
   }
   return { main: provider.plan || t('已启用'), sub: '', note: '' };
+}
+
+// 数据新鲜度：外部账户是面板每 60 秒直连厂商接口抓的，用户需要一眼看出
+// "这是刚抓的还是十分钟前的"。超过一天只报天，避免"1234 分钟前"这种废话。
+function externalAgeText(at) {
+  const ms = Date.now() - Number(at || 0);
+  if (!Number.isFinite(ms) || ms < 0 || !at) return '';
+  if (ms < 60_000) return t('刚刚');
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return t('{count} 分钟前', { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('{count} 小时前', { count: hours });
+  return t('{count} 天前', { count: Math.floor(hours / 24) });
 }
 
 export function renderExternal() {
@@ -529,18 +536,28 @@ export function renderExternal() {
   // 数值的类型前缀（API余额 / 5小时 等）单独成 span，窄面板时整体隐藏只留数字
   if (!panel.els?.externalList) return;
   if (!visible.length) {
-    // 独立面板没有扩展弹窗：配置入口是和 Agent 对话
-    panel.els.externalList.innerHTML =
-      `<div class="ksb-external-empty">${t(panel.standaloneMode ? '使用 kimi-code-monitor 技能，让 Kimi 配置外部账户' : '在扩展弹窗中配置 API Key')}</div>`;
+    // 账户来自客户端自己的供应商配置，面板不再要求在这里填 key。
+    // 有未适配的供应商时点明"看到了但查不到"，否则指向客户端里的配置位置。
+    const unsupportedCount = panel.externalUnsupported.length;
+    const emptyText = panel.standaloneMode
+      ? (unsupportedCount
+        ? t('已配置 {count} 个供应商，暂不支持余额查询（见本模块设置）', { count: unsupportedCount })
+        : t('在客户端里添加供应商后自动显示余额'))
+      : t('在扩展弹窗中配置 API Key');
+    panel.els.externalList.innerHTML = `<div class="ksb-external-empty">${emptyText}</div>`;
     return;
   }
   // 同一 provider 多个账户时，用 key 尾号区分
   const nameCounts = {};
   for (const p of visible) nameCounts[p.name] = (nameCounts[p.name] || 0) + 1;
   const valueHtml = (provider) => {
-    if (provider.error) return t('获取失败');
+    // 失败沿用上次成功的数字：类型前缀位置换成这串数字的年龄（如「3 分钟前 ¥6.70」），
+    // 失败原因在悬停里；从未成功过才显示「获取失败」
+    const age = externalAgeText(provider.fetchedAt);
+    if (provider.error && !age) return t('获取失败');
     if (provider.kind === 'balance') {
-      return `<span class="ksb-external-kind">${t('API余额')}</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
+      const kind = provider.error ? age : t('API余额');
+      return `<span class="ksb-external-kind">${escapeHtml(kind)}</span> ${escapeHtml(provider.currency)}${provider.total.toFixed(2)}`;
     }
     if (provider.windows?.length) {
       return provider.windows

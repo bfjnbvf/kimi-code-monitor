@@ -1,6 +1,6 @@
 # 工作计划 — 桌面补丁 Windows 适配
 
-> 日期：2026-09-21 ｜ 状态：**P1–P3 已完成（待验证），P4 Windows 真机验证待机器** ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)、[HANDOFF.md](./HANDOFF.md) §八
+> 日期：2026-09-21 ｜ 状态：**安装入口已由「零前提」方案取代**（`node install.mjs` → `install.sh`/`install.cmd` 点火壳借客户端自带 Node，见 docs/DESKTOP-PATCH.md）；Windows 侧验证由 CI 的 windows job 承担（`tests/windows-install.js`） ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)；发版流程见本机交接文档 `docs/HANDOFF.md` §八（该文件不进仓库）
 >
 > 前置结论：Kimi Code 桌面客户端 2026-09-18 官方发布，**macOS 与 Windows 双平台**（[开源中国报道](https://www.oschina.net/news/502565/kimi-code-desktop)）。Windows 适配不是「等客户端」，是直接开工项。
 >
@@ -47,7 +47,7 @@
 | **P2 doctor.mjs** | 检查项逐一平移（文件完整性 / 标签与哈希 / 数据文件 / kap 探测）；客户端版本读取跨平台（macOS 解析 Info.plist；Windows PowerShell 读 exe 版本信息） | ✅ 已完成：`skill/scripts/doctor.mjs`（自包含，输出格式与 bash 版一致；哈希与安装器一致性有测试互钉） | 0.5 天 |
 | **P3 skill 文档** | install / update / doctor / guide-scripts 四篇加 Windows 分支 | ✅ 已完成：四篇 + SKILL.md + MAINTENANCE（skill-version 3）；install.md 含 node 前置检查与双平台命令 | 0.5 天 |
 | **P4 真机验证** | Windows 客户端：安装→面板出现在侧栏底部→实时数据（WS+REST）→历史预填→卸载还原；macOS 回归全流程 | ⬜ 待 Windows 机器；验收标准见 §七 | 0.5–1 天 |
-| **P5 发布** | 按 HANDOFF §八：版本号三处 + CHANGELOG + 双 zip + skill 同步检查表；**用户确认后** commit/tag/Release | ⬜ 待 P4 通过 | 0.5 天 |
+| **P5 发布** | 按本机交接文档 `docs/HANDOFF.md` §八：版本号三处 + CHANGELOG + 双 zip + skill 同步检查表；**用户确认后** commit/tag/Release | ⬜ 待 P4 通过 | 0.5 天 |
 
 **P1–P3 已完成（代码 + 测试 + 文档），剩 P4 真机验证与 P5 发布。**
 
@@ -75,7 +75,7 @@
 
 `install.mjs` 上线后**保留 `install.sh` 一个版本周期**（scripts/build-patch.mjs 两个都打，技能默认引导 node 安装器、注明 bash 为旧版兼容）；Windows 真机验证通过、macOS 等价性无回归后，下一个大版本删 `install.sh`。任何阶段出问题可单独回退安装器，不动运行时代码。
 
-## 八、发布检查（按 HANDOFF §八）
+## 八、发布检查（按本机交接文档 `docs/HANDOFF.md` §八）
 
 1. 版本号三处一致（`manifest.json` / `package.json` / `skill/MAINTENANCE` 的 `patch-version`）+ CHANGELOG 顶部条目——`tests/release-sync.test.js` 自动把关
 2. skill 同步检查表：install/update/doctor/guide-scripts 四篇本轮有变更 → bump `skill-version` 并在 MAINTENANCE 加条目
