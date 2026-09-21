@@ -2,7 +2,7 @@
 
 > 状态：首版完成，本机实测中。补丁包与 Chrome 扩展同仓库同源码（`src/panel-app/`），一次改动两侧同时生效。
 >
-> **推荐的完整流程是技能**：把本仓库地址发给桌面客户端里的 Kimi，它会安装 `skill/` 下的运维技能并引导完成安装、自检、答疑与外部账户配置（技能文档见 `skill/SKILL.md`）。本文的下述提示词是"不带技能"的裸安装方式，功能等价、体验朴素。
+> **推荐的完整流程是技能**：把 README 头部的提示词发给桌面客户端里的 Kimi——它会按 [docs/SKILL-INSTALL.md](SKILL-INSTALL.md) 装好 `kimi-code-monitor` 运维技能（Release 技能包，固定名），再按技能引导完成面板安装、自检、答疑与外部账户配置（技能文档见 `skill/SKILL.md`）。本文的下述提示词是"不带技能"的裸安装方式，功能等价、体验朴素。
 
 ## 这是什么
 
@@ -23,8 +23,9 @@
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
-1. 下载补丁包：到 https://github.com/bfjnbvf/kimi-code-monitor/releases 下载最新的 kcm-desktop-patch-v*.zip
-2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
+1. 下载补丁包（Release 资产，固定名直链，始终最新）：
+   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip
+2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、fetch-wallet.mjs、kcm/ 即可）
 3. 解压到一个临时目录
 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
 5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
@@ -42,7 +43,7 @@
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
-1. 补丁包在本地：/Users/gabriel/Documents/Coding/kimi-code-monitor/kcm-desktop-patch-v3.5.0.zip
+1. 补丁包在本地：/Users/gabriel/Documents/Coding/kimi-code-monitor/kcm-desktop-patch.zip
 2. 解压到一个临时目录，确认有 Node（node -v，需 ≥16），在其中执行：node install.mjs
 3. 完成后把这些告诉我：install.mjs 的完整输出、客户端版本（macOS 读 Info.plist 的 CFBundleShortVersionString；Windows 读 Kimi Code.exe 的文件版本）、是否弹出权限确认
 4. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）

@@ -14,8 +14,8 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 | `npm run build` | esbuild 把 `src/` 打成 `dist/` 四个 iife bundle（content / background / popup / panel-app）；**改了源码必须重跑**，manifest 只引用 `dist/` |
 | `npm test` | 先构建再跑全部测试（node:test，含 jsdom smoke）；含发版守卫（版本三处一致 + CHANGELOG 顶部条目） |
 | `npm run lint` | eslint 检查 no-undef / no-unused-vars（拆分事故防线，不做风格限制） |
-| `bash build.sh` | 打扩展发行 zip（含 dist/rive/rules/icons，**不含** docs/tests/web-token.js） |
-| `npm run pack:patch` | 打桌面补丁 zip（install.mjs + install.sh + scan.mjs + kcm/），与扩展共用 src/ 与 content.css/rive |
+| `bash build.sh` | 打扩展发行 zip（版本化名，含 dist/rive/rules/icons，**不含** docs/tests/web-token.js）+ 技能 zip（固定名 `kimi-code-monitor-skill.zip`，顶层带 `kimi-code-monitor/` 目录） |
+| `npm run pack:patch` | 打桌面补丁 zip（固定名 `kcm-desktop-patch.zip`：install.mjs + install.sh + scan.mjs + fetch-wallet.mjs + kcm/），与扩展共用 src/ 与 content.css/rive |
 
 - 在 `chrome://extensions` 重载扩展后，Kimi Web 页面要手动刷新一次面板才恢复（Chrome 不会重新注入 content script）。
 - 架构分层：`src/content.js`+`src/content/`（页面面板）、`src/background.js`+`src/background/`（后台域）、`src/popup.js`+`src/popup/`（弹窗），共享纯函数在 `src/` 根（`metrics.js`、`i18n.js`、`cli-usage.js`、`providers.js`、`share-card.js`）。模块职责见 README「项目结构」。
@@ -66,5 +66,5 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
    | 外部账户 | `references/external-accounts.md` + `scripts/fetch-external.mjs` |
    | 对用户话术 | `references/guide-scripts.md` |
 
-3. `npm test` 全绿 → `bash build.sh` 出扩展 zip；桌面补丁有改动时 `npm run pack:patch` 出补丁 zip。
-4. **经用户确认后**再 commit / 打 tag / 以 CHANGELOG 对应段落建 GitHub Release。
+3. `npm test` 全绿 → `bash build.sh` 出扩展 zip（版本化名）+ 技能 zip（固定名）；桌面补丁有改动时 `npm run pack:patch` 出补丁 zip（固定名）。
+4. **经用户确认后**再 commit / 打 tag / 以 CHANGELOG 对应段落建 GitHub Release。资产上传：扩展 zip 用版本化名普通上传；技能 zip 与补丁 zip 是固定名，每次发版用 `gh release upload <tag> <file> --clobber` 覆盖上传（`releases/latest/download/` 永久 URL 随之保持最新，各 Release 保留当次版本）。

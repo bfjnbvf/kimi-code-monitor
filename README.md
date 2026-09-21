@@ -5,12 +5,7 @@
 > **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
 >
 > ```text
-> 请帮我安装 kimi-code-monitor 技能，并配置桌面客户端监控面板：
->
-> 1. 从 GitHub 仓库 https://github.com/bfjnbvf/kimi-code-monitor（主分支 main）拉取 skill/ 目录下全部文件，安装到用户级技能目录 ~/.kimi-code/skills/kimi-code-monitor/（保持 SKILL.md 在根，references/ 与 scripts/ 在旁）
-> 2. 安装完成后直接启用这个技能，按技能指示（SKILL.md 及其 references）帮助我安装 kimi-code-monitor 桌面客户端监控面板
->
-> 要求：严格按技能文档流程走；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
 > ```
 >
 > 卸载与日常运维（自检 / 外部账户代查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。

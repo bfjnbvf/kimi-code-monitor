@@ -55,23 +55,30 @@
 
 ## 1. 本技能自身的安装（仅首次，A/B 情况下）
 
-用户把仓库地址发给你时，先完成技能安装，再走面板安装流程：
+用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（固定名，始终最新；版本见包内 `MAINTENANCE`）：
 
-1. 从 GitHub 拉取技能文件（raw 直链，主分支 `main`）：
-   - `skill/SKILL.md`、`skill/MAINTENANCE`
-   - `skill/references/` 下全部 `.md`
-   - `skill/scripts/` 下 `doctor.mjs`、`fetch-external.mjs`
-   直链形如 `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`。
-2. 安装到用户级技能目录：`~/.kimi-code/skills/kimi-code-monitor/`（保持 SKILL.md 在根、references/ 与 scripts/ 在旁）。已存在则先比对 MAINTENANCE 的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
-3. 告诉用户技能已就位，新会话（或重启客户端）后可持续使用。
+1. 下载技能包：
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip`
+2. 解压到用户级技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
+   - macOS / Linux：`curl -fsSL -o /tmp/kcm-skill.zip "<URL>" && mkdir -p ~/.kimi-code/skills && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/`
+   - Windows（PowerShell）：`Invoke-WebRequest -Uri "<URL>" -OutFile "$env:TEMP\kcm-skill.zip"; Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`
+3. 验证 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在即装好；已存在则不要重装，先比对 MAINTENANCE 的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
+4. 告诉用户技能已就位，新会话（或重启客户端）后可持续使用。
+
+备选（Release 不可达时）：从 raw 直链（主分支 `main`）逐文件拉取 `skill/` 下全部文件，组装到同一目录（保持 SKILL.md 在根、references/ 与 scripts/ 在旁）：
+
+- `skill/SKILL.md`、`skill/MAINTENANCE`
+- `skill/references/` 下全部 `.md`（doctor、external-accounts、faq、guide-scripts、install、status-dictionary、update）
+- `skill/scripts/` 下 `doctor.mjs`、`fetch-external.mjs`、`doctor.sh`
+
+直链形如 `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`。
 
 拉取失败（网络不通）时不要硬试：向用户说明无法连接 GitHub，询问是否使用本地已有的技能文件或补丁包继续，并提示本地版本可能过旧、与当前客户端可能不适配的风险。
 
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
 
-1. **确定补丁包**：GitHub Releases 最新版
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases` 的
-   `kcm-desktop-patch-v<版本>.zip`。与 MAINTENANCE 的 patch-version 对照，别装旧包。
+1. **确定补丁包**：GitHub Releases 最新版，固定名直链（始终最新；与 MAINTENANCE 的 patch-version 对照，别装旧包）：
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip`
 2. **下载并解压**到临时目录。下载失败 → 同上面的网络回退说明。
 3. **确认有 Node**：`node -v`（安装器是 Node 脚本，需 Node ≥16）。没有就先引导用户装（macOS：`brew install node` 或官网；Windows：`winget install OpenJS.NodeJS.LTS`），不要尝试其他安装方式。
 4. **执行**：`node install.mjs`（客户端不在默认位置时 `node install.mjs --app "<客户端目录>"`；也认环境变量 `KIMI_CODE_APP_DIR`）。旧版 bash 安装器 `install.sh` 仍在包内，行为等价，仅作无 Node 时的备选。

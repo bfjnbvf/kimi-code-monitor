@@ -5,12 +5,7 @@
 > **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar — no client code changes, automatic backup, fully reversible uninstall. The recommended path installs an ops skill first: paste the prompt below into Kimi inside the desktop client; it will install the skill, then follow the skill's guidance to set up the panel:
 >
 > ```text
-> 请帮我安装 kimi-code-monitor 技能，并配置桌面客户端监控面板：
->
-> 1. 从 GitHub 仓库 https://github.com/bfjnbvf/kimi-code-monitor（主分支 main）拉取 skill/ 目录下全部文件，安装到用户级技能目录 ~/.kimi-code/skills/kimi-code-monitor/（保持 SKILL.md 在根，references/ 与 scripts/ 在旁）
-> 2. 安装完成后直接启用这个技能，按技能指示（SKILL.md 及其 references）帮助我安装 kimi-code-monitor 桌面客户端监控面板
->
-> 要求：严格按技能文档流程走；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
 > ```
 >
 > Uninstall and daily maintenance (self-check / external-account lookup): [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md).

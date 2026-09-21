@@ -1,4 +1,4 @@
-// 补丁包构建：产出 kcm-desktop-patch-v<version>.zip
+// 补丁包构建：产出 kcm-desktop-patch.zip（固定名，随 Release 分发；版本见包内 kcm/VERSION）
 // 内容：install.mjs + install.sh + scan.mjs / fetch-wallet.mjs（零依赖单文件）+ kcm/（loader、panel-app、样式、Rive 资产）
 // 与扩展共用 src/ 与 content.css/rive，一次源码改动两侧同时生效。
 import { build } from 'esbuild';
@@ -60,7 +60,7 @@ fs.cpSync(path.join(ROOT, 'rive'), path.join(STAGE, 'kcm/rive'), { recursive: tr
 const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8')).version;
 // 补丁版本标记：doctor.mjs 与技能自更新比对用
 fs.writeFileSync(path.join(STAGE, 'kcm', 'VERSION'), `${version}\n`);
-const out = path.join(ROOT, `kcm-desktop-patch-v${version}.zip`);
+const out = path.join(ROOT, 'kcm-desktop-patch.zip');
 fs.rmSync(out, { force: true });
 execFileSync('zip', ['-r', '-X', out, 'install.mjs', 'install.sh', 'scan.mjs', 'fetch-wallet.mjs', 'kcm', '-x', '*.DS_Store'], { cwd: STAGE });
-console.log(`已生成 kcm-desktop-patch-v${version}.zip`);
+console.log('已生成 kcm-desktop-patch.zip');

@@ -1,8 +1,12 @@
-skill-version: 4
+skill-version: 5
 patch-version: 3.5.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 
 # 更新记录
+
+## 5（2026-09-21）
+
+分发方式改为 Release 技能包：安装/更新走固定名直链 `releases/latest/download/kimi-code-monitor-skill.zip`（解压即就位），raw 逐文件拉取降级为备选；入口文档为仓库 docs/SKILL-INSTALL.md。面板补丁同样改固定名（kcm-desktop-patch.zip）。安装目录变更：`~/.kimi-code/skills/kimi-code-monitor/`（旧 `kcm-panel/` 目录请删）。
 
 ## 4（2026-09-21）
 
