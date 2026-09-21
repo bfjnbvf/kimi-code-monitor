@@ -13,6 +13,7 @@ repo: https://github.com/bfjnbvf/kimi-code-monitor
 - 新增 `scripts/refresh-stats.mjs` 与 `references/refresh-stats.md`：「刷新本地统计」一句话入口（补丁载荷自带 `kcm/scan.mjs` 原地重写）
 - 技能脚本用 esbuild 打成零依赖单文件（修复已装技能跑不起来的问题）；doctor 的外部账户检查改为"残留旧快照提示重装"
 - faq / guide-scripts / SKILL-INSTALL 话术全面对齐当前行为（key 相关、代查相关、表头时间）
+- Windows 安装两则修复（用户实测反馈）：install.cmd 改纯 ASCII + CRLF（GBK 代码页下 UTF-8 中文注释被 cmd 按字节切分成垃圾命令，Git Bash 场景无法执行）；客户端装在系统目录且未提权时，安装器先做可写性预检并给出管理员运行指引，不再裸抛 EPERM 堆栈；install.md 的 Windows 预检标注 Git Bash 的 ps 不可用
 
 
 ## 7（2026-09-21）

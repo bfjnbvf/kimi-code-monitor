@@ -8,7 +8,7 @@
 
 1. 你是否运行在 Kimi Code 客户端里——查父进程链上有没有客户端进程。按所在平台选命令：
 
-   macOS / Linux（bash）：
+   macOS / Linux（bash。**Windows 不要用这个片段**——Git Bash 的 `ps` 不支持 `-o` 会直接报错，Windows 请用下面的 PowerShell 版）：
 
    ```bash
    p=$$; found=0
@@ -19,7 +19,7 @@
    [ "$found" = 1 ] && echo "在客户端内" || echo "不在客户端内"
    ```
 
-   Windows（PowerShell）：
+   Windows（PowerShell；Git Bash 也不行，直接开 PowerShell 跑）：
 
    ```powershell
    $p = $PID; $found = $false

@@ -1,0 +1,4 @@
+# install.cmd 必须以 CRLF 进发布包：批处理在 LF 下解析有已知坑，
+# 且 GitHub 不对 source archive 做 eol 转换，只能靠本文件 + build-patch 双保险
+*.cmd text eol=crlf
+*.sh text eol=lf

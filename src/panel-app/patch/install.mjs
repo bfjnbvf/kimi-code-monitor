@@ -228,12 +228,35 @@ function install(appRoot, dist) {
     process.exit(1);
   }
 
+  // 可写性预检：在动手之前实测目标目录能不能写。不能直接用
+  // fs.accessSync(dir, W_OK)——Windows 上它对目录的判断不可靠（只看只读属性），
+  // 写一个探针文件再删掉才是真实答案。失败时给人话指引，不抛裸堆栈
+  // （真实案例：客户端装在 C:\Program Files 且未提权，备份一步直接 EPERM）。
+  try {
+    const probe = path.join(dist, `.kcm-probe-${process.pid}`);
+    fs.writeFileSync(probe, '');
+    fs.rmSync(probe, { force: true });
+  } catch (error) {
+    console.error(`[install] 客户端目录不可写：${dist}（${error?.code || error?.message || error}）`);
+    console.error('[install] 常见原因与处置：');
+    console.error('[install]  Windows：客户端装在系统目录（如 C:\\Program Files）→ 请以管理员身份打开 cmd 后重跑安装入口');
+    console.error('[install]  macOS：目录受「App 管理」保护 → 系统设置 → 隐私与安全性 → App 管理，允许你的终端后重试');
+    process.exit(1);
+  }
+
   const backup = index + BACKUP_SUFFIX;
-  if (!fs.existsSync(backup)) {
-    fs.copyFileSync(index, backup);
-    console.error('[install] 已备份原始 index.html');
-  } else {
-    console.error('[install] 备份已存在，保留最早的原始版本');
+  try {
+    if (!fs.existsSync(backup)) {
+      fs.copyFileSync(index, backup);
+      console.error('[install] 已备份原始 index.html');
+    } else {
+      console.error('[install] 备份已存在，保留最早的原始版本');
+    }
+  } catch (error) {
+    // 预检通过后仍失败（权限竞态/杀软拦截）：原 index.html 未动，直接中止
+    console.error(`[install] 备份失败：${error?.message || error}`);
+    console.error('[install] 已中止：index.html 未改动，请按上方权限指引处理后重试');
+    process.exit(1);
   }
 
   try {

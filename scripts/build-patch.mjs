@@ -53,9 +53,15 @@ await build({
 // 「点火器」薄壳——只负责找到运行时（客户端自带 Node 优先），不含安装行为
 const PATCH = path.join(ROOT, 'src/panel-app/patch');
 fs.copyFileSync(path.join(PATCH, 'loader.js'), path.join(STAGE, 'kcm/loader.js'));
+// install.cmd 双保险：源文件已是 ASCII+CRLF，这里再强制一次——工作区行尾
+// 状态（autocrlf/编辑器）不可信，批处理在 LF 或非 ASCII 下会被 cmd 误解析
+// （GBK 代码页下 UTF-8 中文注释被按字节切分成垃圾命令，2026-09-21 真实反馈）
+fs.writeFileSync(
+  path.join(STAGE, 'install.cmd'),
+  fs.readFileSync(path.join(PATCH, 'install.cmd')).toString('utf8').replace(/\r?\n/g, '\r\n')
+);
 fs.copyFileSync(path.join(PATCH, 'install.sh'), path.join(STAGE, 'install.sh'));
 fs.chmodSync(path.join(STAGE, 'install.sh'), 0o755);
-fs.copyFileSync(path.join(PATCH, 'install.cmd'), path.join(STAGE, 'install.cmd'));
 fs.copyFileSync(path.join(PATCH, 'install.mjs'), path.join(STAGE, 'install.mjs'));
 fs.copyFileSync(path.join(ROOT, 'content.css'), path.join(STAGE, 'kcm/content.css'));
 fs.cpSync(path.join(ROOT, 'rive'), path.join(STAGE, 'kcm/rive'), { recursive: true });

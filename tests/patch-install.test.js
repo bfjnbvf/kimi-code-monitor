@@ -245,3 +245,49 @@ test('集成：--app 指向无效目录时非零退出', async () => {
   }
 });
 
+
+test('发布约束：install.cmd 必须纯 ASCII + CRLF（cmd 按 OEM 代码页逐字节解析）', () => {
+  // 真实反馈：GBK(936) 代码页下 UTF-8 中文注释被按字节切分成垃圾命令；
+  // LF-only 批处理也另有解析坑。源文件与发布产物都要守住这条。
+  const files = [
+    path.join(ROOT, 'src/panel-app/patch/install.cmd'),
+    path.join(ROOT, 'dist-patch/install.cmd') // npm run pack:patch 产物；未构建则跳过
+  ];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    const buf = fs.readFileSync(file);
+    for (const byte of buf) {
+      assert.ok(byte < 0x80, file + ' 含非 ASCII 字节 0x' + byte.toString(16) + '——cmd 在 GBK 代码页下会误解析');
+    }
+    const raw = buf.toString('latin1');
+    assert.ok(!/(?<!\r)\n/.test(raw), file + ' 存在裸 LF——批处理必须全 CRLF');
+  }
+});
+
+test('集成：目录不可写时给人话指引而非裸 EPERM 堆栈（Windows 系统目录场景）', async () => {
+  if (process.platform === 'win32') return; // chmod 只读语义不同，Windows 由真机/权限测试覆盖
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-readonly-'));
+  const patchDir = await makeFakePatchDir();
+  const appRoot = path.join(work, 'app');
+  const dist = distDirOf(appRoot);
+  try {
+    fs.mkdirSync(dist, { recursive: true });
+    fs.writeFileSync(path.join(dist, 'index.html'), '<html><head></head><body></body></html>\n');
+    fs.chmodSync(dist, 0o555); // r-x：模拟 Program Files 未提权
+    let stderr = '';
+    try {
+      runInstaller(patchDir, ['--app', appRoot], { KIMI_CODE_HOME: work });
+      assert.fail('只读目录下安装应非零退出');
+    } catch (error) {
+      assert.equal(error.status, 1);
+      stderr = String(error.stderr || '');
+    }
+    assert.match(stderr, /客户端目录不可写/, '应输出人话指引');
+    assert.match(stderr, /管理员|App 管理/, '应包含平台对应的处置建议');
+    assert.ok(!fs.existsSync(path.join(dist, 'index.html.bak-kcm')), '动手前就中止：不应产生备份');
+    assert.ok(!fs.existsSync(path.join(dist, 'kcm')), '不应产生载荷');
+  } finally {
+    fs.chmodSync(dist, 0o755);
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
