@@ -401,6 +401,78 @@ test('panel-app：会话路由下直连模式启动不抛错（TDZ 回归）', a
   }
 });
 
+test('panel-app：重启后的历史重放不把空闲会话抬成「思考中」（活跃度只看实时事件）', async () => {
+  // 回归：客户端重启 → 页面重载 → client_hello 游标 0 → 服务端重放整段历史。
+  // 重放事件不得触发活跃度模型，否则空闲会话被抬成「思考中」并从 0 计时
+  const dom = new JSDOM(PAGE_HTML, {
+    url: 'http://localhost:3000/sessions/session_replay-idle',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  // 状态灯在标题行模块里，默认收在隐藏区：预置全可见配置才能断言
+  setVisibleConfig(window);
+  // kap 源：直连模式 WS 必须等源解析，测试里经 SPA 同款 sessionStorage 提供
+  window.sessionStorage.setItem('kimi-desktop-server-origin', 'http://127.0.0.1:56189');
+  // 假 WebSocket：拦截直连模式的事件流，由用例扮演服务端
+  const sockets = [];
+  window.WebSocket = class {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      this.sent = [];
+      sockets.push(this);
+    }
+    send(data) { this.sent.push(JSON.parse(data)); }
+    close() {}
+  };
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 100);
+
+    const ws = sockets[0];
+    assert.ok(ws, '直连模式应在 kap 源已知时发起 WS 连接');
+    ws.onopen();
+    // 服务端握手 → 面板订阅当前会话（游标 0 = 换取整段历史重放）
+    ws.onmessage({ data: JSON.stringify({ type: 'server_hello' }) });
+    await tick(window, 50);
+    const hello = ws.sent.find((f) => f.type === 'client_hello');
+    assert.deepEqual(hello?.payload?.subscriptions, ['session_replay-idle']);
+
+    // 应答之前重放整段历史：轮次开始 / 推理流 / 工具调用 / 步骤完成 / 轮次结束
+    const replay = [
+      { type: 'turn.started', seq: 1, session_id: 'session_replay-idle', payload: {} },
+      { type: 'thinking.delta', seq: 2, session_id: 'session_replay-idle', payload: {} },
+      { type: 'tool.call.started', seq: 3, session_id: 'session_replay-idle', payload: {} },
+      { type: 'turn.step.completed', seq: 4, session_id: 'session_replay-idle', payload: { usage: { inputOther: 5000, output: 500, inputCacheRead: 0, inputCacheCreation: 0 } } },
+      { type: 'turn.ended', seq: 5, session_id: 'session_replay-idle', payload: { durationMs: 8000 } }
+    ];
+    for (const m of replay) ws.onmessage({ data: JSON.stringify(m) });
+    ws.onmessage({ data: JSON.stringify({ type: 'ack', payload: {} }) });
+    // 状态灯有 1.5s 最短显示：等节流窗口过去再断言
+    await tick(window, 1_700);
+    assert.equal(
+      window.document.getElementById('ksb-agent-status').textContent,
+      '空闲',
+      '历史重放不得把空闲会话抬成「思考中」'
+    );
+
+    // 应答之后的实时事件照常点亮（活跃度模型未被误伤）
+    ws.onmessage({ data: JSON.stringify({ type: 'turn.started', seq: 6, session_id: 'session_replay-idle', payload: {} }) });
+    await tick(window, 1_700);
+    assert.equal(
+      window.document.getElementById('ksb-agent-status').textContent,
+      '思考中',
+      '实时 turn.started 应点亮状态灯'
+    );
+  } finally {
+    window.close();
+  }
+});
+
 test('panel-app：切到没打开过的会话，用本地汇总做底（代理 × 模型分行）', async () => {
   const { window } = createPage();
   try {
