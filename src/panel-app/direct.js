@@ -347,9 +347,13 @@ export function startDirectMode() {
       if (resync.length) wsSubscribe(resync);
       return;
     }
-    // 工作证据：phase 携带的 agent.status.updated 也算
-    if (EVIDENCE_TYPES.has(m.type)
-      || (m.type === 'agent.status.updated' && m.payload?.phase)) {
+    // 工作证据：phase 携带的 agent.status.updated 也算。
+    // 订阅应答（ack）之前到达的是重放：重启客户端后的整段历史重放会把空闲会话
+    // 抬成「思考中」，与 bridge.js 丢弃重放状态、work_changed 的 petTurnActive
+    // 守卫同一口径——活跃度只认应答边界之后的实时事件
+    if (!awaitingAck
+      && (EVIDENCE_TYPES.has(m.type)
+        || (m.type === 'agent.status.updated' && m.payload?.phase))) {
       noteActivity();
     }
     // 水位与重放标记：durable 事件才推进水位（volatile 帧复用 durable 序号）；
