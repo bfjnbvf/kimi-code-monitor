@@ -22,8 +22,10 @@ if (process.platform !== 'win32') {
 const assert = require('node:assert/strict');
 const INSTALL_CMD = (stage) => path.join(stage, 'install.cmd');
 
+// Windows 不能直接 spawn .cmd（EINVAL）：必须经 cmd /c。
+// 参数路径均来自 os.tmpdir() 与 repo 内（无空格），%~dp0 与 %* 原样工作。
 function runCmd(stage, args, env = {}) {
-  return execFileSync(INSTALL_CMD(stage), args, {
+  return execFileSync('cmd.exe', ['/c', INSTALL_CMD(stage), ...args], {
     env: { ...process.env, ...env },
     encoding: 'utf8'
   });
@@ -42,8 +44,10 @@ function electronExe() {
       cwd: path.join(__dirname, '..'),
       encoding: 'utf8'
     }).trim();
+    console.log(`      electron exe: ${p}（存在: ${fs.existsSync(p)}）`);
     return p && fs.existsSync(p) ? p : '';
-  } catch {
+  } catch (error) {
+    console.log(`      electron 未就绪: ${(error?.message || error).split('\n')[0]}`);
     return '';
   }
 }
