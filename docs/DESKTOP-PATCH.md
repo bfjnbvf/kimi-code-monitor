@@ -18,7 +18,7 @@
 
 ## 安装提示词
 
-正式版（与 README 头部内嵌的提示词一致，v3.5.0 起可直接复制）：
+正式版（v3.5.0 起可直接复制）：
 
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
@@ -27,13 +27,12 @@
    https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip
 2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/ 即可）
 3. 解压到一个临时目录
-4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
-5. 在该目录执行：bash install.sh（Windows：install.cmd；客户端不在默认位置时追加 --app "<客户端目录>"）。不需要系统 Node——壳会优先借客户端自带的 Node
-6. 完成后把这些告诉我：
+4. 在该目录执行：bash install.sh（Windows：install.cmd；客户端不在默认位置时追加 --app "<客户端目录>"）。不需要安装 Node——壳会优先借客户端自带的 Node，系统有 Node 也可用
+5. 完成后把这些告诉我：
    - 安装器的完整输出
    - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
    - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
-7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
+6. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
 
 要求：只运行补丁包里的安装入口（macOS `bash install.sh` / Windows `install.cmd`，它们只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
 ```

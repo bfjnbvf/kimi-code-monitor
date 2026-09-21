@@ -146,6 +146,21 @@ export function injectLoaderTag(html, hash) {
   return html.slice(0, idx) + tag + html.slice(idx);
 }
 
+/** 原子替换 index.html：先写同目录暂存文件再 rename 顶替。'w' 直写会先截断
+ *  原文件，写一半失败（杀软锁文件/磁盘满）会留下空文件；同目录 rename 顶替
+ *  要么成功要么原文件一个字节不动。失败时清掉暂存文件后原样抛出。 */
+function replaceIndex(index, content) {
+  const staged = path.join(path.dirname(index), `.kcm-index-${process.pid}.html`);
+  fs.rmSync(staged, { force: true });
+  try {
+    fs.writeFileSync(staged, content);
+    fs.renameSync(staged, index);
+  } catch (error) {
+    fs.rmSync(staged, { force: true });
+    throw error;
+  }
+}
+
 function kimiHome() {
   return process.env.KIMI_CODE_HOME || path.join(os.homedir(), '.kimi-code');
 }
@@ -284,7 +299,13 @@ function install(appRoot, dist) {
     fs.rmSync(path.join(dist, PAYLOAD_DIR), { recursive: true, force: true });
     process.exit(1);
   }
-  fs.writeFileSync(index, injected);
+  try {
+    replaceIndex(index, injected);
+  } catch (error) {
+    console.error(`[install] 写入 index.html 失败：${error?.message || error}`);
+    console.error('[install] 已中止：index.html 未改动（载荷已同步，处理后重跑安装入口即可完成）');
+    process.exit(1);
+  }
   if (!fs.readFileSync(index, 'utf8').includes(`${LOADER_SRC}?v=${hash}`)) {
     console.error('[install] 注入校验失败，正在还原备份……');
     fs.copyFileSync(backup, index);
@@ -300,11 +321,24 @@ function uninstall(dist) {
   const index = path.join(dist, 'index.html');
   const backup = index + BACKUP_SUFFIX;
   if (fs.existsSync(backup)) {
-    fs.copyFileSync(backup, index);
+    // 用 Buffer 原样顶替，兑现「卸载逐字节还原」；失败时备份仍在，可重跑
+    try {
+      replaceIndex(index, fs.readFileSync(backup));
+    } catch (error) {
+      console.error(`[install] 还原 index.html 失败：${error?.message || error}`);
+      console.error('[install] 备份仍在（index.html.bak-kcm），处理后重跑 --uninstall 即可');
+      process.exit(1);
+    }
     fs.rmSync(backup);
     console.error('[install] 已还原原始 index.html');
   } else if (fs.existsSync(index)) {
-    fs.writeFileSync(index, stripLoaderTagLines(fs.readFileSync(index, 'utf8')));
+    try {
+      replaceIndex(index, stripLoaderTagLines(fs.readFileSync(index, 'utf8')));
+    } catch (error) {
+      console.error(`[install] 清除注入行失败：${error?.message || error}`);
+      console.error('[install] 已中止：index.html 未改动，请处理后重跑 --uninstall');
+      process.exit(1);
+    }
     console.error('[install] 未找到备份，已移除注入行');
   }
   fs.rmSync(path.join(dist, PAYLOAD_DIR), { recursive: true, force: true });

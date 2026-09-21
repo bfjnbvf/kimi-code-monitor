@@ -80,7 +80,12 @@ test('壳：客户端自带 Node 分支（ELECTRON_RUN_AS_NODE）——无系统
 });
 
 test('壳：双缺（无客户端、无 node）——明确提示且非零退出', (t) => {
-  if (findRuntimeExe()) t.skip('本机有客户端，造不出「双缺」环境');
+  // t.skip 只标记不中断，必须紧跟 return：否则测试体照跑，下面不带 --app 的
+  // 壳会定位到本机真实客户端并当场装一遍
+  if (findRuntimeExe()) {
+    t.skip('本机有客户端，造不出「双缺」环境');
+    return;
+  }
   const stage = makeInstallStage();
   try {
     assert.throws(
