@@ -61,6 +61,9 @@ jobs:
         run: |
           npm ci
           npm install electron --no-save
+          # postinstall 的二进制下载可能异步未完成；显式跑一次（幂等）并校验 exe 就位
+          node node_modules/electron/install.js
+          node -e "const fs=require('fs'),p=require('electron');if(!fs.existsSync(p))throw new Error('electron exe 缺失: '+p);console.log('electron exe OK:',p)"
 
       - name: 构建面板产物
         run: npm run build
