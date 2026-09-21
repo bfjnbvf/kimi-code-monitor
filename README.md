@@ -153,7 +153,8 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - `src/metrics.js`：共享纯函数（用量解析、日期汇总、配置归一化）
 - `src/tidy-rules.js`：自动归档判定纯函数（三档规则 + 护栏，输入列表元数据输出候选）
 - `src/cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
+- `src/session-files.js`：本地会话目录布局规则（wire.jsonl 的枚举与命名，扩展侧与安装器侧共用同一份）
 - `src/providers.js`：外部 provider 的端点与解析
-- `src/pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）
+- `src/pet/`：桌面宠物——`sprites.js`（图集播放器 + 行为）、`install.js`（画廊命令解析与下载）、`store.js`（IndexedDB 素材库）
 - `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器、`install.mjs` 安装器（Node ≥16，跨 macOS/Windows，`install.sh` 为旧版备选）、`scan.mjs` 历史扫描）
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）

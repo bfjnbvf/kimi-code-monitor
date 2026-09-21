@@ -1,5 +1,5 @@
 // 发版纪律守卫：版本号三处一致 + CHANGELOG 顶部条目对应当前版本。
-// 漏改任何一处，npm test 直接失败（发版流程见 docs/HANDOFF.md §七）。
+// 漏改任何一处，npm test 直接失败（发版流程见 docs/HANDOFF.md §八）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

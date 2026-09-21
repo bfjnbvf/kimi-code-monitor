@@ -153,7 +153,8 @@ Four runtime surfaces, each with its own directory; shared modules sit at the `s
 - `src/metrics.js`: shared pure functions (usage parsing, date aggregation, config normalization)
 - `src/tidy-rules.js`: auto-tidy classification pure functions (three rules + guards; list metadata in, candidates out)
 - `src/cli-usage.js`: local CLI directory grant, incremental reads, per-day aggregation
+- `src/session-files.js`: local session directory layout rules (wire.jsonl enumeration & naming, shared by the extension and the installer)
 - `src/providers.js`: external provider endpoints and parsing
-- `src/pet/`: desktop pet — `pet-sprites.js` (atlas player + behaviors), `pet-install.js` (gallery command parsing & download), `pet-store.js` (IndexedDB asset store)
+- `src/pet/`: desktop pet — `sprites.js` (atlas player + behaviors), `install.js` (gallery command parsing & download), `store.js` (IndexedDB asset store)
 - `src/panel-app.js` + `src/panel-app/`: standalone panel page for the desktop patch (shares the panel body and rendering with `content/`) — `panel-app.js` (entry: mount/config/direct-mode startup), `bridge.js` (push bus & message dispatch), `direct.js` (kap-server direct: WS event stream + REST polling), `shims.js` (chrome.* replacement), `accumulate.js` (in-page per-day accumulation), `status-copy.js` (tiered status copy), `patch/` (`loader.js` injector, `install.mjs` installer (Node ≥16, cross-platform macOS/Windows; `install.sh` is the legacy fallback), `scan.mjs` history scan)
 - `rive/`: mascot animation runtime and assets (bundled locally, no remote dependency)

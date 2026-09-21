@@ -5,11 +5,11 @@
   "type": "module",
   "description": "Kimi Code Web UI 底部 Agent 状态 HUD 浏览器扩展",
   "scripts": {
-    "build": "node build.mjs",
-    "pack": "bash build.sh",
+    "build": "node scripts/build.mjs",
+    "pack": "bash scripts/build.sh",
     "lint": "eslint src/",
-    "test": "node build.mjs && node --test",
-    "pack:patch": "node build-patch.mjs"
+    "test": "node scripts/build.mjs && node --test",
+    "pack:patch": "node scripts/build-patch.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

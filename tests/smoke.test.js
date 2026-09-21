@@ -80,7 +80,7 @@ function createPage() {
 test('smoke：脚本装配后面板出现在侧边栏，包含模块与关键区域', async () => {
   const { dom, window } = createPage();
   try {
-    // npm test 会先执行 node build.mjs，这里直接注入自包含的 dist/content.js bundle
+    // npm test 会先执行 node scripts/build.mjs，这里直接注入自包含的 dist/content.js bundle
     injectScript(window, 'dist/content.js');
 
     await tick(window); // init → checkPageState → ensureWidget 同步完成

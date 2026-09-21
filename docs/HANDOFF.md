@@ -5,7 +5,7 @@
 
 ## 一、项目是什么
 
-Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip），在 Kimi Code Web 页面侧栏注入模块化状态面板：额度/token/缓存/速度统计、会话折线图、CLI 长期用量、AI 回复收藏、分享卡片、Rive 吉祥物与桌面宠物、新会话自动命名、自动整理「已完成」、动态站点授权（`kimi web --host` 局域网地址）。当前版本 **3.4.0**。
+Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip），在 Kimi Code Web 页面侧栏注入模块化状态面板：额度/token/缓存/速度统计、会话折线图、CLI 长期用量、AI 回复收藏、分享卡片、Rive 吉祥物与桌面宠物、新会话自动命名、自动整理「已完成」、动态站点授权（`kimi web --host` 局域网地址）。当前版本 **3.5.0**（桌面客户端补丁首发）。
 
 ## 二、怎么干活
 
@@ -14,7 +14,7 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 | `npm run build` | esbuild 把 `src/` 打成 `dist/` 四个 iife bundle（content / background / popup / panel-app）；**改了源码必须重跑**，manifest 只引用 `dist/` |
 | `npm test` | 先构建再跑全部测试（node:test，含 jsdom smoke）；含发版守卫（版本三处一致 + CHANGELOG 顶部条目） |
 | `npm run lint` | eslint 检查 no-undef / no-unused-vars（拆分事故防线，不做风格限制） |
-| `bash build.sh` | 打扩展发行 zip（版本化名：manifest/dist/content.css/rive/rules/popup.html/icons/README/LICENSE）+ 技能 zip（固定名 `kimi-code-monitor-skill.zip`，顶层带 `kimi-code-monitor/` 目录） |
+| `npm run pack` | 打扩展发行 zip（版本化名：manifest/dist/content.css/rive/rules/popup.html/icons/README/LICENSE）+ 技能 zip（固定名 `kimi-code-monitor-skill.zip`，顶层带 `kimi-code-monitor/` 目录）；构建脚本都在 `scripts/` |
 | `npm run pack:patch` | 打桌面补丁 zip（固定名 `kcm-desktop-patch.zip`：install.mjs + install.sh + scan.mjs + fetch-wallet.mjs + kcm/），与扩展共用 src/ 与 content.css/rive |
 
 - 在 `chrome://extensions` 重载扩展后，Kimi Web 页面要手动刷新一次面板才恢复（Chrome 不会重新注入 content script）。
@@ -35,22 +35,41 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 - **Swift 伴侣 App 通路**（v3.5.0 移除）：`src/popup-app/` 与 panel-app 的 Swift 桥接模式已删除，桌面补丁只剩注入模式（loader + direct.js 直连 kap-server）。注意 `src/panel-app/bridge.js` **保留**——它是注入模式的 push 总线（`window.__kcm.push` 队列与消息分发，direct.js 与 loader 都往它推），不再是 Swift 桥。
 - **自动整理开放问题**（实现时留待实测，见 DESIGN 文档 §8）：归档后续聊是否自动恢复、父子会话归档联动、RC 页面 V2 接口可用性——若用户反馈异常先查这三项。
 
-## 五、用户偏好与雷区（重要）
+## 五、数据格式与兼容约定（改桶结构 / 统计口径前先读）
+
+按天（`{input, output, cacheRead}`）与按小时桶的口径**单点定义**在 `src/metrics.js` 的
+`emptyUsageBucket` / `addUsageToBucket`（`input` 记全部输入＝非缓存 + 缓存读 + 缓存创建；
+`cacheRead` 单列供缓存命中率用）。两条写入路径都必须走它，`tests/bucket-parity.test.js`
+守着「网页版扫描路径与客户端积累路径产出同一个桶」——这条护栏来自一次真实事故：
+两边各写一份口径，积累侧少算缓存，于是「按天取大」变成两种口径互相压制。
+
+**口径或桶结构要变时，只做一次性处置，不写多版本兼容链**——两边各有一个版本常量当开关：
+
+| 侧 | 开关 | 数据真值 | 变更时的动作 |
+|---|---|---|---|
+| 网页版（扩展） | `src/cli-usage.js` 的 `INDEX_VERSION` | `~/.kimi-code/sessions` 的 wire.jsonl（可重建） | bump 版本号 → 旧索引整体作废、下次扫描全量重建，**不写迁移代码** |
+| 客户端（桌面补丁） | `src/panel-app/accumulate.js` 的 `BUCKET_VERSION` | 页面 localStorage 的页内积累（**不可重建**的实时增量） | 版本号加一 → 旧键只搬迁上一版、随即删除，不做兼容链 |
+
+- 网页版按天数据是**由扫描结果写入的缓存**（`background/cli-scan.js` → `chrome.storage.local`），
+  所以「删掉重扫」总是安全的；网页版没有页内积累，`accumulate.js` 只服务补丁通路。
+- 客户端补丁目前只对自用分发，不背历史版本；遇到旧格式一律按上表一次性处置即可。
+
+## 六、用户偏好与雷区（重要）
 
 - **语气**：客观详实，不要 AI 味/营销腔/拟人化（"住进了面板""都由你定"这类全部被打回过）；但也不要黑话连篇（"游标""下沉""分键"不让用）。
 - **审美要求高**：截图/引导卡片必须实际渲染检查，不接受"差不多"；每改一版先看图再交付。
 - **禁止**：`UpDown / jump / look_forward / look_right` 四个 Rive 动画（纵向位移/裁切）；`reset()`（击穿 Rive 运行时导致每帧报错）；月度额度通路（见上）。
 - **git 操作一律需用户确认**，不要主动 commit/push。
 
-## 六、环境与工具备忘
+## 七、环境与工具备忘
 
 - WebBridge 守护进程：`http://127.0.0.1:10086`（控制用户真实浏览器；用户的 Kimi Code Web 在 `127.0.0.1:58627`，端口可能变化，以实际为准）。
 - 截图预览服务器：`python3 -m http.server 18766 --bind 127.0.0.1`（仓库根目录启动），studio/头图/引导变体页都靠它预览。
-- 常用验证：`npm test`、`npm run lint`、`bash build.sh`。
+- 常用验证：`npm test`、`npm run lint`、`npm run pack`。
 - 新手引导预览技巧：studio 页里注入 `#ksb-guide` DOM（content.css 已加载）。
 - Kimi WebBridge 单页工具只认"当前聚焦标签页"，借用用户页面用 `find_tab(url, active:true)`。
 
-## 七、发版流程
+## 八、发版流程
 
 1. 改版本号三处（必须一致，`tests/release-sync.test.js` 自动把关）：`manifest.json`、`package.json`、`skill/MAINTENANCE` 的 `patch-version`；`CHANGELOG.md` 顶部加条目（顶部条目版本同样受测试把关）。
 2. **skill 同步检查**：本轮面板行为 / 文案 / 口径 / 安装流程有变更的，按下表逐篇核对 skill 文档，有变更就 bump `skill-version` 并在 MAINTENANCE 更新记录加条目：
@@ -64,5 +83,5 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
    | 外部账户 | `references/external-accounts.md` + `scripts/fetch-external.mjs` |
    | 对用户话术 | `references/guide-scripts.md` |
 
-3. `npm test` 全绿 → `bash build.sh` 出扩展 zip（版本化名）+ 技能 zip（固定名）；桌面补丁有改动时 `npm run pack:patch` 出补丁 zip（固定名）。
+3. `npm test` 全绿 → `npm run pack` 出扩展 zip（版本化名）+ 技能 zip（固定名）；桌面补丁有改动时 `npm run pack:patch` 出补丁 zip（固定名）。
 4. **经用户确认后**再 commit / 打 tag / 以 CHANGELOG 对应段落建 GitHub Release。资产上传：扩展 zip 用版本化名普通上传；技能 zip 与补丁 zip 是固定名，每次发版用 `gh release upload <tag> <file> --clobber` 覆盖上传（`releases/latest/download/` 永久 URL 随之保持最新，各 Release 保留当次版本）。

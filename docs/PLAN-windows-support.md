@@ -1,6 +1,6 @@
 # 工作计划 — 桌面补丁 Windows 适配
 
-> 日期：2026-09-21 ｜ 状态：**P1–P3 已完成（待验证），P4 Windows 真机验证待机器** ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)、[HANDOFF.md](./HANDOFF.md) §七
+> 日期：2026-09-21 ｜ 状态：**P1–P3 已完成（待验证），P4 Windows 真机验证待机器** ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)、[HANDOFF.md](./HANDOFF.md) §八
 >
 > 前置结论：Kimi Code 桌面客户端 2026-09-18 官方发布，**macOS 与 Windows 双平台**（[开源中国报道](https://www.oschina.net/news/502565/kimi-code-desktop)）。Windows 适配不是「等客户端」，是直接开工项。
 >
@@ -32,7 +32,7 @@
 |---|---|---|
 | `src/panel-app/patch/install.sh` | 重写为 `install.mjs` | 见 §四 Phase 1 |
 | `skill/scripts/doctor.sh` | 重写为 `doctor.mjs` | 检查项不变，路径与版本读取跨平台 |
-| `build-patch.mjs` | 拷贝 `install.mjs` 替代 `install.sh`（去掉 chmod） | zip 内容：`install.mjs` + `scan.mjs` + `kcm/` |
+| `scripts/build-patch.mjs` | 拷贝 `install.mjs` 替代 `install.sh`（去掉 chmod） | zip 内容：`install.mjs` + `scan.mjs` + `kcm/` |
 | `skill/references/install.md` | 命令 `bash install.sh` → `node install.mjs`；加 node 前置检查；Windows 路径与 Ctrl+R 话术 | 安装提示词同步 |
 | `skill/references/update.md` / `doctor.md` / `guide-scripts.md` | Windows 分支话术 | 更新流程引用 install.md，改动集中 |
 | `tests/` | 新增安装器路径逻辑测试（风格对齐 `patch-scan.test.js`） | findAppRoot / payloadHash / 标签注入等纯函数 |
@@ -47,7 +47,7 @@
 | **P2 doctor.mjs** | 检查项逐一平移（文件完整性 / 标签与哈希 / 数据文件 / kap 探测）；客户端版本读取跨平台（macOS 解析 Info.plist；Windows PowerShell 读 exe 版本信息） | ✅ 已完成：`skill/scripts/doctor.mjs`（自包含，输出格式与 bash 版一致；哈希与安装器一致性有测试互钉） | 0.5 天 |
 | **P3 skill 文档** | install / update / doctor / guide-scripts 四篇加 Windows 分支 | ✅ 已完成：四篇 + SKILL.md + MAINTENANCE（skill-version 3）；install.md 含 node 前置检查与双平台命令 | 0.5 天 |
 | **P4 真机验证** | Windows 客户端：安装→面板出现在侧栏底部→实时数据（WS+REST）→历史预填→卸载还原；macOS 回归全流程 | ⬜ 待 Windows 机器；验收标准见 §七 | 0.5–1 天 |
-| **P5 发布** | 按 HANDOFF §七：版本号三处 + CHANGELOG + 双 zip + skill 同步检查表；**用户确认后** commit/tag/Release | ⬜ 待 P4 通过 | 0.5 天 |
+| **P5 发布** | 按 HANDOFF §八：版本号三处 + CHANGELOG + 双 zip + skill 同步检查表；**用户确认后** commit/tag/Release | ⬜ 待 P4 通过 | 0.5 天 |
 
 **P1–P3 已完成（代码 + 测试 + 文档），剩 P4 真机验证与 P5 发布。**
 
@@ -73,11 +73,11 @@
 
 ## 七、回退策略
 
-`install.mjs` 上线后**保留 `install.sh` 一个版本周期**（build-patch 两个都打，技能默认引导 node 安装器、注明 bash 为旧版兼容）；Windows 真机验证通过、macOS 等价性无回归后，下一个大版本删 `install.sh`。任何阶段出问题可单独回退安装器，不动运行时代码。
+`install.mjs` 上线后**保留 `install.sh` 一个版本周期**（scripts/build-patch.mjs 两个都打，技能默认引导 node 安装器、注明 bash 为旧版兼容）；Windows 真机验证通过、macOS 等价性无回归后，下一个大版本删 `install.sh`。任何阶段出问题可单独回退安装器，不动运行时代码。
 
-## 八、发布检查（按 HANDOFF §七）
+## 八、发布检查（按 HANDOFF §八）
 
 1. 版本号三处一致（`manifest.json` / `package.json` / `skill/MAINTENANCE` 的 `patch-version`）+ CHANGELOG 顶部条目——`tests/release-sync.test.js` 自动把关
 2. skill 同步检查表：install/update/doctor/guide-scripts 四篇本轮有变更 → bump `skill-version` 并在 MAINTENANCE 加条目
-3. `npm test` 全绿 → `bash build.sh` + `npm run pack:patch` 双产物
+3. `npm test` 全绿 → `npm run pack` + `npm run pack:patch` 双产物
 4. **用户确认后** commit / tag / GitHub Release（补丁 zip 随 Release 分发）

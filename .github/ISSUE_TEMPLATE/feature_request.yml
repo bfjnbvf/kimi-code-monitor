@@ -1,0 +1,44 @@
+name: 功能建议
+description: 想要的新能力、想改的默认行为
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        说清「你现在怎么做、卡在哪」比直接给方案更有用——方案可以一起想。
+
+  - type: textarea
+    id: scene
+    attributes:
+      label: 使用场景
+      description: 你在什么情况下需要它？现在是怎么绕过去的？
+    validations:
+      required: true
+
+  - type: textarea
+    id: expect
+    attributes:
+      label: 期望的行为
+      description: 你希望面板怎么做？如果心里已有方案，写出来
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: 替代方案或参考
+      description: 别的工具怎么做的、你有没有试过别的办法（可选）
+    validations:
+      required: false
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 主要用在哪个形态
+      options:
+        - 网页版扩展
+        - 桌面客户端补丁
+        - 两个都要
+    validations:
+      required: false

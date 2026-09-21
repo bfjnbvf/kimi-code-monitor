@@ -1,0 +1,45 @@
+# CI：push / PR 上跑 eslint 与全部测试。
+# 测试本身包含发版纪律守卫（manifest / package.json / skill MAINTENANCE /
+# CHANGELOG 顶部条目四处版本一致，见 tests/release-sync.test.js），
+# 所以这里不需要额外的版本检查步骤。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一轮未跑完的任务
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: 构建 + 测试
+        run: npm test
+
+      # 两个发行包由 shell 脚本产出、不在测试覆盖内，这里至少守住"能构建出来"
+      - name: 打包产物可构建性（扩展 zip / 技能 zip / 桌面补丁 zip）
+        run: |
+          npm run pack
+          npm run pack:patch
+          test -s kimi-code-monitor-skill.zip
+          test -s kcm-desktop-patch.zip
+          unzip -l kimi-code-monitor-v*.zip >/dev/null

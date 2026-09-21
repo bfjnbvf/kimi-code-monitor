@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用问题 / 怎么装怎么用
+    url: https://github.com/bfjnbvf/kimi-code-monitor#readme
+    about: 安装步骤、面板各模块说明、数据与隐私说明都在 README 里；桌面补丁的安装见 README 里的提示词
+  - name: 桌面客户端补丁：安装 / 更新 / 卸载 / 自检
+    url: https://github.com/bfjnbvf/kimi-code-monitor/blob/main/docs/DESKTOP-PATCH.md
+    about: 补丁的完整说明；装好后也可以直接让 Kimi 跑一次面板自检（doctor）来定位问题

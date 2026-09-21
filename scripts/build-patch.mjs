@@ -7,7 +7,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// 脚本在 scripts/，仓库根是它的上一级：产物（dist-patch/ 与 zip）都落在仓库根
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STAGE = path.join(ROOT, 'dist-patch');
 
 fs.rmSync(STAGE, { recursive: true, force: true });

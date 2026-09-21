@@ -1,0 +1,85 @@
+name: Bug 反馈
+description: 面板行为不对、数据不对、样式错位等
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。面板的问题大多能靠「诊断串」和「自检输出」直接定位，麻烦按下面几项填一下。
+        填不了的项目写「不知道」就行，不用卡住。
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 用的是哪一个
+      description: 网页版扩展和桌面客户端补丁是两套运行环境（数据通路不同），先确定问题出在哪个上面
+      options:
+        - 网页版扩展（Chrome 加载解压扩展，在 Kimi Code Web 页面里）
+        - 桌面客户端补丁（装进 Kimi Code 桌面客户端）
+        - 两个都有 / 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 面板版本
+      description: 网页版在 chrome://extensions 里看；桌面客户端补丁看安装时的输出，或让 Kimi 跑一次面板自检
+      placeholder: 例如 3.5.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 出问题的模块
+      options:
+        - 消耗量 / 图表 / 缓存命中率
+        - 额度（5h / 本周 / 余额）
+        - 宠物（吉祥物 / 桌面宠物）
+        - AI 回复收藏
+        - 分享卡片
+        - 弹窗（授权 / 设置 / 数据导出）
+        - 自动整理 / 自动命名
+        - 面板布局 / 编辑模式 / 样式
+        - 其他（在下方说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象与复现步骤
+      description: 你做了什么、期望看到什么、实际看到什么。能稳定复现的步骤最有价值
+    validations:
+      required: true
+
+  - type: textarea
+    id: diag
+    attributes:
+      label: 诊断串 / 报错
+      description: |
+        桌面客户端补丁：面板数据没到位时，消耗量位置会有一行「诊断：」开头的六段技术串，整行复制过来。
+        网页版：Kimi Code 页面按 F12 打开 Console，把红色报错贴上来。
+        也可以让 Kimi 跑一次面板自检（doctor）并把输出贴上。
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: 运行环境
+      description: 系统与版本、浏览器或客户端版本、Kimi Code 的版本
+      placeholder: 例如 macOS 15.6 / Chrome 140 / Kimi Code 桌面端 1.0.2
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 样式 / 布局类问题请直接拖图进来，比文字描述快得多
+    validations:
+      required: false

@@ -24,15 +24,10 @@ kimi-code-monitor-v*-unpacked/
 _metadata/
 
 # docs/ 下的一次性设计稿与截图工具（仅本地保留，不进仓库）
-docs/extensions-card-mockup.html
-docs/extensions-card-mockup.png
-docs/guide-variants.html
-docs/head-image.html
-docs/kimi-pet-preview.html
-docs/kimi-pet-preview.png
-docs/rive-gallery.html
-docs/screenshot-studio.html
-docs/window.png
+# 只匹配 docs/ 顶层裸文件：docs/screenshots/ 里的发行截图与各 .md 照常跟踪
+# （此后若要在 docs/ 顶层新增需要入库的 html/png，用 git add -f）
+docs/*.html
+docs/*.png
 
 # 桌面端补丁包构建产物
 kcm-desktop-patch*.zip

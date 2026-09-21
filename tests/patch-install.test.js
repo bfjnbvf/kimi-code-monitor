@@ -119,7 +119,7 @@ test('payloadHash：安装器与 doctor 两份自包含实现一致', () => {
 /* ---------- 全流程集成：临时假客户端目录上真跑 install.mjs ---------- */
 
 // 假补丁目录：install.mjs 自包含可直接复制；scan.mjs 复刻发布形态——
-// esbuild 打包成零依赖单文件（与 build-patch.mjs 同配置），源码版的
+// esbuild 打包成零依赖单文件（与 scripts/build-patch.mjs 同配置），源码版的
 // '../../cli-usage.js' 相对导入离开 src/ 树会失效。
 async function makeFakePatchDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-patch-'));
