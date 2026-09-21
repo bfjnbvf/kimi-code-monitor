@@ -1,13 +1,16 @@
 # Kimi Code Monitor
 
-**[简体中文](README.md) | English**
+<p align="center"><strong><a href="README.md">简体中文</a> | English</strong></p>
 
 > **Contents**
-> [Features](#features): [Pet](#universal-codex-desktop-pet) · [Usage Analytics](#usage-analytics) · [Bookmarks](#ai-reply-bookmarks) · [Share Card](#usage-share-card) · [Mascot](#a-mascot-that-reflects-state) · [Custom Panel](#modular-customizable-panel) · [Auto-Archive](#auto-archive-inactive-chats-experimental) · [Titles](#session-title-auto-generation-official-capability) · [More](#more)
+> [1. Features](#1-features): [Pet](#universal-codex-desktop-pet) · [Usage Analytics](#usage-analytics) · [Bookmarks](#ai-reply-bookmarks) · [Share Card](#usage-share-card) · [Mascot](#a-mascot-that-reflects-state) · [Custom Panel](#modular-customizable-panel) · [Auto-Archive](#auto-archive-inactive-chats-experimental) · [Titles](#session-title-auto-generation-official-capability) · [More](#more)
 >
-> **[**Installation & Authorization**](#installation--authorization): [desktop client](#installation--authorization) · [Chrome extension](#installation--authorization)**
+> [**2. Installation & Authorization**](#2-installation--authorization): [desktop client](#2-installation--authorization) · [Chrome extension](#2-installation--authorization)
 >
-> [Data & Privacy](#data--privacy) · [Technical Implementation](#technical-implementation)
+> [3. Data & Privacy](#3-data--privacy)
+>
+> [4. Technical Implementation](#4-technical-implementation)
+
 
 > **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar — no client code changes, automatic backup, fully reversible uninstall. Zero installation prerequisites: the client itself is all you need; no Node.js or any other dependency.
 >
@@ -16,10 +19,10 @@
 > The recommended path installs an ops skill first: paste the prompt below into Kimi inside the desktop client; it will install the skill, then follow the skill's guidance to set up the panel:
 >
 > ```text
-> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
+> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 > ```
 >
-> Uninstall and daily maintenance (self-check / provider balance troubleshooting): [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md).
+> Uninstall and daily maintenance: [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md). Self-checks and provider balance troubleshooting are handled by the ops skill.
 
 ![Kimi Code Monitor: the sidebar monitor extension for Kimi Code Web](docs/screenshots/head.png)
 
@@ -27,7 +30,7 @@ A sidebar monitor extension for Kimi Code Web — the same panel also runs insid
 
 <img src="docs/screenshots/hero.png" alt="Full mode vs Mini mode" width="476" height="353">
 
-## Features
+## 1. Features
 
 ### Universal Codex Desktop Pet
 
@@ -107,7 +110,7 @@ To enable: set the environment variable `KIMI_CODE_EXPERIMENTAL_FLAG=1` where yo
 - Booster-pack balance display, click through to the top-up page (or the console)
 - Optional sidebar tidy: hides the sidebar logo and moves New Chat up in line with the collapse button
 
-## Installation & Authorization
+## 2. Installation & Authorization
 
 <details>
 <summary>Desktop client Skill edition (macOS / Windows desktop client, recommended)</summary>
@@ -119,7 +122,7 @@ The only prerequisite is the Kimi Code desktop client itself. The installer borr
 Paste the prompt below into Kimi inside the desktop client; it will install the skill, then follow the skill's guidance to set up the panel:
 
 ```text
-请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
+请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 ```
 
 **Option 2: manual install**
@@ -130,7 +133,7 @@ Paste the prompt below into Kimi inside the desktop client; it will install the 
 
 Installation is idempotent and can be re-run any time; `--uninstall` removes everything cleanly (original file restored). A major client update wipes the panel files — simply re-run the installer; usage history is re-scanned automatically and data accumulated in the client's own storage is unaffected.
 
-Uninstall and daily maintenance (self-check / provider balance troubleshooting): [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md).
+Uninstall and daily maintenance: [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md). Self-checks and provider balance troubleshooting are handled by the ops skill.
 
 </details>
 
@@ -161,7 +164,7 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 
 </details>
 
-## Data & Privacy
+## 3. Data & Privacy
 
 <details>
 <summary>Expand</summary>
@@ -180,7 +183,7 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 
 </details>
 
-## Technical Implementation
+## 4. Technical Implementation
 
 The panel is a content script injected into the kimi web page: it reconstructs session state from the page's WebSocket event stream, mounts its DOM inside the sidebar, and keeps everything in memory — nothing is uploaded. Quota and authorization go through the extension background's OAuth channel; long-term usage stats come from incrementally reading local CLI session files after an explicit directory grant.
 

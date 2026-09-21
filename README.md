@@ -1,21 +1,28 @@
 # Kimi Code Monitor
 
-**简体中文 | [English](README.en.md)**
+<p align="center"><strong>简体中文 | <a href="README.en.md">English</a></strong></p>
 
 > **目录**
-> [主要特性](#主要特性)：[宠物](#通用-codex-桌面宠物) · [用量分析](#用量分析) · [AI 回复收藏](#ai-回复收藏) · [分享卡片](#用量分享卡片) · [吉祥物](#会反映状态的吉祥物) · [自定义面板](#模块化自定义面板) · [自动归档](#自动归档不活跃对话实验性) · [标题生成](#会话标题自动生成官方能力) · [更多](#更多)
+> [一、主要特性](#一主要特性)：[宠物](#通用-codex-桌面宠物) · [用量分析](#用量分析) · [AI 回复收藏](#ai-回复收藏) · [分享卡片](#用量分享卡片) · [吉祥物](#会反映状态的吉祥物) · [自定义面板](#模块化自定义面板) · [自动归档](#自动归档不活跃对话实验性) · [标题生成](#会话标题自动生成官方能力) · [更多](#更多)
 >
-> **[**安装与授权**](#安装与授权)：[客户端](#安装与授权) · [Chrome 插件](#安装与授权)**
+> [**二、安装与授权**](#二安装与授权)：[客户端](#二安装与授权) · [Chrome 插件](#二安装与授权)
 >
-> [数据与隐私](#数据与隐私) · [技术实现](#技术实现)
+> [三、数据与隐私](#三数据与隐私)
+>
+> [四、技术实现](#四技术实现)
 
-> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
+
+> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。零安装前提：有客户端就行，不需要 Node，也不需要任何其他依赖。
+>
+> 与浏览器扩展相比，客户端版暂不支持：弹窗套件（自定义日期范围用量图表 / 140 天热力图 / 数据导出 / 分享卡片 / 宠物画廊管理）、AI 回复收藏、自动归档、额度预警桌面通知。外部账户则更省事——余额自动跟随客户端里已配置的供应商，无需手动填 key。
+>
+> 推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
 >
 > ```text
-> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
+> 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 > ```
 >
-> 卸载与日常运维（自检 / 供应商余额排查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
+> 卸载与日常运维见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)；自检与供应商余额排查由运维技能负责。
 
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
@@ -23,7 +30,7 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
 
-## 主要特性
+## 一、主要特性
 
 ### 通用 Codex 桌面宠物
 
@@ -103,7 +110,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - 加油包余额显示，点击直达充值页（可改为控制台）
 - 侧栏美化（可开关）：隐藏侧栏顶部 logo，新建对话按钮上移，与伸缩按钮排成一行
 
-## 安装与授权
+## 二、安装与授权
 
 <details>
 <summary>客户端 Skill 版（macOS / Windows 桌面客户端，推荐）</summary>
@@ -115,7 +122,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
 
 ```text
-请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 桌面客户端监控面板。
+请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 ```
 
 **方式二：手动安装**
@@ -126,7 +133,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 安装幂等，可反复执行；`--uninstall` 完整卸载（还原原始文件）。客户端大版本更新会清掉面板文件——重新执行一次安装即可，历史统计会重新扫描补齐，使用期间攒的数据存在客户端自己的存储里，不受影响。
 
-卸载与日常运维（自检 / 供应商余额排查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
+卸载与日常运维见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)；自检与供应商余额排查由运维技能负责。
 
 </details>
 
@@ -157,7 +164,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 </details>
 
-## 数据与隐私
+## 三、数据与隐私
 
 <details>
 <summary>展开查看</summary>
@@ -176,7 +183,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 </details>
 
-## 技术实现
+## 四、技术实现
 
 面板本体是一个注入 kimi web 页面的内容脚本：从页面 WebSocket 事件流还原会话状态，DOM 挂在侧边栏内，数据只进内存、不上传；额度与授权走扩展后台的 OAuth 通道，长期用量统计来自显式授权后对本地 CLI 会话文件的增量读取。
 
