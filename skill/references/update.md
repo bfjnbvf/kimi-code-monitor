@@ -21,7 +21,7 @@
 1. 技能：重新下载技能包解压覆盖本地技能目录（Release 固定名，始终最新）：
    `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip`
    macOS/Linux：`unzip -o <包> -d ~/.kimi-code/skills/`；Windows：`Expand-Archive <包> -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`。
-   Release 不可达时退回复拉 raw 文件覆盖。若本地还是旧路径 `kcm-panel/`（2026-09-21 前安装），装到新目录后删掉旧目录。
+   下载失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」。若本地还是旧路径 `kcm-panel/`（2026-09-21 前安装），装到新目录后删掉旧目录。
 2. 补丁：按 install.md 的安装流程走（幂等重装），它会重新扫描历史数据。
 3. 完成后跑 `bash <技能目录>/scripts/run.sh doctor.mjs`（Windows：`run.cmd doctor.mjs`）确认，并提醒用户重载客户端（macOS Cmd+R，Windows Ctrl+R）。
 

@@ -47,13 +47,4 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 
 技能就位后，按用户请求继续：安装面板、重装、自检、供应商余额排查等，全部按 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 及其 `references/` 执行——入口是 `references/install.md`（含装面板前的环境预检与用户同意确认）。
 
-## 备选：Release 不可达时逐文件拉取
-
-从 raw 直链（主分支 `main`）拉齐 `skill/` 下全部文件，组装到同一目录（保持 `SKILL.md` 在根、`references/` 与 `scripts/` 在旁）：
-
-- `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`
-- `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE`
-- `.../skill/references/` 下全部 `.md`：`doctor`、`external-accounts`、`faq`、`guide-scripts`、`install`、`status-dictionary`、`update`
-- `.../skill/scripts/` 下：`doctor.mjs`、`refresh-stats.mjs`、`client-providers.mjs`、`doctor.sh`
-
-拉取失败（网络不通）时不要硬试：向用户说明无法连接 GitHub，询问是否使用本地已有的技能文件继续，并提示本地版本可能过旧、与当前客户端可能不适配的风险。
+下载技能包失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」，稍后从同一 Release 地址重新下载。

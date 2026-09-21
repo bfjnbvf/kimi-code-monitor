@@ -65,15 +65,7 @@
 3. 验证 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在即装好；已存在则不要重装，先比对 MAINTENANCE 的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
 4. 告诉用户技能已就位，新会话（或重启客户端）后可持续使用。
 
-备选（Release 不可达时）：从 raw 直链（主分支 `main`）逐文件拉取 `skill/` 下全部文件，组装到同一目录（保持 SKILL.md 在根、references/ 与 scripts/ 在旁）：
-
-- `skill/SKILL.md`、`skill/MAINTENANCE`
-- `skill/references/` 下全部 `.md`（doctor、external-accounts、faq、guide-scripts、install、status-dictionary、update）
-- `skill/scripts/` 下 `doctor.mjs`、`refresh-stats.mjs`、`client-providers.mjs`、`doctor.sh`
-
-直链形如 `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`。
-
-拉取失败（网络不通）时不要硬试：向用户说明无法连接 GitHub，询问是否使用本地已有的技能文件或补丁包继续，并提示本地版本可能过旧、与当前客户端可能不适配的风险。
+下载失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」，稍后再按第 1 步重新下载即可。
 
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
 
