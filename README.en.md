@@ -6,7 +6,7 @@
 
 A sidebar monitor extension for Kimi Code Web — the same panel also runs inside the Kimi Code desktop client (macOS / Windows, installed as a patch). A mascot that mirrors the agent's working state, a desktop pet compatible with Codex pet galleries, a complete usage analytics & sharing suite, and an AI-reply bookmark manager — all running locally, nothing uploaded.
 
-![Full mode vs Mini mode](docs/screenshots/hero.png)
+<img src="docs/screenshots/hero.png" alt="Full mode vs Mini mode" width="680" height="504">
 
 > **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar — no client code changes, automatic backup, fully reversible uninstall. Paste the following prompt into Kimi inside the desktop client to install:
 >
@@ -48,7 +48,7 @@ Adopt a pixel pet on the page. It follows your working rhythm: heads down while 
 - **Full popup edition**: daily usage chart with custom date ranges, a 140-day activity heatmap, and data export (no conversation content)
 - **Quota alerts**: desktop notifications at 80% and 95% of the 5h / weekly quota
 
-![5h and weekly quota bars](docs/screenshots/quota.png)
+<img src="docs/screenshots/quota.png" alt="5h and weekly quota bars" width="680" height="70">
 
 ### AI Reply Bookmarks
 
@@ -60,7 +60,7 @@ See an answer worth keeping? Click the star in the action row below it.
 - Cross-session jumps supported; all bookmark data stays local
 - A master switch lives in the popup's "Extensions" card (on by default); turning it off hides the stars and the bookmark page while keeping the data
 
-![Bookmark page: list view (session / date / full content)](docs/screenshots/bookmarks.png)
+<img src="docs/screenshots/bookmarks.png" alt="Bookmark page: list view (session / date / full content)" width="720" height="293">
 
 ### Usage Share Card
 
@@ -68,7 +68,7 @@ Click "Create share card" in the popup's usage section to render a 1080×1350 ca
 
 Download a 2x high-res PNG or copy it straight to the clipboard.
 
-![Usage share card](docs/screenshots/share-card.png)
+<img src="docs/screenshots/share-card.png" alt="Usage share card" width="480" height="600">
 
 ### A Mascot That Reflects State
 
@@ -84,7 +84,7 @@ Every info block is an independent module — combine them freely. Module sizes 
 - Drag to reorder within a zone, mixing half and full widths like tiles
 - Each module's ≡ menu holds its own settings
 
-![Edit mode with three zones](docs/screenshots/edit-mode.png)
+<img src="docs/screenshots/edit-mode.png" alt="Edit mode with three zones" width="300" height="734">
 
 ### Auto-Archive Inactive Chats (Experimental)
 
@@ -111,7 +111,7 @@ All UI text (panel, popup, bookmarks, share card) supports 中文 and English, *
 - Booster-pack balance display, click through to the top-up page (or the console)
 - Optional sidebar tidy: hides the sidebar logo and moves New Chat up in line with the collapse button
 
-![Popup: authorization, full usage chart and data export](docs/screenshots/popup.png)
+<img src="docs/screenshots/popup.png" alt="Popup: authorization, full usage chart and data export" width="260" height="237">
 
 ## Installation & Authorization
 

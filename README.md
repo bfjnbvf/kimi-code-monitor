@@ -6,7 +6,7 @@
 
 Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌面客户端（macOS / Windows，补丁形式安装）。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
 
-![面板完整模式与 Mini 模式对比](docs/screenshots/hero.png)
+<img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="680" height="504">
 
 > **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。把下面这段话发给桌面客户端里的 Kimi，即可完成安装：
 >
@@ -48,7 +48,7 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 - **Popup 完整版**：按天消耗图表（自定义日期范围）、140 天活跃热力图、数据导出（不含对话内容）
 - **额度预警**：5h / 本周额度超过 80% 和 95% 时桌面通知
 
-![5h 与本周额度条](docs/screenshots/quota.png)
+<img src="docs/screenshots/quota.png" alt="5h 与本周额度条" width="680" height="70">
 
 ### AI 回复收藏
 
@@ -60,7 +60,7 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 - 支持跨会话跳转；收藏数据只存在本地
 - 弹窗「扩展功能」卡片提供总开关（默认开），关闭后星标与收藏页一并隐藏，数据保留
 
-![收藏页：列表视图（会话 / 日期 / 完整内容）](docs/screenshots/bookmarks.png)
+<img src="docs/screenshots/bookmarks.png" alt="收藏页：列表视图（会话 / 日期 / 完整内容）" width="720" height="293">
 
 ### 用量分享卡片
 
@@ -68,7 +68,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 支持下载 2x 高清 PNG，或直接复制到剪贴板。
 
-![用量分享卡片](docs/screenshots/share-card.png)
+<img src="docs/screenshots/share-card.png" alt="用量分享卡片" width="480" height="600">
 
 ### 会反映状态的吉祥物
 
@@ -84,7 +84,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - 同一区域内拖动排序，半宽整宽混排（像磁贴一样）
 - 每个模块的 ≡ 菜单里有它的专属设置
 
-![编辑模式三区域示意](docs/screenshots/edit-mode.png)
+<img src="docs/screenshots/edit-mode.png" alt="编辑模式三区域示意" width="300" height="734">
 
 ### 自动归档不活跃对话（实验性）
 
@@ -111,7 +111,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - 加油包余额显示，点击直达充值页（可改为控制台）
 - 侧栏美化（可开关）：隐藏侧栏顶部 logo，新建对话按钮上移，与伸缩按钮排成一行
 
-![弹窗：授权管理、完整版消耗量与数据导出](docs/screenshots/popup.png)
+<img src="docs/screenshots/popup.png" alt="弹窗：授权管理、完整版消耗量与数据导出" width="260" height="237">
 
 ## 安装与授权
 
