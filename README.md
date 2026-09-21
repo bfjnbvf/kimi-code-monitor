@@ -20,8 +20,6 @@
 > ```text
 > 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 > ```
->
-> 卸载与日常运维见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)；自检与供应商余额排查由运维技能负责。
 
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
