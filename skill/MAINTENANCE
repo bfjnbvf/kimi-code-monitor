@@ -1,8 +1,12 @@
-skill-version: 5
+skill-version: 6
 patch-version: 3.5.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 
 # 更新记录
+
+## 6（2026-09-21）
+
+首装引导补一句：先介绍「点一下面板底部可收起/展开」，再讲原来的长按进入编辑模式。
 
 ## 5（2026-09-21）
 
