@@ -20,8 +20,6 @@
 > ```text
 > 请根据 https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/docs/SKILL-INSTALL.md ，安装 kimi-code-monitor 技能；装好启用后，按技能指示帮助我安装 Kimi Code 客户端面板。
 > ```
->
-> Uninstall and daily maintenance: [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md). Self-checks and provider balance troubleshooting are handled by the ops skill.
 
 ![Kimi Code Monitor: the sidebar monitor extension for Kimi Code Web](docs/screenshots/head.png)
 
