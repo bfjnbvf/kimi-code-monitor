@@ -5,7 +5,7 @@
 //      （这是「零依赖安装」方案唯一无法在 macOS 上验证的前提）
 // 在 macOS / Linux 上直接退出 0（对应路径由 tests/patch-shell.test.js 覆盖）。
 //
-// 用法：node tests/windows-install.js   （CI 的 windows job 里运行）
+// 用法：node tests/windows-install.cjs   （CI 的 windows job 里运行）
 'use strict';
 
 const fs = require('node:fs');
