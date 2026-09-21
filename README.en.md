@@ -2,7 +2,6 @@
 
 <p align="center"><strong><a href="README.md">简体中文</a> | English</strong></p>
 
-> **Contents**
 > [1. Features](#1-features): [Pet](#universal-codex-desktop-pet) · [Usage Analytics](#usage-analytics) · [Bookmarks](#ai-reply-bookmarks) · [Share Card](#usage-share-card) · [Mascot](#a-mascot-that-reflects-state) · [Custom Panel](#modular-customizable-panel) · [Auto-Archive](#auto-archive-inactive-chats-experimental) · [Titles](#session-title-auto-generation-official-capability) · [More](#more)
 >
 > [**2. Installation & Authorization**](#2-installation--authorization): [desktop client](#2-installation--authorization) · [Chrome extension](#2-installation--authorization)
