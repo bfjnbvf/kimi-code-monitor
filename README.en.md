@@ -2,32 +2,25 @@
 
 **[简体中文](README.md) | English**
 
+> **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar — no client code changes, automatic backup, fully reversible uninstall. The recommended path installs an ops skill first: paste the prompt below into Kimi inside the desktop client; it will install the skill, then follow the skill's guidance to set up the panel:
+>
+> ```text
+> 请帮我安装 kimi-code-monitor 技能，并配置桌面客户端监控面板：
+>
+> 1. 从 GitHub 仓库 https://github.com/bfjnbvf/kimi-code-monitor（主分支 main）拉取 skill/ 目录下全部文件，安装到用户级技能目录 ~/.kimi-code/skills/kimi-code-monitor/（保持 SKILL.md 在根，references/ 与 scripts/ 在旁）
+> 2. 安装完成后直接启用这个技能，按技能指示（SKILL.md 及其 references）帮助我安装 kimi-code-monitor 桌面客户端监控面板
+>
+> 要求：严格按技能文档流程走；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+> ```
+>
+> Uninstall and daily maintenance (self-check / external-account lookup): [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md).
+
 ![Kimi Code Monitor: the sidebar monitor extension for Kimi Code Web](docs/screenshots/head.png)
 
 A sidebar monitor extension for Kimi Code Web — the same panel also runs inside the Kimi Code desktop client (macOS / Windows, installed as a patch). A mascot that mirrors the agent's working state, a desktop pet compatible with Codex pet galleries, a complete usage analytics & sharing suite, and an AI-reply bookmark manager — all running locally, nothing uploaded.
 
 <img src="docs/screenshots/hero.png" alt="Full mode vs Mini mode" width="476" height="353">
 
-> **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar — no client code changes, automatic backup, fully reversible uninstall. Paste the following prompt into Kimi inside the desktop client to install:
->
-> ```text
-> 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
->
-> 1. 下载补丁包：到 https://github.com/bfjnbvf/kimi-code-monitor/releases 下载最新的 kcm-desktop-patch-v*.zip
-> 2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
-> 3. 解压到一个临时目录
-> 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
-> 5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
-> 6. 完成后把这些告诉我：
->    - install.mjs 的完整输出
->    - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
->    - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
-> 7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
->
-> 要求：只运行补丁包里的 install.mjs（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
-> ```
->
-> Uninstall and daily maintenance (self-check / external-account lookup): [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md).
 
 ## Features
 

@@ -2,32 +2,25 @@
 
 **简体中文 | [English](README.en.md)**
 
+> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
+>
+> ```text
+> 请帮我安装 kimi-code-monitor 技能，并配置桌面客户端监控面板：
+>
+> 1. 从 GitHub 仓库 https://github.com/bfjnbvf/kimi-code-monitor（主分支 main）拉取 skill/ 目录下全部文件，安装到用户级技能目录 ~/.kimi-code/skills/kimi-code-monitor/（保持 SKILL.md 在根，references/ 与 scripts/ 在旁）
+> 2. 安装完成后直接启用这个技能，按技能指示（SKILL.md 及其 references）帮助我安装 kimi-code-monitor 桌面客户端监控面板
+>
+> 要求：严格按技能文档流程走；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+> ```
+>
+> 卸载与日常运维（自检 / 外部账户代查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
+
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
 Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌面客户端（macOS / Windows，补丁形式安装）。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
 
-> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。把下面这段话发给桌面客户端里的 Kimi，即可完成安装：
->
-> ```text
-> 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
->
-> 1. 下载补丁包：到 https://github.com/bfjnbvf/kimi-code-monitor/releases 下载最新的 kcm-desktop-patch-v*.zip
-> 2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
-> 3. 解压到一个临时目录
-> 4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
-> 5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
-> 6. 完成后把这些告诉我：
->    - install.mjs 的完整输出
->    - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
->    - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
-> 7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
->
-> 要求：只运行补丁包里的 install.mjs（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
-> ```
->
-> 卸载与日常运维（自检 / 外部账户代查）见 [docs/DESKTOP-PATCH.md](docs/DESKTOP-PATCH.md)。
 
 ## 主要特性
 
