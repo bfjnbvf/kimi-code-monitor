@@ -17,7 +17,7 @@ kimi-web-status-bar-v*.zip
 
 # 打包产物（zip 归档目录 + 根目录新生成的 zip）
 dist-archive/
-kimi-code-monitor-v*.zip
+kimi-code-monitor-*.zip
 kimi-code-monitor-v*-unpacked/
 
 # Chrome 加载解包扩展时生成
@@ -35,5 +35,5 @@ docs/screenshot-studio.html
 docs/window.png
 
 # 桌面端补丁包构建产物
-kcm-desktop-patch-v*.zip
+kcm-desktop-patch*.zip
 dist-patch/
