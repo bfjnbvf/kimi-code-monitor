@@ -157,4 +157,3 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 - `src/pet/`：桌面宠物——`pet-sprites.js`（图集播放器 + 行为）、`pet-install.js`（画廊命令解析与下载）、`pet-store.js`（IndexedDB 素材库）
 - `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器、`install.mjs` 安装器（Node ≥16，跨 macOS/Windows，`install.sh` 为旧版备选）、`scan.mjs` 历史扫描）
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）
-- `web-token.js`：已停用的网页端 token 中继（保留备用，未在 manifest 注册）

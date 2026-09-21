@@ -1,7 +1,7 @@
 # 交接文档 — Kimi Code Monitor（2026-09-05）
 
 > 写给下一个接手这个项目的会话/人。读完这份文档即可无缝继续。
-> 功能与架构的权威描述在 `README.md`（中英双份，持续维护），本文只讲 README 里没有的：怎么干活、雷区在哪。进行中功能的设计/交接见 `docs/DESIGN-extensions-card.md`。
+> 功能与架构的权威描述在 `README.md`（中英双份，持续维护），本文只讲 README 里没有的：怎么干活、雷区在哪。已交付功能的设计背景见 `docs/DESIGN-extensions-card.md`，进行中的 Windows 适配计划见 `docs/PLAN-windows-support.md`。
 
 ## 一、项目是什么
 
@@ -14,7 +14,7 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 | `npm run build` | esbuild 把 `src/` 打成 `dist/` 四个 iife bundle（content / background / popup / panel-app）；**改了源码必须重跑**，manifest 只引用 `dist/` |
 | `npm test` | 先构建再跑全部测试（node:test，含 jsdom smoke）；含发版守卫（版本三处一致 + CHANGELOG 顶部条目） |
 | `npm run lint` | eslint 检查 no-undef / no-unused-vars（拆分事故防线，不做风格限制） |
-| `bash build.sh` | 打扩展发行 zip（版本化名，含 dist/rive/rules/icons，**不含** docs/tests/web-token.js）+ 技能 zip（固定名 `kimi-code-monitor-skill.zip`，顶层带 `kimi-code-monitor/` 目录） |
+| `bash build.sh` | 打扩展发行 zip（版本化名：manifest/dist/content.css/rive/rules/popup.html/icons/README/LICENSE）+ 技能 zip（固定名 `kimi-code-monitor-skill.zip`，顶层带 `kimi-code-monitor/` 目录） |
 | `npm run pack:patch` | 打桌面补丁 zip（固定名 `kcm-desktop-patch.zip`：install.mjs + install.sh + scan.mjs + fetch-wallet.mjs + kcm/），与扩展共用 src/ 与 content.css/rive |
 
 - 在 `chrome://extensions` 重载扩展后，Kimi Web 页面要手动刷新一次面板才恢复（Chrome 不会重新注入 content script）。
@@ -33,8 +33,6 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 
 - **自动命名旧模型管线**（v3.5.0 移除）：`src/session-rename/` 整个目录、`src/background/rename.js` 整模块、background 路由与 sender-guard 的 `rename.model` 已整体删除（v3.4.0–3.4.3 曾是注释保留）。现行方案不变：官方实验 auto_session_title + 「扩展功能」卡片的复制提示词引导（`src/popup/rename.js`、`src/content/session-tidy.js` 的 `rename.official.status.fetch`）。
 - **Swift 伴侣 App 通路**（v3.5.0 移除）：`src/popup-app/` 与 panel-app 的 Swift 桥接模式已删除，桌面补丁只剩注入模式（loader + direct.js 直连 kap-server）。注意 `src/panel-app/bridge.js` **保留**——它是注入模式的 push 总线（`window.__kcm.push` 队列与消息分发，direct.js 与 loader 都往它推），不再是 Swift 桥。
-- **月度额度**（`resolveMonthlyStats` / `requestMonthlyStats` / `web-token.js`）：web token 寿命仅约 18 分钟，中转方案体验差已下线，`data.monthly` 恒为 null。若重启：manifest 需补 `https://www.kimi.com/*` host_permissions 与 web-token.js 的 content_scripts，**并把该 origin 加进 sender-guard 放行集合**。
-- **web-token.js 不进发行 zip**（未注册的死文件，仅仓库保留）。
 - **自动整理开放问题**（实现时留待实测，见 DESIGN 文档 §8）：归档后续聊是否自动恢复、父子会话归档联动、RC 页面 V2 接口可用性——若用户反馈异常先查这三项。
 
 ## 五、用户偏好与雷区（重要）

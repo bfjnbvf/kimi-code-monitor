@@ -114,7 +114,7 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 });
 
 /* ---------- kimi.com 网页端 token 中转（月额度接口方案 B） ----------
- * web-token.js 在 www.kimi.com 页面读取网页端 access_token 上报至此缓存；
+ * 网页端 access_token 由已下线的网页端中转脚本读取后上报至此缓存；
  * GetSubscriptionStats 只认这个 web token（设备 OAuth token 401）。 */
 const WEB_TOKEN_STORAGE_KEY = 'kimiWebAccessToken';
 const WEB_TOKEN_REFRESH_MARGIN_SECONDS = 120;
@@ -280,7 +280,7 @@ function requestQuota(accessToken) {
 
 // 月额度 = 订阅余额的已用比例 + 月度周期结束时间；任何失败都返回 null，不影响主额度
 // 注意：重新启用此通路前，manifest 必须补 https://www.kimi.com/* 的 host_permissions
-// （以及 web-token.js 的 content_scripts matches），否则 MV3 跨域 fetch 会被直接拒绝
+// （以及网页端 token 中转的 content_scripts matches），否则 MV3 跨域 fetch 会被直接拒绝
 async function requestMonthlyStats(deviceAccessToken) {
   // 优先 web 端 token（方案 B，已验证可用）；设备 token 兜底（当前 401，保留以便未来放开）
   const webToken = await getStoredWebToken();

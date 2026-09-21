@@ -1,6 +1,6 @@
 # 工作计划 — 桌面补丁 Windows 适配
 
-> 日期：2026-09-21 ｜ 状态：**P1–P3 已完成（待验证），P4 Windows 真机验证待机器** ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)、[HANDOFF.md](./HANDOFF.md) §七、[RESEARCH-desktop-client-adaptation.md](./RESEARCH-desktop-client-adaptation.md)
+> 日期：2026-09-21 ｜ 状态：**P1–P3 已完成（待验证），P4 Windows 真机验证待机器** ｜ 关联：[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)、[HANDOFF.md](./HANDOFF.md) §七
 >
 > 前置结论：Kimi Code 桌面客户端 2026-09-18 官方发布，**macOS 与 Windows 双平台**（[开源中国报道](https://www.oschina.net/news/502565/kimi-code-desktop)）。Windows 适配不是「等客户端」，是直接开工项。
 >

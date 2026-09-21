@@ -26,7 +26,7 @@ const CONTENT_MESSAGE_TYPES = new Set([
   'cli.usage.open_settings',
   'external.status',
   'pet.asset.active',
-  // web-token.js 当前未注册、保留备用：重新启用时它注入 www.kimi.com，
+  // 网页端 token 中转当前未注册：重新启用月额度通路时它注入 www.kimi.com，
   // 需同时把该 origin 纳入 isAuthorizedContentUrl 的放行集合
   'webtoken.report'
 ]);
