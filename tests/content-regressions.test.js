@@ -246,3 +246,8 @@ test('RC 设备选择器（.rc-dev）收缩到收起按钮同一行，右侧让�
   assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.rc-dev \{[\s\S]*?height: 26px;[\s\S]*?margin: 12px 46px 0 0;/);
   assert.match(cssSource, /html\.ksb-sidebar-tidy aside\.side \.rc-dev-trigger \{[\s\S]*?height: 26px;/);
 });
+
+test('加油包余额双读 boosterWallet/booster_wallet（API 字段改名回归守卫）', () => {
+  const quotaSource = fs.readFileSync(new URL('../src/content/quota.js', import.meta.url), 'utf8');
+  assert.match(quotaSource, /boosterWallet( |\n)*\?\?( |\n)*response\.data\?\.booster_wallet/);
+});

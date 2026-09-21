@@ -1,6 +1,6 @@
 // Panel-app smoke 测试：用 jsdom 把构建产物 dist/panel-app.js 跑起来，
 // 验证「独立面板页挂载出与侧栏一致的 #ksb-widget、push 总线消息驱动渲染」。
-// 数据入口是 window.__vibepal.push（direct.js / loader.js 的同款协议），不经过 chrome.*。
+// 数据入口是 window.__kcm.push（direct.js / loader.js 的同款协议），不经过 chrome.*。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -40,10 +40,10 @@ function createPage() {
   return { dom, window };
 }
 
-test('panel-app：挂载出与侧栏一致的 #ksb-widget，默认全部模块可见', async () => {
+test('panel-app：挂载出与侧栏一致的 #ksb-widget，默认布局分区正确', async () => {
   const { dom, window } = createPage();
   try {
-    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
     await tick(window);
@@ -51,15 +51,21 @@ test('panel-app：挂载出与侧栏一致的 #ksb-widget，默认全部模块�
     const widget = window.document.getElementById('ksb-widget');
     assert.ok(widget, '面板应被挂载');
     assert.ok(widget.closest('#ksb-panel-host'), '面板应挂在宿主容器内');
-    // 全部模块（标题行/输入/缓存/输出/速度/上轮耗时/消耗量/子代理/外部账户 + Mini 区宠物与两条额度）
-    for (const id of ['header', 'input', 'cache', 'output', 'speed', 'duration', 'usageChart', 'agents', 'external', 'pet', 'quota5h', 'quotaWeek']) {
+    // 默认布局：Mini 区宠物（整行）+两条额度；完整区外部账户（整行）+四个数值模块；
+    // 标题行/上轮耗时/代理/消耗图表默认收进隐藏区（不渲染）
+    for (const id of ['pet', 'quota5h', 'quotaWeek', 'external', 'output', 'cache', 'input', 'speed']) {
       assert.ok(
         widget.querySelector(`.ksb-module[data-module="${id}"]`),
         `模块 ${id} 应渲染`
       );
     }
+    for (const id of ['header', 'duration', 'agents', 'usageChart']) {
+      assert.ok(
+        !widget.querySelector(`.ksb-module[data-module="${id}"]`),
+        `模块 ${id} 默认应在隐藏区`
+      );
+    }
     assert.ok(window.document.getElementById('ksb-pet-canvas'), '宠物 canvas 应存在');
-    assert.ok(window.document.getElementById('ksb-cli-lock'), '消耗量模块应带 CLI 锁');
   } finally {
     window.close();
   }
@@ -68,14 +74,33 @@ test('panel-app：挂载出与侧栏一致的 #ksb-widget，默认全部模块�
 test('panel-app：桥接消息驱动额度 / 统计 / 会话事件渲染', async () => {
   const { dom, window } = createPage();
   try {
-    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    // 本用例要断言子代理/外部账户模块：预置一份全可见配置（默认布局已把两者收进隐藏区）
+    window.localStorage.setItem('kimi-statusbar.config', JSON.stringify({
+      version: 3,
+      modules: {
+        header: { show: 'full', span: 2, showBalance: true, balanceLink: 'subscription' },
+        input: { show: 'full', span: 1 }, cache: { show: 'full', span: 1 },
+        output: { show: 'full', span: 1 }, speed: { show: 'full', span: 1 },
+        duration: { show: 'full', span: 1 },
+        quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
+        quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
+        usageChart: { show: 'full', span: 2, chartRange: 'week' },
+        pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
+        agents: { show: 'full', span: 2, hiddenAgents: [] },
+        external: { show: 'full', span: 1, hiddenAccounts: [] }
+      },
+      orderFull: ['header', 'input', 'cache', 'output', 'speed', 'duration', 'usageChart', 'agents', 'external'],
+      orderMini: ['pet', 'quota5h', 'quotaWeek'],
+      orderHidden: []
+    }));
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
     await tick(window);
     // 等初始 idle 状态的最短显示时长（1.5s）过去，后续状态切换才不被节流
     await tick(window, 1600);
 
-    const push = (msg) => window.__vibepal.push(msg);
+    const push = (msg) => window.__kcm.push(msg);
 
     push({ v: 1, type: 'quota', quota: {
       limit5h: { usedRatio: 0.073, resetAt: new Date(Date.now() + 2.5 * 3600e3).toISOString() },
@@ -168,7 +193,26 @@ test('panel-app：桥接消息驱动额度 / 统计 / 会话事件渲染', async
 test('panel-app：真实形状长期统计解锁图表（多天 + sub 子桶 + 历史久远日期）', async () => {
   const { window } = createPage();
   try {
-    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    // 消耗图表默认在隐藏区：本用例断言锁与图表，预置全可见配置
+    window.localStorage.setItem('kimi-statusbar.config', JSON.stringify({
+      version: 3,
+      modules: {
+        header: { show: 'full', span: 2, showBalance: true, balanceLink: 'subscription' },
+        input: { show: 'full', span: 1 }, cache: { show: 'full', span: 1 },
+        output: { show: 'full', span: 1 }, speed: { show: 'full', span: 1 },
+        duration: { show: 'full', span: 1 },
+        quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
+        quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
+        usageChart: { show: 'full', span: 2, chartRange: 'week' },
+        pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
+        agents: { show: 'full', span: 2, hiddenAgents: [] },
+        external: { show: 'full', span: 1, hiddenAccounts: [] }
+      },
+      orderFull: ['header', 'input', 'cache', 'output', 'speed', 'duration', 'usageChart', 'agents', 'external'],
+      orderMini: ['pet', 'quota5h', 'quotaWeek'],
+      orderHidden: []
+    }));
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
     await tick(window);
@@ -178,10 +222,10 @@ test('panel-app：真实形状长期统计解锁图表（多天 + sub 子桶 + �
     assert.ok(lock, '锁元素应存在');
     assert.equal(lock.disabled, true, '独立面板的锁不可点击');
     assert.ok(lock.textContent.includes('正在加载数据统计'), '锁文案应为初始状态句');
-    assert.ok(window.document.getElementById('vibepal-data-status'), '诊断状态位应存在');
+    assert.ok(window.document.getElementById('kcm-data-status'), '诊断状态位应存在');
     assert.ok(window.document.getElementById('ksb-status-sentence'), '状态句元素应存在');
 
-    const push = (msg) => window.__vibepal.push(msg);
+    const push = (msg) => window.__kcm.push(msg);
     const todayKey = usageDayKey(new Date());
     const old = new Date();
     old.setDate(old.getDate() - 40);
@@ -211,20 +255,20 @@ test('panel-app：真实形状长期统计解锁图表（多天 + sub 子桶 + �
 test('panel-app：单条异常消息不锁死桥接（后续消息照常渲染）', async () => {
   const { window } = createPage();
   try {
-    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
     await tick(window, 1600);
 
     // 属性读取即抛的消息（模拟未知数据形状）：不应把异常抛给 push 调用方
     const evil = { v: 1, type: 'quota', get quota() { throw new Error('boom'); } };
-    assert.doesNotThrow(() => window.__vibepal.push(evil), '异常消息应被吞掉并记录');
+    assert.doesNotThrow(() => window.__kcm.push(evil), '异常消息应被吞掉并记录');
     assert.ok(
-      String(window.__vibepalDebug?.dispatchError || '').includes('quota'),
+      String(window.__kcmDebug?.dispatchError || '').includes('quota'),
       '异常应记入诊断标记'
     );
 
-    window.__vibepal.push({ v: 1, type: 'quota', quota: {
+    window.__kcm.push({ v: 1, type: 'quota', quota: {
       limit5h: { usedRatio: 0.5, resetAt: new Date(Date.now() + 3600e3).toISOString() }
     }});
     assert.equal(
@@ -250,13 +294,13 @@ test('panel-app：会话路由下直连模式启动不抛错（TDZ 回归）', a
   const { window } = dom;
   window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   try {
-    const ready = new Promise((resolve) => window.addEventListener('vibepal:panel-ready', resolve));
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
     await tick(window, 100);
-    assert.ok(window.__vibepalDebug, '直连模式应写入调试状态');
+    assert.ok(window.__kcmDebug, '直连模式应写入调试状态');
     assert.ok(
-      window.__vibepalDebug.wsState,
+      window.__kcmDebug.wsState,
       'WS 状态应被记录而非在启动时抛错'
     );
   } finally {

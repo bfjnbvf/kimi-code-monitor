@@ -8,8 +8,8 @@
    `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE`
    读出 `skill-version` 与 `patch-version`。
 2. 与本地比对：
-   - 技能：`~/.kimi-code/skills/kcm-panel/MAINTENANCE` 的 skill-version
-   - 补丁：已装面板目录里的 `vibepal/VERSION`（客户端 `…/desktop-dist/` 下；doctor.sh 也会读）
+   - 技能：`~/.kimi-code/skills/kimi-code-monitor/MAINTENANCE` 的 skill-version
+   - 补丁：已装面板目录里的 `kcm/VERSION`（客户端 `…/desktop-dist/` 下；doctor.mjs 也会读）
 3. 网络拉取失败：跳过检查，顺口告知「本次未做更新检查（连不上 GitHub）」，不要重试轰炸。
 
 ## 有新版本时怎么说
@@ -18,9 +18,9 @@
 
 ## 升级动作（用户同意后）
 
-1. 技能：重新拉取 skill/ 下全部文件覆盖本地技能目录。
+1. 技能：重新拉取 skill/ 下全部文件覆盖本地技能目录（`~/.kimi-code/skills/kimi-code-monitor/`）。若本地还是旧路径 `kcm-panel/`（2026-09-21 前安装），拉到新目录后删掉旧目录。
 2. 补丁：按 install.md 的安装流程走（幂等重装），它会重新扫描历史数据。
-3. 完成后跑 doctor.sh 确认，并提醒用户重载客户端。
+3. 完成后跑 `node <技能目录>/scripts/doctor.mjs` 确认，并提醒用户重载客户端（macOS Cmd+R，Windows Ctrl+R）。
 
 ## 版本不一致的判断
 

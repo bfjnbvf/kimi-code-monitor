@@ -1,5 +1,5 @@
 /**
- * 面板数据总线（window.__vibepal.push 队列 + 消息分发）
+ * 面板数据总线（window.__kcm.push 队列 + 消息分发）
  *
  * 桌面补丁注入模式的数据入口，推送方两类：
  * - direct.js：kap-server 的 WS 事件与 REST 轮询结果（本文件同目录）；
@@ -269,7 +269,7 @@ function handleUsageDaily(msg) {
   panel.cliUsageConnected = msg.connected !== false;
   // loader 的状态行读这个标记区分「文件已载入」与「已进渲染层」
   try {
-    globalThis.__vibepalDebug = { ...globalThis.__vibepalDebug, usageDailyOk: true };
+    globalThis.__kcmDebug = { ...globalThis.__kcmDebug, usageDailyOk: true };
   } catch (error) {
     // 忽略
   }
@@ -362,8 +362,8 @@ function safeDispatch(msg) {
   } catch (error) {
     console.error('[Kimi Status] 推送消息处理失败', msg?.type, error);
     try {
-      globalThis.__vibepalDebug = {
-        ...globalThis.__vibepalDebug,
+      globalThis.__kcmDebug = {
+        ...globalThis.__kcmDebug,
         dispatchError: `${msg?.type}: ${error?.message || error}`
       };
     } catch (e) {
@@ -376,7 +376,7 @@ let bridgeReady = false;
 const pendingMessages = [];
 
 export function installBridge() {
-  globalThis.__vibepal = {
+  globalThis.__kcm = {
     push: (msg) => {
       if (!bridgeReady) {
         pendingMessages.push(msg);
@@ -401,7 +401,7 @@ let disconnectedSince = 0;
 // 数据未就绪期间每秒刷新：更新锁位状态句（人话）并把等级挂到 panel 上
 // 供渲染层窄位（吉祥物旁 / 图表汇总位）取短词。诊断技术串由 loader 写。
 function tickStatusSentence() {
-  const d = globalThis.__vibepalDebug || {};
+  const d = globalThis.__kcmDebug || {};
   const wsState = String(d.wsState || '');
   const disconnected = d.kapKnown === false
     || wsState.startsWith('closed')

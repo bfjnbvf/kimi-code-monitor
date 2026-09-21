@@ -1,8 +1,16 @@
-skill-version: 2
+skill-version: 4
 patch-version: 3.5.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 
 # 更新记录
+
+## 4（2026-09-21）
+
+技能改名为 `kimi-code-monitor`（原 `kcm-panel`）：安装目录变为 `~/.kimi-code/skills/kimi-code-monitor/`。配套补丁的运行时命名空间由 `vibepal` 改为 `kcm`（载荷目录 / 加载路径 / 全局变量 / 就绪事件全部更名）。面板功能与统计口径不变。
+
+## 3（2026-09-21）
+
+配套补丁 3.5.0：安装器与自检脚本 node 化（install.mjs / doctor.mjs），**新增 Windows 支持**——同一脚本内按平台分支（应用发现 / 路径推导 / 版本读取），安装命令由 `bash install.sh` 改为 `node install.mjs`（需 Node ≥16，包内保留旧 bash 安装器作备选）。面板功能与统计口径不变。
 
 ## 2（2026-09-21）
 

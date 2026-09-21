@@ -529,8 +529,9 @@ export function renderExternal() {
   // 数值的类型前缀（API余额 / 5小时 等）单独成 span，窄面板时整体隐藏只留数字
   if (!panel.els?.externalList) return;
   if (!visible.length) {
+    // 独立面板没有扩展弹窗：配置入口是和 Agent 对话
     panel.els.externalList.innerHTML =
-      `<div class="ksb-external-empty">${t('在扩展弹窗中配置 API Key')}</div>`;
+      `<div class="ksb-external-empty">${t(panel.standaloneMode ? '使用 kimi-code-monitor 技能，让 Kimi 配置外部账户' : '在扩展弹窗中配置 API Key')}</div>`;
     return;
   }
   // 同一 provider 多个账户时，用 key 尾号区分

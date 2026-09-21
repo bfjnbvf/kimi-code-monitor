@@ -49,7 +49,8 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
     }
 
     setQuotaAuthRequired(false);
-    updateBalance(response.data?.boosterWallet);
+    // API 字段名经历过 boosterWallet → booster_wallet 的变更，双读兼容
+    updateBalance(response.data?.boosterWallet ?? response.data?.booster_wallet);
 
     const weeklyPercentage = quotaPercentage(response.data?.usage);
     if (weeklyPercentage != null) updateProgress('week', weeklyPercentage);

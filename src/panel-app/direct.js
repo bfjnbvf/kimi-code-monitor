@@ -2,11 +2,11 @@
  * 注入模式的直连数据源（桌面补丁 loader 注入桌面端页面时启用）
  *
  * 页面直接走 kap-server 的 REST/WS，会话焦点直接读 location.pathname。
- * 全部数据翻译成 { v: 1, type, ... } 消息经 __vibepal.push 进入渲染层
+ * 全部数据翻译成 { v: 1, type, ... } 消息经 __kcm.push 进入渲染层
  * （队列与分发见 bridge.js）。
  *
  * 桌面端 1.0.2 起页面从 app://renderer 加载（早期版本直接加载 kap-server 源），
- * 所以 kap 源不能写死相对路径：loader 注入时写入 window.__vibepalKapOrigin
+ * 所以 kap 源不能写死相对路径：loader 注入时写入 window.__kcmKapOrigin
  * （http://127.0.0.1:<port>，kap 端口每次启动随机，注入器探测后动态下发），
  * 读不到时回退相对路径（同源旧版）。跨源 fetch/WS 已实测不受 CORS 限制。
  *
@@ -18,7 +18,7 @@
 // kap-server 源：惰性读取（kap 重启换端口后注入器/loader 会更新全局值）。
 // 顺带读桌面端 SPA 自己的 sessionStorage（UI 用同一来源定位 kap）；
 // 再兜底从页面自己的资源记录里学——渲染进程对 kap 的请求都在 performance 里
-const kapOrigin = () => globalThis.__vibepalKapOrigin || spaOrigin() || learnKapOrigin() || '';
+const kapOrigin = () => globalThis.__kcmKapOrigin || spaOrigin() || learnKapOrigin() || '';
 
 function spaOrigin() {
   try {
@@ -60,7 +60,7 @@ const EVIDENCE_TYPES = new Set([
 export function startDirectMode() {
   const push = (msg) => {
     try {
-      globalThis.__vibepal?.push(msg);
+      globalThis.__kcm?.push(msg);
     } catch (error) {
       // 面板装配前丢弃，bridge 就绪后由下一轮周期数据补上
     }
@@ -69,7 +69,7 @@ export function startDirectMode() {
   // 诊断状态（loader 的状态行展示）：改一次记一次，只在数据未到位时可见
   function debug(state) {
     try {
-      globalThis.__vibepalDebug = { ...globalThis.__vibepalDebug, ...state };
+      globalThis.__kcmDebug = { ...globalThis.__kcmDebug, ...state };
     } catch (error) {
       // 忽略
     }
@@ -176,7 +176,7 @@ export function startDirectMode() {
       setTimeout(connect, 5_000);
       return;
     }
-    const url = `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=vibepal-injected`;
+    const url = `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=kcm-injected`;
     try {
       ws = new WebSocket(url);
     } catch (error) {
@@ -207,7 +207,7 @@ export function startDirectMode() {
         type: 'client_hello',
         id: 'h1',
         payload: {
-          client_id: 'vibepal-injected',
+          client_id: 'kcm-injected',
           subscriptions: focusedSid ? [focusedSid] : [],
           cursors: {}
         }

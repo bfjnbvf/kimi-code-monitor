@@ -12,7 +12,7 @@
  *
  * 用法：
  *   node fetch-external.mjs --fetch '[{"provider":"deepseek","key":"sk-xxx","label":"主号"}]' \
- *                           --out "<app>/Contents/Resources/desktop-dist/vibepal/external.js"
+ *                           --out "<app>/Contents/Resources/desktop-dist/kcm/external.js"
  *   node fetch-external.mjs --clear --out 同上
  */
 
@@ -84,7 +84,7 @@ async function main() {
 
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
   const payload = { fetchedAt: new Date().toISOString(), providers };
-  fs.writeFileSync(args.out, `window.__vibepalExternal = ${JSON.stringify(payload)};\n`);
+  fs.writeFileSync(args.out, `window.__kcmExternal = ${JSON.stringify(payload)};\n`);
   const ok = providers.filter((p) => !p.error).length;
   console.log(`[external] 快照已写入 ${args.out}（成功 ${ok}/${providers.length}，面板重载或稍后自动刷新可见）`);
 }

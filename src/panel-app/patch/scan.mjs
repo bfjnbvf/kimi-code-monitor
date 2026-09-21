@@ -141,7 +141,7 @@ export function renderUsageDailyJs(data) {
     hourly: data.hourly || {},
     secondaryModel: typeof data.secondaryModel === 'string' ? data.secondaryModel : ''
   };
-  return `window.__vibepalUsageDaily = ${JSON.stringify(payload)};\n`;
+  return `window.__kcmUsageDaily = ${JSON.stringify(payload)};\n`;
 }
 
 /* ---------- CLI ---------- */

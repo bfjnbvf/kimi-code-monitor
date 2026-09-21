@@ -7,12 +7,12 @@
 #   bash install.sh --app "/Applications/Kimi Code.app"   指定客户端位置
 #
 # 行为：
-#   1. 备份 desktop-dist/index.html 为 index.html.bak-vibepal（仅在备份
+#   1. 备份 desktop-dist/index.html 为 index.html.bak-kcm（仅在备份
 #      不存在时创建，重装永远保留最早的原始版本）
-#   2. 把补丁包里的 vibepal/ 目录整体同步进 desktop-dist/
+#   2. 把补丁包里的 kcm/ 目录整体同步进 desktop-dist/
 #   3. 有 node 时全量扫描 ~/.kimi-code/sessions 生成 usage-daily.js
 #      （历史统计预填；没有 node 则跳过，面板从安装时刻开始积累）
-#   4. 在 index.html 的 </head> 前注入 <script src="/vibepal/loader.js?v=哈希">
+#   4. 在 index.html 的 </head> 前注入 <script src="/kcm/loader.js?v=哈希">
 #      （哈希取自载荷内容，客户端更新缓存自动失效）
 #
 # 客户端自动更新会整体替换 desktop-dist（补丁随之消失，属预期）：
@@ -56,14 +56,14 @@ echo "[install] 客户端：$APP_PATH"
 
 if [ "$ACTION" = "uninstall" ]; then
   # 还原原始 index.html；没有备份（从未装过/已被客户端更新重置）则只删注入行
-  if [ -f "$DIST/index.html.bak-vibepal" ]; then
-    mv "$DIST/index.html.bak-vibepal" "$DIST/index.html"
+  if [ -f "$DIST/index.html.bak-kcm" ]; then
+    mv "$DIST/index.html.bak-kcm" "$DIST/index.html"
     echo "[install] 已还原原始 index.html"
   else
-    sed -i '' '/\/vibepal\/loader\.js/d' "$DIST/index.html" 2>/dev/null || true
+    sed -i '' '/\/kcm\/loader\.js/d' "$DIST/index.html" 2>/dev/null || true
     echo "[install] 未找到备份，已移除注入行"
   fi
-  rm -rf "$DIST/vibepal"
+  rm -rf "$DIST/kcm"
   echo "[install] 补丁目录已删除，卸载完成（重载客户端生效）"
   echo "[install] 注：面板写在页面 localStorage 的少量键（布局配置/按天积累）保留在客户端用户数据里，不影响运行；重装时会按新语义继续使用"
   exit 0
@@ -71,51 +71,65 @@ fi
 
 # ---- 安装 ----
 
-if [ ! -f "$SCRIPT_DIR/vibepal/loader.js" ]; then
-  echo "[install] 补丁载荷不完整：缺 $SCRIPT_DIR/vibepal/loader.js（请确认解压了完整补丁包）" >&2
+if [ ! -f "$SCRIPT_DIR/kcm/loader.js" ]; then
+  echo "[install] 补丁载荷不完整：缺 $SCRIPT_DIR/kcm/loader.js（请确认解压了完整补丁包）" >&2
   exit 1
 fi
 
-if [ ! -f "$DIST/index.html.bak-vibepal" ]; then
-  cp "$DIST/index.html" "$DIST/index.html.bak-vibepal"
+if [ ! -f "$DIST/index.html.bak-kcm" ]; then
+  cp "$DIST/index.html" "$DIST/index.html.bak-kcm"
   echo "[install] 已备份原始 index.html"
 else
   echo "[install] 备份已存在，保留最早的原始版本"
 fi
 
-rm -rf "$DIST/vibepal"
+rm -rf "$DIST/kcm"
 # -X 不带扩展属性（com.apple.provenance 等可能干扰已签名应用包的资源读取）
-cp -RX "$SCRIPT_DIR/vibepal" "$DIST/vibepal"
-echo "[install] 载荷已同步（$(find "$DIST/vibepal" -type f | wc -l | tr -d ' ') 个文件）"
+cp -RX "$SCRIPT_DIR/kcm" "$DIST/kcm"
+# 余额抓取工具随载荷进驻补丁目录（技能后续「刷新余额」直接运行它）
+if [ -f "$SCRIPT_DIR/fetch-wallet.mjs" ]; then
+  cp -X "$SCRIPT_DIR/fetch-wallet.mjs" "$DIST/kcm/fetch-wallet.mjs"
+fi
+echo "[install] 载荷已同步（$(find "$DIST/kcm" -type f | wc -l | tr -d ' ') 个文件）"
 
 # 历史统计预填：没有 node 或没有 sessions 目录时跳过（面板从安装时刻积累）。
 # 产出必须校验文件非空——scan.mjs 异常退出码 0 时不静默宣称成功
 if command -v node >/dev/null 2>&1 && [ -d "$HOME/.kimi-code/sessions" ]; then
-  if node "$SCRIPT_DIR/scan.mjs" --sessions "$HOME/.kimi-code/sessions" --out "$DIST/vibepal/usage-daily.js" \
-     && [ -s "$DIST/vibepal/usage-daily.js" ]; then
+  if node "$SCRIPT_DIR/scan.mjs" --sessions "$HOME/.kimi-code/sessions" --out "$DIST/kcm/usage-daily.js" \
+     && [ -s "$DIST/kcm/usage-daily.js" ]; then
     echo "[install] 历史统计已预填"
   else
-    rm -f "$DIST/vibepal/usage-daily.js"
+    rm -f "$DIST/kcm/usage-daily.js"
     echo "[install] 历史预填未生效（不影响安装，面板从安装时刻开始积累）" >&2
   fi
 else
   echo "[install] 跳过历史预填（无 node 或无 ~/.kimi-code/sessions），面板从安装时刻开始积累"
 fi
 
+# 加油包余额快照：尽力而为，失败只降级余额显示（-- 占位），不影响安装
+if command -v node >/dev/null 2>&1 && [ -f "$HOME/.kimi-code/credentials/kimi-code.json" ] && [ -f "$SCRIPT_DIR/fetch-wallet.mjs" ]; then
+  if node "$SCRIPT_DIR/fetch-wallet.mjs" --out "$DIST/kcm/wallet.js" && [ -s "$DIST/kcm/wallet.js" ]; then
+    echo "[install] 余额快照已获取"
+  else
+    rm -f "$DIST/kcm/wallet.js"
+    echo "[install] 余额快照未生效（不影响安装，可稍后用技能刷新）" >&2
+  fi
+fi
+
 # 载荷内容哈希 → 缓存参数（usage-daily.js 是机器数据，不参与哈希，loader 用时间戳穿透它）
-PAYLOAD_HASH="$(cd "$DIST/vibepal" && find . -type f ! -name 'usage-daily.js' ! -name 'external.js' -exec shasum -a 256 {} \; | sort | shasum -a 256 | cut -c1-8)"
+PAYLOAD_HASH="$(cd "$DIST/kcm" && find . -type f ! -name 'usage-daily.js' ! -name 'external.js' ! -name 'wallet.js' ! -name 'fetch-wallet.mjs' -exec shasum -a 256 {} \; | sort | shasum -a 256 | cut -c1-8)"
 
 # 注入 loader 标签：先移除旧标签行（幂等），再插到 </head> 前
-sed -i '' '/\/vibepal\/loader\.js/d' "$DIST/index.html"
-perl -pi -e "s|</head>|      <script src=\"/vibepal/loader.js?v=$PAYLOAD_HASH\"></script>\n</head>|" "$DIST/index.html"
+sed -i '' '/\/kcm\/loader\.js/d' "$DIST/index.html"
+perl -pi -e "s|</head>|      <script src=\"/kcm/loader.js?v=$PAYLOAD_HASH\"></script>\n</head>|" "$DIST/index.html"
 
-if ! grep -q "vibepal/loader.js?v=$PAYLOAD_HASH" "$DIST/index.html"; then
+if ! grep -q "kcm/loader.js?v=$PAYLOAD_HASH" "$DIST/index.html"; then
   echo "[install] 注入标签失败：index.html 结构与预期不符（可能客户端大版本更新），已中止" >&2
   echo "[install] 正在还原备份……" >&2
-  if [ -f "$DIST/index.html.bak-vibepal" ]; then
-    cp "$DIST/index.html.bak-vibepal" "$DIST/index.html"
+  if [ -f "$DIST/index.html.bak-kcm" ]; then
+    cp "$DIST/index.html.bak-kcm" "$DIST/index.html"
   fi
-  rm -rf "$DIST/vibepal"
+  rm -rf "$DIST/kcm"
   exit 1
 fi
 

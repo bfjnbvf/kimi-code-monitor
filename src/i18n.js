@@ -87,6 +87,7 @@ const EN = {
   '获取失败': 'Failed',
   '已启用': 'Enabled',
   '在扩展弹窗中配置 API Key': 'Configure API Key in the extension popup',
+  '使用 kimi-code-monitor 技能，让 Kimi 配置外部账户': 'Use the kimi-code-monitor skill to let Kimi configure external accounts',
   'API余额': 'API balance',
   '暂无已配置账户': 'No accounts configured',
   // 面板交互

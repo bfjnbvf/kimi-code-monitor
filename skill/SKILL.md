@@ -1,5 +1,5 @@
 ---
-name: kcm-panel
+name: kimi-code-monitor
 description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装、更新、自检与配置答疑。当用户明确提到这个监控面板、面板用量统计、面板安装/重装/卸载、面板显示异常，或想给面板配置外部账户（DeepSeek/Kimi API/智谱/MiniMax 余额）时使用。不用于其他监控或统计需求。
 ---
 
@@ -20,14 +20,14 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 
 | 组件 | 位置 | 客户端大版本更新后 |
 |---|---|---|
-| 面板补丁 | `客户端.app/Contents/Resources/desktop-dist/vibepal/` | **可能被清除**（正常，重装即可，数据不丢） |
+| 面板补丁 | `客户端.app/Contents/Resources/desktop-dist/kcm/`（Windows 为 `<安装目录>\resources\desktop-dist\kcm\`） | **可能被清除**（正常，重装即可，数据不丢） |
 | 历史统计数据 | 同上目录的 `usage-daily.js`（安装时从 `~/.kimi-code/sessions` 全量扫描生成） | 同上 |
 | 外部账户快照 | 同上目录的 `external.js` | 同上 |
 | 页面内积累 | 客户端自己的用户数据（页面存储），不进应用包 | 不受影响 |
 | 会话日志（真值来源） | `~/.kimi-code/sessions/`（Kimi Code 自己写的） | 不受影响 |
-| 本技能 | `~/.kimi-code/skills/kcm-panel/` | 不受影响 |
+| 本技能 | `~/.kimi-code/skills/kimi-code-monitor/` | 不受影响 |
 
-安装器 `install.sh` 幂等：备份原始 index.html（保留最早的原始版本）、同步补丁、重扫历史、注入带内容哈希的加载标签；`--uninstall` 完整还原。
+安装器 `install.mjs`（Node ≥16，跨 macOS/Windows）幂等：备份原始 index.html（保留最早的原始版本）、同步补丁、重扫历史、注入带内容哈希的加载标签；`--uninstall` 完整还原。包内另留旧版 bash 安装器 `install.sh`（行为等价，无 Node 环境时的备选）。
 
 ## 流程索引
 
@@ -40,4 +40,4 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 | 外部账户余额 | references/external-accounts.md |
 | 对用户的话术模板 | references/guide-scripts.md |
 
-脚本都在 `skill 的 scripts/` 目录：`doctor.sh`（外部自检）、`fetch-external.mjs`（外部账户快照）。补丁安装包（含 install.sh）从 GitHub Releases 下载，地址见 install.md。
+脚本都在 `skill 的 scripts/` 目录：`doctor.mjs`（外部自检，Node ≥16，跨 macOS/Windows）、`fetch-external.mjs`（外部账户快照）。补丁安装包（含 install.mjs / install.sh）从 GitHub Releases 下载，地址见 install.md。

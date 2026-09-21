@@ -131,7 +131,7 @@ const MODULE_HTML = {
     </div>
     ${deps.cliLockAccumulate
       ? `<button type="button" class="ksb-cli-lock" id="ksb-cli-lock" disabled>
-      <span id="ksb-status-sentence">${t('正在加载数据统计…')}</span><small id="vibepal-data-status"></small>
+      <span id="ksb-status-sentence">${t('正在加载数据统计…')}</span><small id="kcm-data-status"></small>
     </button>`
       : `<button type="button" class="ksb-cli-lock" id="ksb-cli-lock">
       <span>${t('连接本地 CLI')}</span><small>${t('开启24h、7d、30d统计')}</small>
@@ -459,7 +459,10 @@ function applyModeClasses() {
 // 设备选择器会留在被压平的头部，与绝对定位的收起按钮重叠（issue #8）
 export function applySidebarTidy() {
   const pet = panel.widgetConfig.modules.pet;
-  const tidy = pet?.sidebarTidy !== false && pet?.show !== 'hidden' && sidebarHeaderTidySafe();
+  // 独立面板（桌面客户端注入）不做侧栏改造：改造样式按网页端侧栏结构假设，
+  // 套在客户端自己的侧栏上可能破坏布局
+  const tidy = !panel.standaloneMode
+    && pet?.sidebarTidy !== false && pet?.show !== 'hidden' && sidebarHeaderTidySafe();
   document.documentElement.classList.toggle('ksb-sidebar-tidy', tidy);
 }
 

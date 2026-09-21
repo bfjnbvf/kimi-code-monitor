@@ -7,7 +7,7 @@
  * 数据形状对齐 usageDaily 的日记录：{ input, output, cacheRead }。
  */
 
-const STORAGE_KEY = 'vibepal.daily.v1';
+const STORAGE_KEY = 'kcm.daily.v1';
 const MAX_DAYS = 90;
 const WRITE_DEBOUNCE_MS = 2_000;
 

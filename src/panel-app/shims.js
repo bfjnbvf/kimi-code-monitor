@@ -3,7 +3,7 @@
  *
  * 桌面补丁的注入页面里没有 chrome.*：storage.local 落到 localStorage，
  * runtime.getURL 解析成面板资源目录的相对路径（注入模式资产经
- * window.__vibepalAssets 转 blob: URL），runtime.sendMessage 无对应通路，
+ * window.__kcmAssets 转 blob: URL），runtime.sendMessage 无对应通路，
  * 一律 resolve undefined（调用方的 .catch(() => {}) 兜底）。
  *
  * 求值顺序约束：本模块不得 import 任何业务模块——ES 模块的依赖先于模块自身
@@ -11,7 +11,7 @@
  * 由 panel-app.js 的 import 顺序保证（shims 是第一个 import）。
  */
 
-const RUNTIME_ID = 'vibepal-panel';
+const RUNTIME_ID = 'kcm-panel';
 
 // localStorage 不可用（不透明来源等）时退化为内存存储，面板行为不中断
 const memoryStore = new Map();
@@ -120,10 +120,10 @@ const noopListenerHub = {
 // 扩展里的 chrome-extension://<id>/<path> 统一还原为 <path>（相对面板资源目录）；
 // 已是相对路径的原样返回。
 // 注入模式（CDP 注入桌面端页面）下资源不在同 origin：注入器预先把
-// wasm/riv 等资产转成 blob: URL 挂在 window.__vibepalAssets，优先命中
+// wasm/riv 等资产转成 blob: URL 挂在 window.__kcmAssets，优先命中
 function resolveResourcePath(path) {
   const rel = String(path || '').replace(/^chrome-extension:\/\/[^/]+\//, '');
-  const assets = globalThis.__vibepalAssets;
+  const assets = globalThis.__kcmAssets;
   if (assets && typeof assets === 'object' && typeof assets[rel] === 'string') {
     return assets[rel];
   }

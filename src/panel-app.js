@@ -4,7 +4,7 @@
  * 由补丁 loader 注入 Kimi Code 桌面端页面（desktop-dist/index.html 的
  * script 标签）：不注入自己的页面、不碰 chrome.* 真实 API（shims 兜底）、
  * 数据由 direct.js 直连同机 kap-server（WS 事件流 + REST 轮询）与 loader
- * 的 usage-daily/external 快照，经 window.__vibepal.push 进入渲染层。
+ * 的 usage-daily/external 快照，经 window.__kcm.push 进入渲染层。
  * 面板本体（widget-structure）、渲染（render）、状态（panel-state）、
  * 宠物（pet-panel）、i18n 与 content.js 完全共用，样式用 content.css 原样引用。
  *
@@ -31,28 +31,30 @@ import { syncLocaleFromPage } from './i18n.js';
 // 独立面板标记：渲染层据此切换状态短词（扩展里对应位置显示「需连接」）
 panel.standaloneMode = true;
 
-// 面板页默认布局：与扩展侧栏的默认配置同口径，但全部模块可见
-// （侧栏默认把标题行 / 上轮耗时 / 子代理 / 外部账户收进隐藏区）。
-// 首次启动写入 storage 后，用户在面板里的长按编辑/拖拽/≡ 菜单照常持久化生效。
+// 面板页默认布局：
+// - Mini 区：宠物（整行，小蓝球跳充值页、显示今日消耗）+ 5h + 本周额度
+// - 完整区：外部账户（整行）+ 输出/缓存/输入/速度
+// - 隐藏区：标题行 / 上轮耗时（整行）/ 代理 / 消耗图表（要图表拖出即可）
+// 首次启动写入 storage 后，长按编辑/拖拽/≡ 菜单照常持久化生效。
 const PANEL_WIDGET_CONFIG = {
   version: 3,
   modules: {
-    header: { show: 'full', span: 2, showBalance: true, balanceLink: 'subscription' },
+    header: { show: 'hidden', span: 2, showBalance: true, balanceLink: 'subscription' },
     input: { show: 'full', span: 1 },
     cache: { show: 'full', span: 1 },
     output: { show: 'full', span: 1 },
     speed: { show: 'full', span: 1 },
-    duration: { show: 'full', span: 1 },
+    duration: { show: 'hidden', span: 2 },
     quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
     quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
-    usageChart: { show: 'full', span: 2, chartRange: 'week' },
-    pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
-    agents: { show: 'full', span: 2, hiddenAgents: [] },
-    external: { show: 'full', span: 1, hiddenAccounts: [] }
+    usageChart: { show: 'hidden', span: 2, chartRange: 'week' },
+    pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: false, ballLink: 'subscription' },
+    agents: { show: 'hidden', span: 2, hiddenAgents: [] },
+    external: { show: 'full', span: 2, hiddenAccounts: [] }
   },
-  orderFull: ['header', 'input', 'cache', 'output', 'speed', 'duration', 'usageChart', 'agents', 'external'],
+  orderFull: ['external', 'output', 'cache', 'input', 'speed'],
   orderMini: ['pet', 'quota5h', 'quotaWeek'],
-  orderHidden: []
+  orderHidden: ['header', 'duration', 'agents', 'usageChart']
 };
 
 /* ---------- 装配 ---------- */
@@ -94,8 +96,8 @@ installBridge();
 // 挂载点缺失时退化为页面级浮动面板（jsdom 测试走这条）
 const host = document.createElement('div');
 host.id = 'ksb-panel-host';
-if (typeof globalThis.__vibepalMountInto === 'function') {
-  globalThis.__vibepalMountInto(host);
+if (typeof globalThis.__kcmMountInto === 'function') {
+  globalThis.__kcmMountInto(host);
 } else {
   document.body.appendChild(host);
 }
@@ -133,7 +135,7 @@ async function bootstrap() {
     console.error('[Kimi Status] 直连模式启动失败', error);
   }
   // loader 的就绪信号：补推直连启动前到达的 usage-daily / external 快照
-  window.dispatchEvent(new Event('vibepal:panel-ready'));
+  window.dispatchEvent(new Event('kcm:panel-ready'));
 }
 
 bootstrap();

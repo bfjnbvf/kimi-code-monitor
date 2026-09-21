@@ -6,7 +6,7 @@
 
 ## 这是什么
 
-把 Kimi Code Monitor 的侧栏面板以**补丁**形式装进 Kim Code 桌面客户端：会话侧栏底部显示额度、token、缓存命中、速度、按天消耗图表与吉祥物。不改客户端代码逻辑，只往 `Contents/Resources/desktop-dist/` 放一个 `vibepal/` 目录并在 `index.html` 注入一行 `<script>` 标签；原始 `index.html` 自动备份，`--uninstall` 可完整还原。
+把 Kimi Code Monitor 的侧栏面板以**补丁**形式装进 Kim Code 桌面客户端：会话侧栏底部显示额度、token、缓存命中、速度、按天消耗图表与吉祥物。不改客户端代码逻辑，只往 `Contents/Resources/desktop-dist/` 放一个 `kcm/` 目录并在 `index.html` 注入一行 `<script>` 标签；原始 `index.html` 自动备份，`--uninstall` 可完整还原。
 
 **分发方式：提示词。** 把下面的安装提示词发给桌面客户端里的 Kimi Code，它自己下载、解压、执行安装脚本。客户端自动更新会整体替换 `desktop-dist`（补丁随之消失，属预期），把同一段提示词再发一遍即可重装。
 
@@ -24,16 +24,17 @@
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
 1. 下载补丁包：<RELEASE_URL>/kcm-desktop-patch-v<版本>.zip
-2. 校验文件完整（zip 能正常列出 install.sh、scan.mjs、vibepal/ 即可）
+2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、scan.mjs、kcm/ 即可）
 3. 解压到一个临时目录
-4. 在该目录执行：bash install.sh
-5. 完成后把这些告诉我：
-   - install.sh 的完整输出
-   - 客户端版本（/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString）
-   - 若 macOS 弹出了权限确认框，弹的是什么、你怎么处理的
-6. 提醒我按 Cmd+R 重载客户端，面板会出现在会话侧栏底部
+4. 确认有 Node（node -v，需 ≥16；没有先引导我装，不要尝试其他安装方式）
+5. 在该目录执行：node install.mjs（客户端不在默认位置时 node install.mjs --app "<客户端目录>"）
+6. 完成后把这些告诉我：
+   - install.mjs 的完整输出
+   - 客户端版本（macOS：/Applications/Kimi Code.app/Contents/Info.plist 的 CFBundleShortVersionString；Windows：安装目录里 Kimi Code.exe 的文件版本）
+   - 若弹出了系统权限确认框，弹的是什么、你怎么处理的
+7. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R），面板会出现在会话侧栏底部
 
-要求：只运行补丁包里的 install.sh（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+要求：只运行补丁包里的 install.mjs（它只改 desktop-dist 并自动备份）；任何一步失败都不要尝试其他修改，把报错原样告诉我。
 ```
 
 本机测试版（未发布前，把第一二步换成本地路径）：
@@ -41,23 +42,23 @@
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
-1. 补丁包在本地：/Users/gabriel/Documents/Coding/kimi-code-monitor/kcm-desktop-patch-v3.4.3.zip
-2. 解压到一个临时目录，在其中执行：bash install.sh
-3. 完成后把这些告诉我：install.sh 的完整输出、客户端版本（Info.plist 的 CFBundleShortVersionString）、是否弹出 macOS 权限确认
-4. 提醒我按 Cmd+R 重载客户端
+1. 补丁包在本地：/Users/gabriel/Documents/Coding/kimi-code-monitor/kcm-desktop-patch-v3.5.0.zip
+2. 解压到一个临时目录，确认有 Node（node -v，需 ≥16），在其中执行：node install.mjs
+3. 完成后把这些告诉我：install.mjs 的完整输出、客户端版本（macOS 读 Info.plist 的 CFBundleShortVersionString；Windows 读 Kimi Code.exe 的文件版本）、是否弹出权限确认
+4. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）
 
-要求：只运行补丁包里的 install.sh；任何一步失败都不要尝试其他修改，把报错原样告诉我。
+要求：只运行补丁包里的 install.mjs；任何一步失败都不要尝试其他修改，把报错原样告诉我。
 ```
 
 ## 卸载提示词
 
 ```text
-请卸载 Kimi Code 桌面客户端的用量面板补丁：在之前解压的补丁目录执行 bash install.sh --uninstall，把输出告诉我，并提醒我 Cmd+R 重载客户端。如果找不到原目录，重新下载/解压同一个补丁包后执行同样命令即可。
+请卸载 Kimi Code 桌面客户端的用量面板补丁：在之前解压的补丁目录执行 node install.mjs --uninstall，把输出告诉我，并提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）。如果找不到原目录，重新下载/解压同一个补丁包后执行同样命令即可。
 ```
 
 ## 明确不做 / 边界
 
 - 不修改客户端程序逻辑（app.asar 不动），只放静态资源 + 一行 script 标签；
 - 注入面板的配置存页面 localStorage，与 Chrome 扩展的配置互不相通；
-- 无 node 的机器跳过历史预填，面板从安装时刻开始积累（面板锁位会如实显示「统计积累中」与状态行）；
+- 安装需 Node ≥16（历史预填与安装器同用）；没有 sessions 目录的机器跳过预填，面板从安装时刻开始积累（面板锁位会如实显示「统计积累中」与状态行）；
 - 客户端大版本更新若改动侧栏 DOM 或本地服务接口，面板可能挂载失败（表现为不显示，无残缺 UI）——把安装提示词再发一遍，智能体会报告客户端版本，等待适配。

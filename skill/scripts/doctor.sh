@@ -22,7 +22,7 @@ if [ -z "$APP" ]; then
 fi
 ok "客户端：$APP"
 DIST="$APP/Contents/Resources/desktop-dist"
-VIB="$DIST/vibepal"
+VIB="$DIST/kcm"
 
 CLIENT_VER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist" 2>/dev/null || echo '?')
 echo "INFO  客户端版本：$CLIENT_VER"
@@ -43,16 +43,16 @@ else
 fi
 
 # 3. index.html 注入标签与缓存参数一致性
-TAG=$(grep -o 'vibepal/loader\.js?v=[a-f0-9]*' "$DIST/index.html" 2>/dev/null | head -1)
+TAG=$(grep -o 'kcm/loader\.js?v=[a-f0-9]*' "$DIST/index.html" 2>/dev/null | head -1)
 if [ -z "$TAG" ]; then
   bad "index.html 无 loader 注入标签——补丁未生效"
   echo "建议：重跑安装流程"
-elif [ -f "$DIST/index.html.bak-vibepal" ]; then
+elif [ -f "$DIST/index.html.bak-kcm" ]; then
   ok "注入标签存在（${TAG}），原始备份在场"
 else
   warn "注入标签存在（${TAG}），但原始备份缺失（卸载时只能删标签无法整体还原）"
 fi
-EXPECT_V=$(cd "$VIB" && find . -type f ! -name 'usage-daily.js' ! -name 'external.js' -exec shasum -a 256 {} \; 2>/dev/null | sort | shasum -a 256 | cut -c1-8)
+EXPECT_V=$(cd "$VIB" && find . -type f ! -name 'usage-daily.js' ! -name 'external.js' ! -name 'wallet.js' ! -name 'fetch-wallet.mjs' -exec shasum -a 256 {} \; 2>/dev/null | sort | shasum -a 256 | cut -c1-8)
 ACTUAL_V=$(echo "$TAG" | sed 's/.*v=//')
 if [ "$EXPECT_V" = "$ACTUAL_V" ]; then
   ok "缓存参数与载荷哈希一致（${ACTUAL_V}）"
@@ -63,16 +63,18 @@ fi
 
 # 4. 数据文件
 if [ -s "$VIB/usage-daily.js" ]; then
-  if head -c 40 "$VIB/usage-daily.js" | grep -q '__vibepalUsageDaily'; then
+  if head -c 40 "$VIB/usage-daily.js" | grep -q '__kcmUsageDaily'; then
     ok "历史统计数据文件在位"
   else
-    bad "usage-daily.js 内容异常（应以 window.__vibepalUsageDaily 开头）"
+    bad "usage-daily.js 内容异常（应以 window.__kcmUsageDaily 开头）"
   fi
 else
   warn "无历史统计数据文件（全新环境正常；否则重跑安装预填）"
 fi
 [ -s "$VIB/external.js" ] && ok "外部账户快照在位（$(stat -f '%Sm' -t '%m-%d %H:%M' "$VIB/external.js")）" \
   || echo "INFO  无外部账户快照（未配置外部账户，正常）"
+[ -s "$VIB/wallet.js" ] && ok "加油包余额快照在位（$(stat -f '%Sm' -t '%m-%d %H:%M' "$VIB/wallet.js")）" \
+  || warn "无加油包余额快照（面板余额位显示 --；可让技能刷新余额）"
 
 # 5. kap 本地服务（发现 + 探测）
 KAP_PORT=""
@@ -85,8 +87,8 @@ for f in "$HOME"/.kimi-code/server/instances/*.json; do
 done
 if [ -n "$KAP_PORT" ]; then
   ok "本地服务在线（端口 ${KAP_PORT}，额度接口 200）"
-  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$KAP_PORT/vibepal/loader.js" 2>/dev/null)
-  [ "$CODE" = "200" ] && ok "本地服务能伺服补丁文件（/vibepal/loader.js 200）" \
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://127.0.0.1:$KAP_PORT/kcm/loader.js" 2>/dev/null)
+  [ "$CODE" = "200" ] && ok "本地服务能伺服补丁文件（/kcm/loader.js 200）" \
     || warn "本地服务未伺服补丁文件（HTTP ${CODE}）——面板可能依赖注入标签本地路径"
 else
   bad "本地服务不可达（无实例注册或额度接口非 200）——客户端可能未运行"

@@ -1,4 +1,4 @@
-# 外部账户（余额快照代管）
+# 外部账户与余额（快照代管）
 
 面板的「外部账户」模块显示第三方平台的 API 余额：DeepSeek、Kimi API（Moonshot）、智谱（BigModel）、MiniMax。Light 版没有配置界面——**你就是配置界面**：用户把 key 给你，你抓一次余额写成快照，面板显示「截至 HH:MM」的数字。
 
@@ -21,10 +21,10 @@
    ```bash
    node <技能目录>/scripts/fetch-external.mjs \
      --fetch '[{"provider":"deepseek","key":"用户的key","label":"可选备注"}]' \
-     --out "<客户端>/Contents/Resources/desktop-dist/vibepal/external.js"
+     --out "<客户端>/Contents/Resources/desktop-dist/kcm/external.js"
    ```
 
-   多家就数组里多个对象。客户端路径可用 doctor.sh 第一行输出。
+   多家就数组里多个对象。客户端路径可用 doctor.mjs 第一行输出。
 3. 核对输出：每家「抓取成功」或明确的失败原因（401=key 无效）。失败的那家把原因转述给用户，其余照常写入。
 4. 告诉用户：面板稍后自动刷新（约一分钟内）或重载客户端立即生效；显示的是**快照**，之后的花费不会自动更新，想刷新就再说一声。
 
@@ -40,3 +40,15 @@
 
 - 快照非实时：两次刷新之间的消耗不反映。
 - 客户端大版本更新可能清掉快照文件：重新提供 key 刷一次即可。
+
+## 加油包余额（Kimi 自己的账户）
+
+面板标题行的余额显示来自另一条通路：用客户端自己的凭据读官方 API 写成快照。
+
+- 刷新：运行已装补丁目录里的工具（doctor.mjs 第一行有客户端路径）：
+  ```bash
+  node "<客户端>/Contents/Resources/desktop-dist/kcm/fetch-wallet.mjs"        --out "<客户端>/Contents/Resources/desktop-dist/kcm/wallet.js"
+  ```
+- 报「凭据已失效（401/403）」：请用户打开一次 Kimi Code 客户端（会自动续期凭据），再重试。
+- 同为快照：两次刷新之间的消耗不反映；安装器安装时会自动刷一次。
+- 安全：凭据 token 只进请求头，不回显、不落盘；wallet.js 里只有余额数字。

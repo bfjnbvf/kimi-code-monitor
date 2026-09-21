@@ -1,6 +1,8 @@
 # 技术方案 — Kimi Code 桌面伴侣 App（桌宠 + 用量面板 + 桌面端注入）
 
-> 日期：2026-09-20 ｜ 状态：方案已定稿，待开工 ｜ 前置调研：[RESEARCH-desktop-client-adaptation.md](./RESEARCH-desktop-client-adaptation.md)
+> 日期：2026-09-20 ｜ 状态：**已归档（历史方案记录）** ｜ 前置调研：[RESEARCH-desktop-client-adaptation.md](./RESEARCH-desktop-client-adaptation.md)
+>
+> 2026-09-21 更新：伴侣 App（VibePal / Swift 桥接）通路已于 v3.5.0 整体移除（见 [HANDOFF.md](./HANDOFF.md) §四），本文不再执行；保留作为桌宠与 KapClient 协议层的设计参考。当前桌面端路线为补丁注入（[DESKTOP-PATCH.md](./DESKTOP-PATCH.md)），Windows 适配计划见 [PLAN-windows-support.md](./PLAN-windows-support.md)。
 >
 > 目标约束：**稳定、低功耗、可维护**；安装对用户尽可能简单；不修改 Kimi Code 客户端任何文件。
 

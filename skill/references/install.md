@@ -6,7 +6,9 @@
 
 ### 判定方法
 
-1. 你是否运行在 Kimi Code 客户端里——查父进程链上有没有 Kimi Code.app：
+1. 你是否运行在 Kimi Code 客户端里——查父进程链上有没有客户端进程。按所在平台选命令：
+
+   macOS / Linux（bash）：
 
    ```bash
    p=$$; found=0
@@ -17,13 +19,33 @@
    [ "$found" = 1 ] && echo "在客户端内" || echo "不在客户端内"
    ```
 
+   Windows（PowerShell）：
+
+   ```powershell
+   $p = $PID; $found = $false
+   while ($p -and $p -ne 0) {
+     $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue
+     if (-not $proc) { break }
+     if ($proc.Name -like 'Kimi Code*') { $found = $true; break }
+     $p = $proc.ParentProcessId
+   }
+   if ($found) { "在客户端内" } else { "不在客户端内" }
+   ```
+
 2. 本机是否装有客户端：
 
    ```bash
+   # macOS / Linux
    ls -d "/Applications/Kimi Code.app" "$HOME/Applications/Kimi Code.app" 2>/dev/null
    ```
 
-   （要连"客户端是否正在运行"一起查，直接跑 doctor.sh。）
+   ```powershell
+   # Windows（补丁装的是 resources/desktop-dist，探测到即算装过）
+   Test-Path "$env:LOCALAPPDATA\Programs\Kimi Code\resources\desktop-dist"
+   Test-Path "C:\Program Files\Kimi Code\resources\desktop-dist"
+   ```
+
+   （要连"客户端是否正在运行"一起查，直接跑 doctor.mjs。）
 
 ### 三种情况
 
@@ -38,9 +60,9 @@
 1. 从 GitHub 拉取技能文件（raw 直链，主分支 `main`）：
    - `skill/SKILL.md`、`skill/MAINTENANCE`
    - `skill/references/` 下全部 `.md`
-   - `skill/scripts/` 下 `doctor.sh`、`fetch-external.mjs`
+   - `skill/scripts/` 下 `doctor.mjs`、`fetch-external.mjs`
    直链形如 `https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/SKILL.md`。
-2. 安装到用户级技能目录：`~/.kimi-code/skills/kcm-panel/`（保持 SKILL.md 在根、references/ 与 scripts/ 在旁）。已存在则先比对 MAINTENANCE 的 skill-version，按 update.md 处理。
+2. 安装到用户级技能目录：`~/.kimi-code/skills/kimi-code-monitor/`（保持 SKILL.md 在根、references/ 与 scripts/ 在旁）。已存在则先比对 MAINTENANCE 的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
 3. 告诉用户技能已就位，新会话（或重启客户端）后可持续使用。
 
 拉取失败（网络不通）时不要硬试：向用户说明无法连接 GitHub，询问是否使用本地已有的技能文件或补丁包继续，并提示本地版本可能过旧、与当前客户端可能不适配的风险。
@@ -51,21 +73,22 @@
    `https://github.com/bfjnbvf/kimi-code-monitor/releases` 的
    `kcm-desktop-patch-v<版本>.zip`。与 MAINTENANCE 的 patch-version 对照，别装旧包。
 2. **下载并解压**到临时目录。下载失败 → 同上面的网络回退说明。
-3. **执行**：`bash install.sh`（客户端不在默认位置时 `bash install.sh --app "<路径>"`）。
-4. **核对输出**应包含：客户端路径、备份（新建或已存在）、载荷同步、`[scan]` 扫描摘要（文件数/天数）、`历史统计已预填` 或明确的跳过原因、`完成（载荷 v=…）`。任何一行报错 → 停止并原样上报。
-5. **跑一遍外部自检**：`bash <技能目录>/scripts/doctor.sh`，全部 PASS 才算装好。
-6. **提醒用户重载客户端**（Cmd+R），然后按 guide-scripts.md 做首装引导。
+3. **确认有 Node**：`node -v`（安装器是 Node 脚本，需 Node ≥16）。没有就先引导用户装（macOS：`brew install node` 或官网；Windows：`winget install OpenJS.NodeJS.LTS`），不要尝试其他安装方式。
+4. **执行**：`node install.mjs`（客户端不在默认位置时 `node install.mjs --app "<客户端目录>"`；也认环境变量 `KIMI_CODE_APP_DIR`）。旧版 bash 安装器 `install.sh` 仍在包内，行为等价，仅作无 Node 时的备选。
+5. **核对输出**应包含：客户端路径、备份（新建或已存在）、载荷同步、`[scan]` 扫描摘要（文件数/天数）、`历史统计已预填` 或明确的跳过原因、`完成（载荷 v=…）`。任何一行报错 → 停止并原样上报。
+6. **跑一遍外部自检**：`node <技能目录>/scripts/doctor.mjs`，全部 PASS 才算装好。
+7. **提醒用户重载客户端**（macOS Cmd+R，Windows Ctrl+R），然后按 guide-scripts.md 做首装引导。
 
-注意：全新机器没有历史会话时，`install.sh` 会跳过预填并明说——这是正常分支，不是故障；面板会从安装时刻开始统计。
+注意：全新机器没有历史会话时，`install.mjs` 会跳过预填并明说——这是正常分支，不是故障；面板会从安装时刻开始统计。
 
 ## 3. 重装（客户端更新后面板消失 / 自检发现文件缺失）
 
-与首次安装完全相同的流程（install.sh 幂等）。要向用户说明两点：历史会重新扫描补齐、页面内积累的数据在客户端自己的存储里不受影响。
+与首次安装完全相同的流程（install.mjs 幂等）。要向用户说明两点：历史会重新扫描补齐、页面内积累的数据在客户端自己的存储里不受影响。
 
 ## 4. 卸载
 
 用户明确要求时：
 
-1. 在补丁解压目录（或重新下载补丁包解压）执行 `bash install.sh --uninstall`。
+1. 在补丁解压目录（或重新下载补丁包解压）执行 `node install.mjs --uninstall`。
 2. 核对输出：已还原原始 index.html（或已移除注入行）、补丁目录已删除。
 3. 告知：面板写在页面存储里的少量配置（布局等）仍留在客户端用户数据里，不影响运行；彻底清掉需要用户在客户端里自行清除站点数据。

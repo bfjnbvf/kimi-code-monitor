@@ -92,10 +92,10 @@ test('scan：renderUsageDailyJs 产出可直接执行的赋值脚本', () => {
   try {
     const result = scanSessions(path.join(home, 'sessions'));
     const js = renderUsageDailyJs(result);
-    assert.ok(js.startsWith('window.__vibepalUsageDaily = '), '应为全局赋值脚本');
+    assert.ok(js.startsWith('window.__kcmUsageDaily = '), '应为全局赋值脚本');
     const fakeWindow = {};
     new Function('window', js)(fakeWindow);
-    const payload = fakeWindow.__vibepalUsageDaily;
+    const payload = fakeWindow.__kcmUsageDaily;
     assert.ok(payload && typeof payload === 'object');
     assert.equal(payload.secondaryModel, 'TestSecondary');
     assert.ok(payload.daily && payload.hourly, 'daily/hourly 应透传');
@@ -130,7 +130,7 @@ test('scan：经符号链接路径执行 CLI 正常产出（/tmp → /private/tm
       { encoding: 'utf8' }
     );
     assert.ok(
-      out.startsWith('window.__vibepalUsageDaily = '),
+      out.startsWith('window.__kcmUsageDaily = '),
       '符号链接路径下 CLI 应正常输出（曾因 argv 与 import.meta.url 不对齐而静默不执行）'
     );
   } finally {

@@ -5,7 +5,7 @@
 ## 第一层：外部检查（你直接跑）
 
 ```bash
-bash <技能目录>/scripts/doctor.sh
+node <技能目录>/scripts/doctor.mjs
 ```
 
 逐项 PASS/FAIL/WARN，每条 FAIL 自带建议动作。覆盖：客户端在场、补丁文件完整、注入标签与缓存参数一致、数据文件合法、本地服务在线且能伺服补丁文件、补丁版本。
@@ -15,7 +15,7 @@ bash <技能目录>/scripts/doctor.sh
 | doctor 结论 | 处置 |
 |---|---|
 | 补丁目录不存在 / 文件缺失 | 客户端更新清掉了（正常现象）→ 建议重装（install.md） |
-| 缓存参数过期 | 重跑 install.sh 刷新标签，用户重载客户端 |
+| 缓存参数过期 | 重跑 install.mjs 刷新标签，用户重载客户端 |
 | 本地服务不可达 | 客户端没在运行 → 请用户打开客户端再看 |
 | 无历史数据文件 | 全新机器正常；否则重装补填 |
 | 全部 PASS 但用户仍说显示不对 | 进入第二层 |
@@ -26,10 +26,10 @@ bash <技能目录>/scripts/doctor.sh
 
 **保险二：你直接看页面。** 用你能用的界面读取能力（如 Computer Use 一类的屏幕读取/操控技能），按需选择：
 - 截图/读取侧栏底部面板区域，直接看状态句与诊断行；
-- 打开开发者工具（通常 Cmd+Option+I）读 Console 的报错（红色条目，含 `panel-app.js` 字样的最有价值）。
+- 打开开发者工具（macOS Cmd+Option+I，Windows F12 或 Ctrl+Shift+I）读 Console 的报错（红色条目，含 `panel-app.js` 字样的最有价值）。
 能力不可用或读不到就立刻回退，不要反复尝试。
 
-**保险三：请用户手动。** 引导用户按 Cmd+Option+I 打开开发者工具 → Console 标签 → 把红色报错复制给你。Rive 的 `wasm streaming compile failed … falling back` 是**无害警告**（有自动降级），不要当成故障。
+**保险三：请用户手动。** 引导用户打开开发者工具（macOS Cmd+Option+I，Windows F12 或 Ctrl+Shift+I）→ Console 标签 → 把红色报错复制给你。Rive 的 `wasm streaming compile failed … falling back` 是**无害警告**（有自动降级），不要当成故障。
 
 ## 定位后的修复
 

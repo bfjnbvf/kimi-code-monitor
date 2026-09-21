@@ -755,6 +755,10 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  /* 命名容器：缓存命中的全称/百分比降级按图表头行实际宽度计算，
+     与 .ksb-quota-group 的 ksb-quota 同范式（实测：全称最坏需
+     标签 38 + 间距 6 + 文本 75 ≈ 119px，短版需 ≈ 77px） */
+  container: ksb-chart / inline-size;
 }
 
 /* 整宽：标签行与总量同行、总量右对齐，下方画柱图 */
@@ -850,21 +854,15 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   text-overflow: ellipsis;
 }
 
-/* 命中率渐进降级：宽→全称，半宽或面板较窄→只留百分比，面板极窄→隐藏 */
+/* 缓存命中渐进降级：头行宽→全称；放不下→只留百分比；极窄→整体隐藏。
+   断点按图表头行实际宽度（命名容器 ksb-chart），不再按模块跨度和
+   整面板宽度——实测侧栏整宽头行仅 107px，全称最坏需 124px，故默认
+   布局即落短版；ellipsis 仅作最后防线，正常不触发 */
 .ksb-chart-hit-short {
   display: none;
 }
 
-.ksb-module:not(.ksb-span-2) .ksb-chart-hit-full {
-  display: none;
-}
-
-.ksb-module:not(.ksb-span-2) .ksb-chart-hit-short {
-  display: inline;
-}
-
-/* 「缓存命中 99.7%」全称只占约 75px，面板还有相当余量时不必降级 */
-@container (max-width: 170px) {
+@container ksb-chart (max-width: 124px) {
   .ksb-chart-hit-full {
     display: none;
   }
@@ -873,7 +871,7 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   }
 }
 
-@container (max-width: 160px) {
+@container ksb-chart (max-width: 78px) {
   .ksb-chart-hit {
     display: none;
   }
