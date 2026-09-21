@@ -1,18 +1,18 @@
 /**
- * 注入模式的直连数据源（CDP 注入 Kimi Code 桌面端页面时启用）
+ * 注入模式的直连数据源（桌面补丁 loader 注入桌面端页面时启用）
  *
- * 与桥接模式（macOS App WKWebView，Swift 推送）的差异：注入页面直接走
- * kap-server 的 REST/WS，会话焦点直接读 location.pathname——比桥接模式还简单。
- * 全部数据翻译成与 bridge.js 相同的消息经 __vibepal.push 进入渲染层，
- * 两种模式的渲染/累计逻辑完全共用。
+ * 页面直接走 kap-server 的 REST/WS，会话焦点直接读 location.pathname。
+ * 全部数据翻译成 { v: 1, type, ... } 消息经 __vibepal.push 进入渲染层
+ * （队列与分发见 bridge.js）。
  *
  * 桌面端 1.0.2 起页面从 app://renderer 加载（早期版本直接加载 kap-server 源），
  * 所以 kap 源不能写死相对路径：loader 注入时写入 window.__vibepalKapOrigin
  * （http://127.0.0.1:<port>，kap 端口每次启动随机，注入器探测后动态下发），
  * 读不到时回退相对路径（同源旧版）。跨源 fetch/WS 已实测不受 CORS 限制。
  *
- * 不可直连的部分：usageDaily（wire.jsonl 扫描在 Swift/App 侧），由注入器经
- * CDP Runtime.evaluate 推送给桥接管道（与本文件无冲突：都只进 push）。
+ * 不可直连的部分：usageDaily（wire.jsonl 扫描在安装器侧预填成文件）与
+ * external（技能代查快照），由 loader 加载后推进 push 管道（与本文件无冲突：
+ * 都只进 push）。
  */
 
 // kap-server 源：惰性读取（kap 重启换端口后注入器/loader 会更新全局值）。

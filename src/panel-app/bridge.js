@@ -1,25 +1,24 @@
 /**
- * Swift ↔ 面板桥接协议
+ * 面板数据总线（window.__vibepal.push 队列 + 消息分发）
  *
- * 数据来源只有 window.__vibepal.push(msg)（macOS App 的 WKWebView 经
- * evaluateJavaScript 推送），msg 形如 { v: 1, type, ... }：
+ * 桌面补丁注入模式的数据入口，推送方两类：
+ * - direct.js：kap-server 的 WS 事件与 REST 轮询结果（本文件同目录）；
+ * - loader.js：usage-daily.js / external.js 快照（安装器预填 + 技能代查）。
+ * msg 形如 { v: 1, type, ... }：
  *   - { type: 'quota', quota: { limit5h: { usedRatio, resetAt }, limit7d: { ... } } }
  *     usedRatio 是 0~1 用量比（×100 后进 updateProgress）；resetAt 为 ISO 时间
  *     （parseResetTime 后进 updateResetText）。可选 wallet 字段透传 updateBalance。
- *   - { type: 'event', event }：Swift 侧透传的 WS 消息（type/payload/agent_id…），
+ *   - { type: 'event', event }：kap-server 的 WS 消息（type/payload/agent_id…），
  *     按 websocket-session.js 的实时分支翻译成面板状态（游标/重连/去重不管）。
  *   - { type: 'usageDaily', daily, hourly, secondaryModel }：CLI 长期统计（wire.jsonl
  *     全量扫描），与页内按天积累（accumulate.js）取大合并后写 panel.usageDailyCache。
  *   - { type: 'status', status: 'idle' | 'working' | 'waiting' | 'offline' }：
  *     整体状态灯与宠物联动。
  *   - { type: 'external', providers }：外部账户（DeepSeek/Kimi API/智谱/MiniMax）
- *     抓取结果直写 panel.externalProviders 后重绘；App 侧 ExternalAccounts 拉取，
- *     popup 页增删改后推送。
+ *     抓取结果直写 panel.externalProviders 后重绘。
  *   - { type: 'session', sid, snapshot?: { usage } }：切换当前会话（跟随桌面端
- *     最近活跃会话）——清空累计并以 REST 快照的 usage 做底，再重绘。
+ *     SPA 路由焦点）——清空累计并以 REST 快照的 usage 做底，再重绘。
  *   - 可选 sessionId 字段（任意消息上）：标记当前会话 id（宠物轮次归属用）。
- *
- * 面板 → Swift 走 window.__vibepalAsk(msg)（见页面内联脚本 → webkit.messageHandlers）。
  *
  * push 早于面板装配完成时先入队，markBridgeReady 后按序补发。
  */
@@ -292,7 +291,7 @@ function handleStatus(msg) {
   setAgentStatus(STATUS_MAP[msg.status] || 'idle');
 }
 
-// 会话切换（macOS App 跟随桌面端最近活跃会话）：清空当前累计，按 REST 快照做底
+// 会话切换（direct.js 按 SPA 路由焦点推送）：清空当前累计，按 REST 快照做底
 function handleSessionSwitch(msg) {
   const sid = typeof msg.sid === 'string' ? msg.sid : '';
   if (!sid || sid === currentSessionId) return;
@@ -316,8 +315,8 @@ function handleSessionSwitch(msg) {
   renderPetStats();
 }
 
-// 外部账户（App 侧 ExternalAccounts 抓取）：结果直写并重绘，
-// 数据形状与扩展 background/external.js 的 providers 一致
+// 外部账户（loader 的 external.js 快照，技能 fetch-external.mjs 代查生成）：
+// 结果直写并重绘，数据形状与扩展 background/external.js 的 providers 一致
 // （{id, name, keyTail, kind, total, granted, paid, currency, windows, plan, error}）
 function handleExternal(msg) {
   panel.externalProviders = Array.isArray(msg.providers) ? msg.providers : [];
@@ -327,7 +326,7 @@ function handleExternal(msg) {
 function dispatch(msg) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.v != null && msg.v !== 1) {
-    console.warn('[Kimi Status] 忽略未知版本的桥接消息', msg);
+    console.warn('[Kimi Status] 忽略未知版本的推送消息', msg);
     return;
   }
   if (typeof msg.sessionId === 'string' && msg.sessionId) currentSessionId = msg.sessionId;
@@ -361,7 +360,7 @@ function safeDispatch(msg) {
   try {
     dispatch(msg);
   } catch (error) {
-    console.error('[Kimi Status] 桥接消息处理失败', msg?.type, error);
+    console.error('[Kimi Status] 推送消息处理失败', msg?.type, error);
     try {
       globalThis.__vibepalDebug = {
         ...globalThis.__vibepalDebug,

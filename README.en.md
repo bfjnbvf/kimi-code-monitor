@@ -132,12 +132,12 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 
 ## Project Structure
 
-Source lives in `src/` (ES modules). `npm run build` bundles with esbuild into `dist/` (three bundles: content/background/popup); the manifest and popup.html only reference `dist/` output. `npm test` builds then runs the full test suite; `npm run lint` checks references (no-undef etc.).
+Source lives in `src/` (ES modules). `npm run build` bundles with esbuild into `dist/` (four bundles: content/background/popup/panel-app); the manifest and popup.html only reference `dist/` output. `npm test` builds then runs the full test suite (including release guards); `npm run lint` checks references (no-undef etc.).
 
-Each runtime surface has its own directory; shared modules sit at the `src/` root:
+Four runtime surfaces, each with its own directory; shared modules sit at the `src/` root:
 
 - `src/content.js` + `src/content/`: the in-page panel — `content.js` (orchestration & lifecycle), `panel-state.js` (shared state), `render.js` (rendering), `widget-structure.js` (DOM & edit mode), `websocket-session.js` (WS state machine), `session.js` (session & snapshots), `quota.js` (quota & auth), `usage-daily.js` (CLI long-term stats & external accounts), `pet-panel.js` (Rive mascot & desktop pet driver), `bookmarks.js` (AI reply bookmarks: star, interleaved outline rows, bookmark page & detail modal, cross-session jumps), `utils.js` / `walkthrough.js`
-- `src/background/`: background modules — `store.js` (storage lock/fetch/relay), `vault.js` (secret vault), `oauth.js` (authorization & accounts), `quota.js` (quota/alerts/snapshots), `external.js` (external providers), `rename.js` (session naming, retired in v2, kept), `pet.js`, `cli-scan.js`, `dynamic-hosts.js` (dynamic site grants), `sender-guard.js` (message sender guard), `tidy.js` (auto-tidy scheduling); `src/background.js` is the message router
+- `src/background/`: background modules — `store.js` (storage lock/fetch/relay), `vault.js` (secret vault), `oauth.js` (authorization & accounts), `quota.js` (quota/alerts/snapshots), `external.js` (external providers), `pet.js`, `cli-scan.js`, `dynamic-hosts.js` (dynamic site grants), `sender-guard.js` (message sender guard), `tidy.js` (auto-tidy scheduling); `src/background.js` is the message router
 - `src/popup/`: popup sections — `shared.js`, `usage.js`, `accounts.js`, `external.js`, `rename.js` (rename switch), `tidy.js` (extensions card: tidy config / review list / bookmarks switch), `pets.js`, `share-card.js` (share-card data/preview/export); `src/popup.js` is the assembly entry, styles in `popup.css`
 - `src/share-card.js`: share-card composition (pure function: daily data in, SVG out)
 - `src/i18n.js`: Chinese/English strings (gettext style, follows Kimi Web's language setting)
@@ -146,6 +146,6 @@ Each runtime surface has its own directory; shared modules sit at the `src/` roo
 - `src/cli-usage.js`: local CLI directory grant, incremental reads, per-day aggregation
 - `src/providers.js`: external provider endpoints and parsing
 - `src/pet/`: desktop pet — `pet-sprites.js` (atlas player + behaviors), `pet-install.js` (gallery command parsing & download), `pet-store.js` (IndexedDB asset store)
-- `src/session-rename/`: retired auto-rename pipeline (kept for reference; the official auto_session_title experiment covers this — see "Session Title Auto-Generation")
+- `src/panel-app.js` + `src/panel-app/`: standalone panel page for the desktop patch (shares the panel body and rendering with `content/`) — `panel-app.js` (entry: mount/config/direct-mode startup), `bridge.js` (push bus & message dispatch), `direct.js` (kap-server direct: WS event stream + REST polling), `shims.js` (chrome.* replacement), `accumulate.js` (in-page per-day accumulation), `status-copy.js` (tiered status copy), `patch/` (`loader.js` injector, `scan.mjs` history scan, `install.sh` installer)
 - `rive/`: mascot animation runtime and assets (bundled locally, no remote dependency)
 - `web-token.js`: retired web-side token relay (kept for reference, not registered in the manifest)

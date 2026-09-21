@@ -11,10 +11,11 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 
 | 命令 | 作用 |
 |---|---|
-| `npm run build` | esbuild 把 `src/` 打成 `dist/` 三个 iife bundle；**改了源码必须重跑**，manifest 只引用 `dist/` |
-| `npm test` | 先构建再跑全部测试（node:test，含 jsdom smoke），当前 220+ 用例 |
+| `npm run build` | esbuild 把 `src/` 打成 `dist/` 四个 iife bundle（content / background / popup / panel-app）；**改了源码必须重跑**，manifest 只引用 `dist/` |
+| `npm test` | 先构建再跑全部测试（node:test，含 jsdom smoke）；含发版守卫（版本三处一致 + CHANGELOG 顶部条目） |
 | `npm run lint` | eslint 检查 no-undef / no-unused-vars（拆分事故防线，不做风格限制） |
-| `bash build.sh` | 打发行 zip（含 dist/rive/rules/icons，**不含** docs/tests/web-token.js） |
+| `bash build.sh` | 打扩展发行 zip（含 dist/rive/rules/icons，**不含** docs/tests/web-token.js） |
+| `npm run pack:patch` | 打桌面补丁 zip（install.sh + scan.mjs + vibepal/），与扩展共用 src/ 与 content.css/rive |
 
 - 在 `chrome://extensions` 重载扩展后，Kimi Web 页面要手动刷新一次面板才恢复（Chrome 不会重新注入 content script）。
 - 架构分层：`src/content.js`+`src/content/`（页面面板）、`src/background.js`+`src/background/`（后台域）、`src/popup.js`+`src/popup/`（弹窗），共享纯函数在 `src/` 根（`metrics.js`、`i18n.js`、`cli-usage.js`、`providers.js`、`share-card.js`）。模块职责见 README「项目结构」。
@@ -28,9 +29,10 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 - **静态注入面**：content_scripts 匹配所有 localhost 端口（无法按端口匹配），面板只在出现 Kimi 侧栏 DOM（`aside.side > .col`）后挂载；路由轮询在无 Kimi 迹象的页面上会从 1s 退避到 5s。
 - `web_accessible_resources` 对全部 http(s) 放开（动态授权站点无法静态列举）——已知取舍，README 数据与隐私一节有披露。
 
-## 四、停用/搁置的通路（勿轻易复活）
+## 四、已移除的通路（勿复活）与开放问题
 
-- **自动命名旧模型管线**（v3.4.0 停用）：`src/background/rename.js` 整模块、`rename-content.js` 的取样/写回段、background 路由与 sender-guard 的 `rename.model`——全部**注释保留**，恢复步骤见 `docs/DESIGN-extensions-card.md` §3.2。现行方案：触发后由 content 直调系统 `POST /api/v1/sessions/{id}/title/generate`。
+- **自动命名旧模型管线**（v3.5.0 移除）：`src/session-rename/` 整个目录、`src/background/rename.js` 整模块、background 路由与 sender-guard 的 `rename.model` 已整体删除（v3.4.0–3.4.3 曾是注释保留）。现行方案不变：官方实验 auto_session_title + 「扩展功能」卡片的复制提示词引导（`src/popup/rename.js`、`src/content/session-tidy.js` 的 `rename.official.status.fetch`）。
+- **VibePal Swift 伴侣 App 通路**（v3.5.0 移除）：`src/popup-app/` 与 panel-app 的 vibepal:// 桥接模式已删除，桌面补丁只剩注入模式（loader + direct.js 直连 kap-server）。注意 `src/panel-app/bridge.js` **保留**——它是注入模式的 push 总线（`window.__vibepal.push` 队列与消息分发，direct.js 与 loader 都往它推），不再是 Swift 桥。
 - **月度额度**（`resolveMonthlyStats` / `requestMonthlyStats` / `web-token.js`）：web token 寿命仅约 18 分钟，中转方案体验差已下线，`data.monthly` 恒为 null。若重启：manifest 需补 `https://www.kimi.com/*` host_permissions 与 web-token.js 的 content_scripts，**并把该 origin 加进 sender-guard 放行集合**。
 - **web-token.js 不进发行 zip**（未注册的死文件，仅仓库保留）。
 - **自动整理开放问题**（实现时留待实测，见 DESIGN 文档 §8）：归档后续聊是否自动恢复、父子会话归档联动、RC 页面 V2 接口可用性——若用户反馈异常先查这三项。
@@ -52,6 +54,17 @@ Chrome MV3 扩展（未上架，本地解压加载 / GitHub Releases 发 zip）�
 
 ## 七、发版流程
 
-1. 改 `manifest.json` + `package.json` 版本号（两处必须一致），`CHANGELOG.md` 顶部加条目。
-2. `npm test` 全绿 → `bash build.sh` 出 zip。
-3. **经用户确认后**再 commit / 打 tag / 以 CHANGELOG 对应段落建 GitHub Release。
+1. 改版本号三处（必须一致，`tests/release-sync.test.js` 自动把关）：`manifest.json`、`package.json`、`skill/MAINTENANCE` 的 `patch-version`；`CHANGELOG.md` 顶部加条目（顶部条目版本同样受测试把关）。
+2. **skill 同步检查**：本轮面板行为 / 文案 / 口径 / 安装流程有变更的，按下表逐篇核对 skill 文档，有变更就 bump `skill-version` 并在 MAINTENANCE 更新记录加条目：
+
+   | 面板改了什么 | skill 跟着改 |
+   |---|---|
+   | 统计口径 / 功能语义 | `references/faq.md` |
+   | 状态文案 / 诊断串 | `references/status-dictionary.md` + `SKILL.md` 组件速览 |
+   | 安装 / 重装 / 卸载行为 | `references/install.md`、`update.md` |
+   | 自检项 | `references/doctor.md` + `scripts/doctor.sh` |
+   | 外部账户 | `references/external-accounts.md` + `scripts/fetch-external.mjs` |
+   | 对用户话术 | `references/guide-scripts.md` |
+
+3. `npm test` 全绿 → `bash build.sh` 出扩展 zip；桌面补丁有改动时 `npm run pack:patch` 出补丁 zip。
+4. **经用户确认后**再 commit / 打 tag / 以 CHANGELOG 对应段落建 GitHub Release。

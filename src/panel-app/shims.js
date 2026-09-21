@@ -1,9 +1,10 @@
 /**
  * 面板页（panel-app）的 chrome.* shim
  *
- * macOS App 的 WKWebView 里没有 chrome.*：storage.local 落到 localStorage，
- * runtime.getURL 解析成面板资源目录的相对路径，runtime.sendMessage 经
- * window.__vibepalAsk 转发给 Swift（无桥时 resolve undefined，未知消息即无操作）。
+ * 桌面补丁的注入页面里没有 chrome.*：storage.local 落到 localStorage，
+ * runtime.getURL 解析成面板资源目录的相对路径（注入模式资产经
+ * window.__vibepalAssets 转 blob: URL），runtime.sendMessage 无对应通路，
+ * 一律 resolve undefined（调用方的 .catch(() => {}) 兜底）。
  *
  * 求值顺序约束：本模块不得 import 任何业务模块——ES 模块的依赖先于模块自身
  * 求值，而 pet-panel.js 等在被求值时就要读 chrome.runtime.getURL。安装入口
@@ -129,16 +130,8 @@ function resolveResourcePath(path) {
   return rel;
 }
 
-// 面板 → Swift：经 window.__vibepalAsk（页面脚本经 webkit.messageHandlers 转发）。
-// 无桥或未知消息一律 resolve undefined，调用方的 .catch(() => {}) 兜底
-function sendMessage(message) {
-  try {
-    if (typeof globalThis.__vibepalAsk === 'function') {
-      return Promise.resolve(globalThis.__vibepalAsk(message));
-    }
-  } catch (error) {
-    // 转发失败不打断面板，按「无响应」处理
-  }
+// 注入页面无后台域：sendMessage 一律按「无响应」处理，调用方 .catch 兜底
+function sendMessage() {
   return Promise.resolve(undefined);
 }
 

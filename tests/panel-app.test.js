@@ -1,6 +1,6 @@
 // Panel-app smoke 测试：用 jsdom 把构建产物 dist/panel-app.js 跑起来，
-// 验证「独立面板页挂载出与侧栏一致的 #ksb-widget、桥接消息驱动渲染」。
-// 数据入口是 window.__vibepal.push（Swift 侧协议），不经过 chrome.*。
+// 验证「独立面板页挂载出与侧栏一致的 #ksb-widget、push 总线消息驱动渲染」。
+// 数据入口是 window.__vibepal.push（direct.js / loader.js 的同款协议），不经过 chrome.*。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

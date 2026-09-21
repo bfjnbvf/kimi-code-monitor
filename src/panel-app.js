@@ -1,14 +1,16 @@
 /**
- * 独立面板页入口（macOS App 的 WKWebView 菜单栏弹层加载）
+ * 独立面板页入口（桌面补丁注入模式专用）
  *
- * 与 content.js 的职责差异：不注入 Kimi Web 页面、不碰 chrome.* / 页面宿主，
- * 数据全部由 Swift 经 window.__vibepal.push 推送（protocol 见 panel-app/bridge.js）；
- * 面板本体（widget-structure）、渲染（render）、状态（panel-state）、宠物
- * （pet-panel）、i18n 与 content.js 完全共用，样式用 content.css 原样引用。
+ * 由补丁 loader 注入 Kimi Code 桌面端页面（desktop-dist/index.html 的
+ * script 标签）：不注入自己的页面、不碰 chrome.* 真实 API（shims 兜底）、
+ * 数据由 direct.js 直连同机 kap-server（WS 事件流 + REST 轮询）与 loader
+ * 的 usage-daily/external 快照，经 window.__vibepal.push 进入渲染层。
+ * 面板本体（widget-structure）、渲染（render）、状态（panel-state）、
+ * 宠物（pet-panel）、i18n 与 content.js 完全共用，样式用 content.css 原样引用。
  *
- * 装配顺序：shims（chrome.* 替代）→ bridge（push 入口）→ 共享模块 → 挂载 widget
- * → 注入依赖钩子 → 读配置 → 桥接就绪。新手引导 / 会话快照 / WS 连接管理不搬
- * （连接与游标在 Swift 侧）。
+ * 装配顺序：shims（chrome.* 替代）→ push 总线（bridge.js）→ 共享模块 →
+ * 挂载 widget → 读配置 → 总线就绪 → 直连启动 → 就绪事件。
+ * 新手引导 / 会话快照 / WS 连接管理不搬（连接与游标在 direct.js 侧）。
  */
 
 import './panel-app/shims.js';
@@ -53,30 +55,22 @@ const PANEL_WIDGET_CONFIG = {
   orderHidden: []
 };
 
-// 面板 → Swift 的请求转发（无 Swift 桥时静默丢弃，面板行为不受影响）
-function askSwift(message) {
-  try {
-    if (typeof globalThis.__vibepalAsk === 'function') globalThis.__vibepalAsk(message);
-  } catch (error) {
-    // 转发失败不影响面板
-  }
-}
-
 /* ---------- 装配 ---------- */
 
 initWidgetStructure({
   isDisposed: () => false,
-  // 标题行点击：本地数值与折线样本清空重计，同时让 Swift 侧重推全量数据
+  // 标题行点击：本地数值与折线样本清空重计（额度/统计由 direct.js 轮询与
+  // loader 快照在下一周期自动补齐，无需额外请求）
   manualRefresh: () => {
     resetMetrics();
     panel.sessionSamples.length = 0;
     panel.turnDurations.length = 0;
     renderAll();
-    askSwift({ type: 'refresh' });
   },
-  // 授权 / 额度 / 外部账户的拉取都在 Swift 侧，这里只转发意图
-  beginOAuth: () => askSwift({ type: 'auth.begin' }),
-  fetchQuota: () => askSwift({ type: 'refresh' }),
+  // 授权 / 额度 / 外部账户的数据都由直连与 loader 快照提供，这里只留空桩
+  // （widget-structure 与扩展共用，注入模式无对应动作）
+  beginOAuth: () => {},
+  fetchQuota: () => {},
   fetchExternalProviders: () => {},
   // 无「连接本地 CLI」目录授权动作：锁位由 widget-structure 改述为统计积累中
   cliLockAccumulate: true
@@ -91,28 +85,23 @@ initRender({
   isDisposed: () => false,
   petUpdateStatus,
   // 桌面宠物（roam pet）不启用
-  roamPetSetStatus: () => {},
-  // 额度到头：让 Swift 侧重推最新额度
-  onQuotaReset: () => askSwift({ type: 'refresh' })
+  roamPetSetStatus: () => {}
 });
 
 installBridge();
 
-// 注入模式（CDP 注入桌面端页面，http/https 页面）：宿主挂进侧栏、数据直连同源
-// kap-server；桥接模式（macOS App 菜单栏，vibepal:// 自定义 scheme）：挂 body、
-// 数据由 Swift 推送
-const injectedMode = location.protocol !== 'vibepal:';
-
+// 宿主挂载：注入器（loader）提供挂载点（aside.side > .col 里 side-footer 之前）；
+// 挂载点缺失时退化为页面级浮动面板（jsdom 测试走这条）
 const host = document.createElement('div');
 host.id = 'ksb-panel-host';
-if (injectedMode && typeof globalThis.__vibepalMountInto === 'function') {
-  globalThis.__vibepalMountInto(host); // 注入器提供：挂到 aside.side > .col
+if (typeof globalThis.__vibepalMountInto === 'function') {
+  globalThis.__vibepalMountInto(host);
 } else {
   document.body.appendChild(host);
 }
 mountWidget(host);
 
-// 语言跟随 kimi-locale（Swift 侧如需英文可预先写入该键）；
+// 语言跟随 kimi-locale（桌面端按系统语言预写该键）；
 // 缺省时保持 i18n 模块默认的中文，不跟系统语言走
 try {
   if (localStorage.getItem('kimi-locale')) syncLocaleFromPage();
@@ -134,18 +123,16 @@ async function bootstrap() {
     applyWidgetConfig(PANEL_WIDGET_CONFIG);
   }
   markBridgeReady();
-  // 状态文案 ticker：锁位句子 + 渲染层短词的数据源（bridge 模式同样适用）
+  // 状态文案 ticker：锁位句子 + 渲染层短词的数据源
   installStatusTicker();
-  // 注入模式：直连同源 kap-server（页面在桌面端 DOM 里）；桥接模式等 Swift 推送。
-  // 直连启动失败不拖垮面板：就绪信号必须照常派发（loader 靠它补推数据）
-  if (injectedMode) {
-    try {
-      startDirectMode();
-    } catch (error) {
-      console.error('[Kimi Status] 直连模式启动失败', error);
-    }
+  // 直连同机 kap-server（WS 事件流 + REST 轮询）。直连启动失败不拖垮面板：
+  // 就绪信号必须照常派发（loader 靠它补推数据）
+  try {
+    startDirectMode();
+  } catch (error) {
+    console.error('[Kimi Status] 直连模式启动失败', error);
   }
-  // 页面内联脚本（?mock=1 演示数据）就绪信号
+  // loader 的就绪信号：补推直连启动前到达的 usage-daily / external 快照
   window.dispatchEvent(new Event('vibepal:panel-ready'));
 }
 

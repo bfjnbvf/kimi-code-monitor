@@ -5,7 +5,7 @@
  * - 消息路由、设备授权轮询 alarm、SW 启动恢复。
  * - 各域实现见 background/：store（存储锁/fetch/中转）、vault（密钥库）、
  *   oauth（授权与账户）、quota（额度/预警/快照）、external（外部 provider）、
- *   rename（会话命名）、pet（桌面宠物素材中转）、cli-scan（本地 CLI 扫描）。
+ *   pet（桌面宠物素材中转）、cli-scan（本地 CLI 扫描）。
  */
 import { failure, relayToKimiWebTab } from './background/store.js';
 import {
@@ -32,14 +32,8 @@ import {
   removeExternalAccount,
   renameExternalAccount
 } from './background/external.js';
-// v3.4.0 起命名改走系统「生成标题」（content 直调 title/generate），
-// 旧模型调用中转整体停用；恢复方法见 docs/DESIGN-extensions-card.md §3.2。
-// import {
-//   renameModelCall,
-//   getRenameUsage,
-//   listRenameModels,
-//   listExternalRenameModels
-// } from './background/rename.js';
+// v3.5.0 起命名旧模型管线（background/rename.js 与 session-rename/）已整体删除，
+// 命名走官方实验 auto_session_title + 「扩展功能」卡片的复制提示词引导。
 import { getActivePetAsset } from './background/pet.js';
 import {
   getCliUsageStatus,
@@ -93,11 +87,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     'external.add': addExternalAccount,
     'external.remove': removeExternalAccount,
     'external.rename': renameExternalAccount,
-    // v2 停用：命名旧模型管线的中转消息（见文件头注释）。
-    // 'rename.model': renameModelCall,
-    // 'rename.usage.get': getRenameUsage,
-    // 'rename.models.list': listRenameModels,
-    // 'rename.external.models.list': listExternalRenameModels,
     'pet.asset.active': getActivePetAsset,
     'hosts.list': listExtraWebHosts,
     'hosts.grant': (payload) => grantExtraWebHost(payload?.origin),

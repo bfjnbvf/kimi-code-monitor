@@ -10,22 +10,26 @@ aside.side .side-footer {
 /* 侧栏折叠阴影修正：面板插在会话列表与 .side-footer 之间后，滚动视口的
    下边缘上移到面板顶，但原生的底部折叠阴影是 .side-footer::before（钉在
    footer 上方），会错位到面板下面。面板在场时隐藏 footer 阴影，并把同款
-   渐变阴影挂到面板顶部；显隐仍由原生的 .side-footer--shadowed 类驱动
-   （:has() 随类名切换动态生效）。面板被移除时本组规则自动失效，恢复原样。 */
-aside.side > .col:has(> #ksb-panel-host) .side-footer::before {
+   渐变阴影挂到折叠处（会话列表底缘，与顶部阴影同宽、同探入方式）；显隐
+   仍由原生的 .side-footer--shadowed 类驱动（:has() 随类名切换动态生效）。
+   面板被移除时本组规则自动失效，恢复原样。
+   锚点与几何按两种挂载结构分别处理：
+   - 桌面补丁是 .col > host > widget（panel-app.js 建 host）：host 全宽且
+     紧贴列表底缘，阴影下缘即 host 顶缘；
+   - Web 扩展是 .col > widget（widget-structure.js ensureWidget 直插）：
+     widget 带 --ksb-panel-inset 外边距，阴影按同值补偿——横向贯穿整列、
+     下缘上移到列表底缘，外边距区域保持为空。 */
+aside.side > .col:has(> :is(#ksb-panel-host, #ksb-widget)) .side-footer::before {
   opacity: 0;
 }
 
-aside.side > .col > #ksb-panel-host {
+aside.side > .col > :is(#ksb-panel-host, #ksb-widget) {
   position: relative;
 }
 
-aside.side > .col > #ksb-panel-host::before {
+aside.side > .col > :is(#ksb-panel-host, #ksb-widget)::before {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
   height: var(--p-sidebar-seam-h, 13px);
   pointer-events: none;
   opacity: 0;
@@ -37,7 +41,21 @@ aside.side > .col > #ksb-panel-host::before {
     linear-gradient(to top, color-mix(in srgb, var(--color-text, #000) 0.75%, transparent), transparent);
 }
 
-aside.side > .col:has(> .side-footer--shadowed) > #ksb-panel-host::before {
+/* 桌面补丁：host 全宽、紧贴列表底缘，阴影下缘即折叠处 */
+aside.side > .col > #ksb-panel-host::before {
+  left: 0;
+  right: 0;
+  bottom: 100%;
+}
+
+/* Web 扩展：补偿面板外边距——横向贯穿整列，下缘移至列表底缘 */
+aside.side > .col > #ksb-widget::before {
+  left: calc(-1 * var(--ksb-panel-inset, 12px));
+  right: calc(-1 * var(--ksb-panel-inset, 12px));
+  bottom: calc(100% + var(--ksb-panel-inset, 12px));
+}
+
+aside.side > .col:has(> .side-footer--shadowed) > :is(#ksb-panel-host, #ksb-widget)::before {
   opacity: 1;
 }
 
@@ -116,9 +134,11 @@ html.ksb-sidebar-tidy aside.side .sidebar-actions .ui-kbd {
   --ksb-danger: #ff3849;
   /* 数值等宽字体：优先复用宿主页面已加载的 JetBrains Mono，系统 mono 兜底 */
   --ksb-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* 面板相对侧栏列的内缩距离；底部折叠阴影按同值补偿几何（见文件顶部阴影规则） */
+  --ksb-panel-inset: 12px;
 
   position: relative;
-  margin: 12px;
+  margin: var(--ksb-panel-inset);
   padding: 12px;
   /* 规范卡片圆角：--radius-lg */
   border-radius: 12px;

@@ -132,7 +132,7 @@ popup 现有「宠物」卡片保留独立；新增「扩展功能」卡片承�
 - 开关即卡片里的「新会话自动命名」，打开 = 允许扩展在该时机自动调系统生成。
 - 前置条件随系统：未登录托管账号时接口报错（客户端已有 `genTitleUnavailable` 同款语义），扩展把失败静默计入尝试上限，不弹错误。
 
-### 3.2 旧代码处置（本版注释，下版删）
+### 3.2 旧代码处置（v3.4.0 注释，v3.5.0 已整体删除）
 
 用户指示：本版先把扩展自己的命名引擎注释掉，不物理删除。
 
@@ -141,6 +141,8 @@ popup 现有「宠物」卡片保留独立；新增「扩展功能」卡片承�
 | 注释/停用 | `src/session-rename/rename-model.js`（模型调用）；`rename-content.js` 中「取样→组 prompt→发 rename.model」链路（改为直接调系统端点）；`src/background/rename.js` 的 `renameModelCall` / `listExternalRenameModels` / `getRenameUsage` 及 router 三个消息类型 `rename.model` / `rename.usage.get` / `rename.external.models.list`（`rename.models.list` 保留——中继拉模型清单不再需要，一并注释） |
 | 同步收尾 | sender-guard 白名单移除 `rename.model`；popup 的模型下拉、emoji 开关、命名用量显示移除；`rename.usage` 存储键保留不读 |
 | 保留 | 触发时机与命名记录逻辑（`rename-shared.js` 的去重/锁/标题消毒）、`writeTitle`（系统端点生成后仍可能需要写回？——实测：若 `title/generate` 直接落库则不需要，见开放问题） |
+
+> v3.5.0 更新：上表「注释/停用」范围的代码已物理删除（`src/session-rename/` 目录与 `src/background/rename.js` 整模块），本文的恢复步骤作废；现行方案为官方实验 auto_session_title + 「扩展功能」卡片的复制提示词引导。
 
 ### 3.3 前向兼容钩子
 

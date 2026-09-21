@@ -1,8 +1,12 @@
-skill-version: 1
-patch-version: 3.4.3
+skill-version: 2
+patch-version: 3.5.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 
 # 更新记录
+
+## 2（2026-09-21）
+
+配套补丁 3.5.0（桌面补丁首个完整发版）。面板功能与统计口径不变；内部移除两条停用通路（旧命名管线、VibePal 伴侣 App），已装补丁行为不受影响。
 
 ## 1（2026-09-21）
 
