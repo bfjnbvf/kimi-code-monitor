@@ -50,6 +50,8 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 
 <img src="docs/screenshots/quota.png" alt="5h 与本周额度条" width="476" height="49">
 
+<img src="docs/screenshots/popup.png" alt="弹窗：授权管理、完整版消耗量与数据导出" width="210" height="191">
+
 ### AI 回复收藏
 
 看到值得留存的回答，点它底部操作行的星标即可收藏。
@@ -110,8 +112,6 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 - 加油包余额显示，点击直达充值页（可改为控制台）
 - 侧栏美化（可开关）：隐藏侧栏顶部 logo，新建对话按钮上移，与伸缩按钮排成一行
-
-<img src="docs/screenshots/popup.png" alt="弹窗：授权管理、完整版消耗量与数据导出" width="182" height="166">
 
 ## 安装与授权
 

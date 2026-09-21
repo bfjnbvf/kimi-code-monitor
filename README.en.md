@@ -50,6 +50,8 @@ Adopt a pixel pet on the page. It follows your working rhythm: heads down while 
 
 <img src="docs/screenshots/quota.png" alt="5h and weekly quota bars" width="476" height="49">
 
+<img src="docs/screenshots/popup.png" alt="Popup: authorization, full usage chart and data export" width="210" height="191">
+
 ### AI Reply Bookmarks
 
 See an answer worth keeping? Click the star in the action row below it.
@@ -110,8 +112,6 @@ All UI text (panel, popup, bookmarks, share card) supports 中文 and English, *
 
 - Booster-pack balance display, click through to the top-up page (or the console)
 - Optional sidebar tidy: hides the sidebar logo and moves New Chat up in line with the collapse button
-
-<img src="docs/screenshots/popup.png" alt="Popup: authorization, full usage chart and data export" width="182" height="166">
 
 ## Installation & Authorization
 
