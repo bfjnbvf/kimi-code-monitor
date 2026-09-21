@@ -86,9 +86,12 @@
    - Windows：`install.cmd`（cmd 直接跑，或资源管理器双击）
    客户端不在默认位置时追加 `--app "<客户端目录>"`（也认环境变量 `KIMI_CODE_APP_DIR`）。
 5. **核对输出**应包含：客户端路径、备份（新建或已存在）、载荷同步、`[scan]` 扫描摘要（文件数/天数）、`历史统计已预填` 或明确的跳过原因、`完成（载荷 v=…）`。任何一行报错 → 停止并原样上报。
-6. **跑一遍外部自检**：`node <技能目录>/scripts/doctor.mjs`（无系统 node 时用客户端的：`ELECTRON_RUN_AS_NODE=1 "<客户端>/Contents/MacOS/Kimi Code" <技能目录>/scripts/doctor.mjs`），全部 PASS 才算装好。
+6. **跑一遍外部自检**（统一走 run 壳——客户端自带 Node 优先，无系统 Node 也能跑）：
+   - macOS / Linux：`bash <技能目录>/scripts/run.sh doctor.mjs`
+   - Windows：`<技能目录>\scripts\run.cmd doctor.mjs`
+   全部 PASS 才算装好。
 7. **自动探测客户端里的供应商**（这一步就是首装探测，不需要用户做任何事）：
-   `node <技能目录>/scripts/client-providers.mjs`
+   `bash <技能目录>/scripts/run.sh client-providers.mjs`（Windows：`run.cmd client-providers.mjs`）
    把输出里的 `SUMMARY` 一行按 guide-scripts.md 的模板报给用户——已接入几个、有几个暂不支持余额查询。退出码 1 说明客户端没开着，先让用户打开客户端再跑（不要当成安装失败）。
 8. **提醒用户重载客户端**（macOS Cmd+R，Windows Ctrl+R），然后按 guide-scripts.md 做首装引导。
 

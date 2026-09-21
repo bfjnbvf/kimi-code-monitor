@@ -5,7 +5,10 @@
 ## 第一层：外部检查（你直接跑）
 
 ```bash
-node <技能目录>/scripts/doctor.mjs
+# macOS / Linux（无系统 Node 也行——壳会借客户端自带的 Node）
+bash <技能目录>/scripts/run.sh doctor.mjs
+# Windows（cmd / PowerShell 均可）：
+<技能目录>\scripts\run.cmd doctor.mjs
 ```
 
 逐项 PASS/FAIL/WARN，每条 FAIL 自带建议动作。覆盖：客户端在场、补丁文件完整、注入标签与缓存参数一致、数据文件合法、本地服务在线且能伺服补丁文件、补丁版本。

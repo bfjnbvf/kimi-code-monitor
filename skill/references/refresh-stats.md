@@ -13,8 +13,9 @@
 
 一条命令（技能自带脚本，自己找客户端位置）：
 
-```
-node <技能目录>/scripts/refresh-stats.mjs
+```bash
+# macOS / Linux（Windows 用 run.cmd，同参数）
+bash <技能目录>/scripts/run.sh refresh-stats.mjs
 ```
 
 客户端装在非默认位置时加 `--app <客户端目录>`（和安装器同一个参数）。

@@ -36,6 +36,8 @@ unzip -l "$OUT"
 SKILL_OUT="kimi-code-monitor-skill.zip"
 SKILL_STAGE="$(mktemp -d)"
 cp -R skill "$SKILL_STAGE/kimi-code-monitor"
+# run.cmd 强制 CRLF：批处理在 LF 下解析有坑，不信任工作区行尾状态
+node -e "const fs=require('fs');const p=process.argv[1];fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace(/\\r?\\n/g,'\\r\\n'))" "$SKILL_STAGE/kimi-code-monitor/scripts/run.cmd"
 # 技能脚本打成零依赖单文件：技能包不含 src/，脚本里对 ../../src/* 的导入
 # 装到 ~/.kimi-code/skills/ 后会解析失败（曾导致「刷新余额」报模块不存在）
 # 从仓库源码打包（不能打包暂存目录里的副本：脚本里的 ../../src/* 是相对

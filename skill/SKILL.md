@@ -41,4 +41,4 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 | 外部账户余额 | references/external-accounts.md |
 | 对用户的话术模板 | references/guide-scripts.md |
 
-脚本都在 `skill 的 scripts/` 目录：`doctor.mjs`（外部自检，Node ≥16，跨 macOS/Windows）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。
+脚本都在 `skill 的 scripts/` 目录：`doctor.mjs`（外部自检）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）。**一律经 run 壳启动**：`bash run.sh <脚本名>`（macOS/Linux）/ `run.cmd <脚本名>`（Windows）——壳优先借客户端自带的 Node，无系统 Node 的用户也能跑全部脚本。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。

@@ -111,3 +111,52 @@ test('壳：卸载走同一入口——index.html 逐字节还原', () => {
     fs.rmSync(stage, { recursive: true, force: true });
   }
 });
+
+/* ---------- run 壳（技能脚本的统一运行入口） ---------- */
+
+test('run 壳：默认环境跑通脚本（裸脚本名按壳所在目录解析）', () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-run-'));
+  try {
+    let output = '';
+    try {
+      output = execFileSync('bash', [path.join(ROOT, 'skill/scripts/run.sh'), 'client-providers.mjs', '--port', '1'], {
+        cwd: work, encoding: 'utf8'
+      });
+    } catch (error) {
+      // 假端口探测失败属预期：脚本真实执行并以非零码退出——壳的职责已完成
+      output = String(error.stdout || '') + String(error.stderr || '');
+      assert.equal(error.status, 1);
+    }
+    assert.match(output, /FAIL|SUMMARY/, '脚本应经壳真实执行（无客户端时也应输出 FAIL 而非壳报错）');
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('run 壳：无系统 node 时借客户端 Node 跑通任意脚本', (t) => {
+  const runtimeExe = findRuntimeExe();
+  if (!runtimeExe) {
+    t.skip('本机没有 Kimi Code 客户端，也未注入 KCM_TEST_RUNTIME_EXE');
+    return;
+  }
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-run-'));
+  const probe = path.join(work, 'probe.mjs');
+  fs.writeFileSync(probe, 'console.log("RUNTIME_OK", process.version);\n');
+  try {
+    const out = execFileSync('bash', [path.join(ROOT, 'skill/scripts/run.sh'), probe], {
+      cwd: work,
+      env: { HOME: os.homedir(), PATH: '/usr/bin:/bin', KCM_RUNTIME_EXE: runtimeExe },
+      encoding: 'utf8'
+    });
+    assert.match(out, /RUNTIME_OK/, '应借客户端 Node 执行目标脚本');
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('run 壳：脚本不存在 → 明确报错非零退出', () => {
+  assert.throws(
+    () => execFileSync('bash', [path.join(ROOT, 'skill/scripts/run.sh'), 'no-such-script.mjs'], { encoding: 'utf8' }),
+    (error) => error.status === 1 && /脚本不存在/.test(String(error.stderr))
+  );
+});

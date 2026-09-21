@@ -19,7 +19,8 @@
 ## 探测（安装后跑一次，也可随时跑）
 
 ```bash
-node <技能目录>/scripts/client-providers.mjs
+# macOS / Linux（Windows 用 run.cmd，同参数）
+bash <技能目录>/scripts/run.sh client-providers.mjs
 ```
 
 输出形如：
@@ -67,7 +68,7 @@ SUMMARY 探测 3 个：已接入外部账户 1 个 · 不支持余额查询 1 �
 
 - 刷新（已装补丁目录里的工具，doctor.mjs 第一行有客户端路径）：
   ```bash
-  node "<客户端>/Contents/Resources/desktop-dist/kcm/fetch-wallet.mjs" --out "<客户端>/Contents/Resources/desktop-dist/kcm/wallet.js"
+  bash <技能目录>/scripts/run.sh "<客户端>/Contents/Resources/desktop-dist/kcm/fetch-wallet.mjs" --out "<客户端>/Contents/Resources/desktop-dist/kcm/wallet.js"
   ```
 - 报「凭据已失效（401/403）」：请用户打开一次 Kimi Code 客户端（会自动续期凭据），再重试。
 - 同样是快照：两次刷新之间的消耗不反映；安装补丁时会自动刷一次。
