@@ -599,14 +599,19 @@ function moduleMenuHTML(id) {
     : '';
   const statRow = id === 'pet'
     ? `<div class="ksb-menu-label">${t('右侧数据')}</div>${menuOpts('stat', [['daily', t('今日消耗')], ['input', t('输入')], ['output', t('输出')], ['cache', t('缓存命中')], ['speed', t('速度')], ['balance', t('余额')]], mod.stat)}
-      <div class="ksb-menu-label">${t('点击小球跳转')}</div>${menuOpts('ballLink', [['none', t('无跳转')], ['console', t('控制台')], ['subscription', t('充值页')]], mod.ballLink || 'none')}
-      <div class="ksb-menu-label">${t('侧栏改造（去 logo 上移）')}</div>${menuOpts('sidebarTidy', [[true, t('开启')], [false, t('关闭')]], mod.sidebarTidy !== false)}`
+      <div class="ksb-menu-label">${t('点击小球跳转')}</div>${menuOpts('ballLink', [['none', t('无跳转')], ['console', t('控制台')], ['subscription', t('充值页')]], mod.ballLink || 'none')}`
+    : '';
+  // 侧栏改造只作用于网页端侧栏；独立面板（桌面客户端注入）本就不生效
+  // （applySidebarTidy 在 standaloneMode 下强制关闭），菜单里不显示这个死开关
+  const tidyRow = id === 'pet' && !panel.standaloneMode
+    ? `<div class="ksb-menu-label">${t('侧栏改造（去 logo 上移）')}</div>${menuOpts('sidebarTidy', [[true, t('开启')], [false, t('关闭')]], mod.sidebarTidy !== false)}`
     : '';
   return `
     ${widthRow}
     ${agentsRow}
     ${externalRow}
     ${statRow}
+    ${tidyRow}
     ${paceRow}
     ${rangeRow}
   `;

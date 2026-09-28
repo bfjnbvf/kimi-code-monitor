@@ -506,6 +506,9 @@
     margin-bottom: 0;
     align-items: center;
     justify-content: center;
+    /* 兜底：格子尺寸由 JS 按宽度与高度取小计算（issue #10），此处再保证
+       任何计算偏差都不会溢出图表区遮挡上方指标下拉框 */
+    overflow: hidden;
   }
 
   /* 活跃热力图：GitHub 风格 140 天日历，按周分列，灰→蓝五档（8px 格子适配固定高度） */

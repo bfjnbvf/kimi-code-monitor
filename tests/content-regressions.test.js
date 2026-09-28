@@ -262,3 +262,10 @@ test('加油包余额双读 boosterWallet/booster_wallet（API 字段改名回�
   const quotaSource = fs.readFileSync(new URL('../src/content/quota.js', import.meta.url), 'utf8');
   assert.match(quotaSource, /boosterWallet( |\n)*\?\?( |\n)*response\.data\?\.booster_wallet/);
 });
+
+test('独立面板（桌面客户端注入）的宠物 ≡ 菜单不显示「侧栏改造」死开关', () => {
+  // standaloneMode 下 applySidebarTidy 强制不生效，菜单同步隐藏该项；网页端保留
+  assert.match(widgetSource, /const tidyRow = id === 'pet' && !panel\.standaloneMode/);
+  assert.match(widgetSource, /menuOpts\('sidebarTidy', \[\[true, t\('开启'\)\], \[false, t\('关闭'\)\]\]/);
+  assert.match(widgetSource, /\$\{statRow\}\s*\$\{tidyRow\}/);
+});

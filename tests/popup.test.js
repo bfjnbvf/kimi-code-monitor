@@ -114,6 +114,15 @@ test('活跃热力图作为默认指标：固定 140 天窗口，版式与其他
   assert.doesNotMatch(usageSource, /heatmap: \{/);
 });
 
+test('活跃热力图格子边长同时受图表区高度限制，宽版式不溢出盖住指标下拉框（issue #10）', () => {
+  // JS：格子边长按宽度与高度取小——宽版式（options 标签页约 670px）下不再溢出 76px 图表区
+  assert.match(usageSource, /const chartHeight = usageChartEl\.clientHeight;/);
+  assert.match(usageSource, /const maxCell = chartHeight \? \(chartHeight - 4 - 6 \* HEATMAP_GAP_PX\) \/ 7 : Infinity;/);
+  assert.match(usageSource, /Math\.min\(\(inner - \(weeks\.length - 1\) \* HEATMAP_GAP_PX\) \/ weeks\.length, maxCell\)/);
+  // CSS 兜底：任何计算偏差都不会溢出图表区遮挡上方指标下拉框
+  assert.match(css, /\.usage-data\.heatmap-mode \.usage-chart \{[\s\S]*?overflow: hidden/);
+});
+
 test('Kimi 账户区块：列表与添加入口，操作走独立消息', () => {
   assert.match(html, /id="account-section"/);
   assert.match(html, /id="account-list"/);

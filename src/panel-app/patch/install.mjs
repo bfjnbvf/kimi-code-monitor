@@ -315,6 +315,7 @@ function install(appRoot, dist) {
 
   console.error(`[install] 完成（载荷 v=${hash}）`);
   console.error(`[install] 请重载 Kimi Code 客户端（${reloadKey()}）或重启客户端，面板将出现在会话侧栏底部`);
+  console.error('[install] 注：客户端大版本更新会清除面板文件（属预期）；届时重新执行本安装即可恢复，历史统计自动重新扫描补齐，已积累数据不受影响');
 }
 
 function uninstall(dist) {
