@@ -5,6 +5,7 @@
 import { build } from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildHud } from './build-cli-hud.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -30,3 +31,5 @@ for (const [entryPoint, outfile] of entries) {
     outfile: path.join(ROOT, outfile)
   });
 }
+
+await buildHud();

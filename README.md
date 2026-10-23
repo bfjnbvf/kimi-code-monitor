@@ -1,5 +1,7 @@
 # Kimi Code Monitor
 
+> **CLI HUD demo（Kimi Code 2.2.0+）**：通过官方状态栏接口，在终端内显示模型、工具状态和 Kimi 账户额度，可选 token 明细。支持本机安装与恢复，见 [CLI HUD 试用说明](docs/CLI-HUD.md)。
+
 <p align="center"><strong>简体中文 | <a href="README.en.md">English</a></strong></p>
 
 > [一、主要特性](#一主要特性)：[宠物](#通用-codex-桌面宠物) · [用量分析](#用量分析) · [AI 回复收藏](#ai-回复收藏) · [分享卡片](#用量分享卡片) · [吉祥物](#会反映状态的吉祥物) · [自定义面板](#模块化自定义面板) · [自动归档](#自动归档不活跃对话实验性) · [更多](#更多)

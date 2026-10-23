@@ -39,3 +39,7 @@ docs/HANDOFF.md
 
 # 本机审计工作文档（同 HANDOFF，不进公开仓库）
 AUDIT-*.md
+
+# Local CLI HUD verification output
+.hud-*.txt
+__pycache__/
