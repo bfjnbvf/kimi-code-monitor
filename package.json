@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Kimi Code Web UI 底部 Agent 状态 HUD 浏览器扩展",
   "scripts": {
+    "hud:build": "node scripts/build-cli-hud.mjs",
+    "hud:install": "node scripts/build-cli-hud.mjs && node scripts/install-cli-hud.mjs",
+    "hud:test": "node scripts/build-cli-hud.mjs && node --test tests/cli-hud.test.js tests/cli-hud-quota.test.js tests/kap-auth.test.js",
+    "hud:verify": "node scripts/build-cli-hud.mjs && node scripts/verify-cli-hud.mjs",
     "build": "node scripts/build.mjs",
     "pack": "bash scripts/build.sh",
     "lint": "eslint src/",
