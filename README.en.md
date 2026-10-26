@@ -89,7 +89,7 @@ The panel hosts Kimi's official blue ball (the same animation as kimi.com's chat
 
 The status text beside it distinguishes "Thinking" (model generating) from "Executing" (tool calls), colored by state; the data slot cycles through six metrics: 24h usage / input / output / cache hit / speed / balance.
 
-Desktop builds add a **context-cache expiry reminder**: 27 minutes after the last model request the ball turns amber-yellow (matching the warning text); the four slots switch to "Chat cache / Expiring soon / Est. left / 3:00 countdown" and the headline pulses slowly. The relative time of sessions in the sidebar also turns amber between 27 and 29 minutes. At 30 minutes the pulse stops, the ball turns gray, and the slots read "Chat cache / May have expired / Idle / idle minutes" until your next input. The threshold is an estimate from the measured ~30 minute effective TTL, hence the "estimated / may" wording. Preview or toggle it from the pet's ≡ menu.
+Desktop builds add a **context-cache expiry reminder**: 27 minutes after the last model request the ball turns amber-yellow (matching the warning text); the four slots switch to "Chat cache / Expiring soon / Est. left / 3:00 countdown" and the headline pulses slowly. The relative time of sessions in the sidebar also turns amber between 27 and 29 minutes. At 30 minutes the pulse stops, the ball turns gray, and the slots read "Chat cache / May have expired / Idle / idle minutes" until your next input. The threshold is an estimate from the measured ~30 minute effective TTL, hence the "estimated / may" wording. **Off by default**; enable it from the pet's ≡ menu, where Preview also works while it is off.
 
 ### Modular Customizable Panel
 

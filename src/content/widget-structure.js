@@ -648,7 +648,7 @@ function moduleMenuHTML(id) {
     : '';
   // 缓存提醒只在桌面补丁生效（事件与快照来自 kap-server）；网页端没有这条通路
   const cacheHintRow = id === 'pet' && panel.standaloneMode
-    ? `<div class="ksb-menu-label">${t('缓存提醒')}</div>${menuOpts('cacheHint', [[true, t('开启')], [false, t('关闭')]], mod.cacheHint !== false)}
+    ? `<div class="ksb-menu-label">${t('缓存提醒')}</div>${menuOpts('cacheHint', [[true, t('开启')], [false, t('关闭')]], mod.cacheHint === true)}
       <div class="ksb-menu-label">${t('预览')}</div>
       <div class="ksb-menu-opts">
         <span class="ksb-menu-opt" data-kind="cachePreview" data-value="warn">${t('即将过期')}</span>

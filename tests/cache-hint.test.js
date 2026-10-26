@@ -38,10 +38,11 @@ test('闲置分钟：向下取整，不出现负数', () => {
   assert.equal(formatCacheIdleMinutes(-1), 0);
 });
 
-test('配置：缓存提醒默认开，显式 false 保留，非法值回落默认', () => {
-  assert.equal(defaultWidgetConfig().modules.pet.cacheHint, true);
+test('配置：缓存提醒默认关，显式 true 才开启，非法值回落默认', () => {
+  assert.equal(defaultWidgetConfig().modules.pet.cacheHint, false);
+  assert.equal(normalizeWidgetConfig({ modules: { pet: { cacheHint: true } } }).modules.pet.cacheHint, true);
   assert.equal(normalizeWidgetConfig({ modules: { pet: { cacheHint: false } } }).modules.pet.cacheHint, false);
-  assert.equal(normalizeWidgetConfig({ modules: { pet: { cacheHint: 'off' } } }).modules.pet.cacheHint, true);
+  assert.equal(normalizeWidgetConfig({ modules: { pet: { cacheHint: 'on' } } }).modules.pet.cacheHint, false);
 });
 
 test('angryface / angryeye 不再作为点击彩蛋，提醒改用红色外观', () => {

@@ -226,7 +226,7 @@ test('Widget 配置：默认布局（标题行隐藏作备份、宠物沉底置�
   assert.equal(config.modules.usageChart.span, 2);
   assert.deepEqual(config.modules.duration, { show: 'hidden', span: 1 });
   assert.deepEqual(config.modules.pet, {
-    show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none', cacheHint: true
+    show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none', cacheHint: false
   });
 });
 

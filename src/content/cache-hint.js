@@ -30,7 +30,8 @@ let previewTimer = null;
 let previewPrevTouch = null;
 
 function enabled() {
-  return panel.widgetConfig?.modules?.pet?.cacheHint !== false;
+  // 默认关闭：只有用户显式打开才生效（旧配置没有这个键也按关闭处理）
+  return panel.widgetConfig?.modules?.pet?.cacheHint === true;
 }
 
 function visible() {
@@ -104,7 +105,7 @@ function paintSidebarIdleTimes() {
   for (const el of document.querySelectorAll('.ksb-cache-idle-warn')) {
     el.classList.remove('ksb-cache-idle-warn');
   }
-  if (!enabled()) return;
+  if (!enabled() && panel.cacheHint.preview !== true) return;
   for (const row of document.querySelectorAll('[data-session-id]')) {
     for (const el of row.querySelectorAll('span, time, div, small')) {
       if (el.children.length || el.closest('.t')) continue;
@@ -120,7 +121,8 @@ function paintSidebarIdleTimes() {
 
 function sync() {
   paintSidebarIdleTimes();
-  if (!enabled() || !visible()) {
+  const previewing = panel.cacheHint.preview === true;
+  if ((!enabled() && !previewing) || !visible()) {
     panel.cacheHint.stage = 'idle';
     restore();
     return;

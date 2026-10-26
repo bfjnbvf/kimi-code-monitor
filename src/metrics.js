@@ -351,7 +351,7 @@ function defaultWidgetConfig() {
       quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       usageChart: { show: 'full', span: 2, chartRange: 'week' },
-      pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none', cacheHint: true },
+      pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none', cacheHint: false },
       agents: { show: 'hidden', span: 2, hiddenAgents: [] },
       external: { show: 'hidden', span: 1, hiddenAccounts: [] }
     },
