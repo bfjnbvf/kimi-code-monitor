@@ -2311,7 +2311,6 @@ html[data-color-scheme="dark"] {
 
 .ksb-pet-total.ksb-cache-state {
   font-size: 14px;
-  line-height: 1.25;
   letter-spacing: 0;
   font-variant-numeric: normal;
   color: var(--ksb-text);
@@ -2347,6 +2346,11 @@ html[data-color-scheme="dark"] {
     animation: none;
     filter: hue-rotate(190deg) saturate(1.45) brightness(1.05);
   }
+}
+
+/* 缓存提醒接管时余额刷新图标只隐身、不消失，保持标签行宽度 */
+.ksb-stat-refresh.ksb-cache-hide-refresh {
+  visibility: hidden;
 }
 
 /* 侧栏会话列表的相对时间：27–29 分钟标黄，不用盯着面板也能看到 */

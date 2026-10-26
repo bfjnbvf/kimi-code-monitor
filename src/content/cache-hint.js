@@ -56,6 +56,7 @@ function removeClasses() {
 function restore() {
   if (!panel.cacheHint.painted) return;
   panel.cacheHint.painted = false;
+  panel.els?.petRefresh?.classList.remove('ksb-cache-hide-refresh');
   removeClasses();
   if (panel.els?.petAmpm) panel.els.petAmpm.hidden = false;
   renderPetStats();
@@ -80,8 +81,10 @@ function paint(stage, now) {
     els.petClockNum.textContent = t('{n} 分钟', { n: formatCacheIdleMinutes(elapsed) });
   }
   els.petClock.hidden = false;
-  // 余额口径才有的刷新图标在提醒态没有意义，先收起；restore 时 renderPetStats 会还原
-  if (els.petRefresh) els.petRefresh.hidden = true;
+  // 余额刷新图标只隐身、不 display:none：后者会让标签行变窄，字段名横向跳
+  if (els.petRefresh && !els.petRefresh.hidden) {
+    els.petRefresh.classList.add('ksb-cache-hide-refresh');
+  }
   if (els.petAmpm) {
     els.petAmpm.textContent = '';
     els.petAmpm.hidden = true;
