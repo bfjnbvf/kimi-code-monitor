@@ -40,8 +40,11 @@ function noInfoError(message, body) {
   return new Error(snippet ? `${message}（响应：${snippet.slice(0, 150)}…）` : message);
 }
 
-// 套餐窗口的语义标签：按时长映射为 5h/1w/1M，缺失时按类型兜底
+// 套餐窗口的语义标签：智谱的 TIME_LIMIT 是 MCP 月度额度，必须优先于
+// number/unit 的通用时长映射——该类型即使带 number/unit（如 1 month），
+// 通用分支也会把 month 当成 1 分钟并误标成 5h（issue #13）。
 function windowLabel(limit) {
+  if (limit?.type === 'TIME_LIMIT') return 'MCP';
   const number = Number(limit?.number ?? limit?.windowSize ?? limit?.window);
   const unit = String(limit?.unit ?? limit?.windowUnit ?? '').toLowerCase();
   if (Number.isFinite(number) && number > 0) {
@@ -53,7 +56,7 @@ function windowLabel(limit) {
     if (minutes <= 11000) return '1w';
     return '1M';
   }
-  return limit?.type === 'TIME_LIMIT' ? 'MCP' : '额度';
+  return '额度';
 }
 
 // DeepSeek：balance_infos 按币种拆分，只取人民币（赠送/充值分列）

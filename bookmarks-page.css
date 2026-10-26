@@ -1,0 +1,42 @@
+/* 收藏页（bookmarks.html）：把内容脚本里的整页覆盖层改成正常文档流 */
+
+body.kbm-standalone {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--kbm-bg);
+  color: var(--kbm-text);
+  font-family: "Inter Variable", Inter, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body.kbm-standalone #kbm-page {
+  position: static;
+  inset: auto;
+  height: 100vh;
+  display: flex;
+}
+
+/* flex 子项默认 min-height:auto，会撑破 100vh 导致整页滚动而不是列表内滚动 */
+body.kbm-standalone .kbm-page-body {
+  min-height: 0;
+}
+
+#kbm-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  max-width: min(80vw, 520px);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--kbm-text);
+  color: var(--kbm-bg);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  z-index: 9999;
+}
+
+#kbm-toast[hidden] {
+  display: none;
+}

@@ -2,6 +2,8 @@
 // 验证登记表、内容脚本动态注册、CSP 动态规则与即时注入的联动。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { STATIC_URL_PATTERNS } from '../src/host-patterns.js';
 
 function installChromeStub() {
   const storage = new Map();
@@ -60,9 +62,31 @@ function installChromeStub() {
 const { storage, calls, listeners, stubState } = installChromeStub();
 const hosts = await import('../src/background/dynamic-hosts.js');
 
-test('登记表为空时 URL 匹配表只有本机回环', async () => {
-  assert.deepEqual(await hosts.kimiWebUrlPatterns(), hosts.BASE_URL_PATTERNS);
+test('登记表为空时 URL 匹配表只有静态覆盖的三个 origin', async () => {
+  assert.deepEqual(await hosts.kimiWebUrlPatterns(), STATIC_URL_PATTERNS);
+  assert.deepEqual(STATIC_URL_PATTERNS, [
+    'http://127.0.0.1:58627/*',
+    'http://localhost:58627/*',
+    'https://code-rc.kimi.com/*'
+  ]);
   assert.deepEqual(await hosts.listExtraWebHosts(), []);
+});
+
+test('静态范围、内容脚本与 CSP 规则在清单中保持一致', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const cspRules = JSON.parse(fs.readFileSync(new URL('../rules/csp_relax.json', import.meta.url), 'utf8'));
+  assert.deepEqual(manifest.content_scripts[0].matches, STATIC_URL_PATTERNS);
+  for (const pattern of STATIC_URL_PATTERNS) {
+    assert.ok(manifest.host_permissions.includes(pattern), `host_permissions 缺 ${pattern}`);
+  }
+  const filters = cspRules.map((rule) => rule.condition.urlFilter);
+  assert.deepEqual(filters, [
+    '|http://127.0.0.1:58627/',
+    '|http://localhost:58627/',
+    '|https://code-rc.kimi.com/'
+  ]);
+  // 端口必须写进规则：requestDomains 不区分端口，会把所有本机页面的 CSP 都摘掉
+  for (const rule of cspRules) assert.equal(rule.condition.requestDomains, undefined);
 });
 
 test('授权：登记 origin、注册内容脚本、补 CSP 规则、刷新已开页面', async () => {
@@ -126,9 +150,15 @@ test('后台复核 optional host 权限：未授权的 origin 不登记、不补
   }
 });
 
-test('isAuthorizedContentUrl：回环直接放行，其余按登记表匹配', async () => {
-  assert.equal(await hosts.isAuthorizedContentUrl('http://127.0.0.1:3000/sessions/x'), true);
-  assert.equal(await hosts.isAuthorizedContentUrl('http://localhost/sessions/x'), true);
+test('isAuthorizedContentUrl：只放行静态端口与登记表里的 origin', async () => {
+  assert.equal(await hosts.isAuthorizedContentUrl('http://127.0.0.1:58627/sessions/x'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://localhost:58627/sessions/x'), true);
+  // 未授权的回环端口不再整体放行
+  assert.equal(await hosts.isAuthorizedContentUrl('http://127.0.0.1:3000/sessions/x'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://localhost/sessions/x'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('https://code-rc.kimi.com/devices/device-id/'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://code-rc.kimi.com/devices/device-id/'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('https://code-rc.kimi.com.evil.example/'), false);
   assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3000/sessions/x'), true);
   assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3001/sessions/x'), false);
   assert.equal(await hosts.isAuthorizedContentUrl('https://evil.example.com/'), false);
@@ -137,10 +167,13 @@ test('isAuthorizedContentUrl：回环直接放行，其余按登记表匹配', a
   assert.equal(await hosts.isAuthorizedContentUrl(undefined), false);
 });
 
-test('queryKimiWebTabs 合并本机与已授权 origin 查询标签页', async () => {
+test('queryKimiWebTabs 合并静态站点与已授权 origin 查询标签页', async () => {
   await hosts.queryKimiWebTabs();
   assert.deepEqual(calls.tabsQuery.at(-1), {
-    url: ['http://127.0.0.1/*', 'http://localhost/*', 'http://192.168.1.5:3000/*']
+    url: [
+      ...STATIC_URL_PATTERNS,
+      'http://192.168.1.5:3000/*'
+    ]
   });
 });
 
@@ -150,7 +183,7 @@ test('浏览器侧撤销权限时 onRemoved 同步清理登记表', async () => 
   // 监听器内部是异步链，给一拍让它落完
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(await hosts.listExtraWebHosts(), []);
-  assert.deepEqual(await hosts.kimiWebUrlPatterns(), hosts.BASE_URL_PATTERNS);
+  assert.deepEqual(await hosts.kimiWebUrlPatterns(), STATIC_URL_PATTERNS);
 });
 
 test('撤销：登记表清空后注销动态内容脚本', async () => {

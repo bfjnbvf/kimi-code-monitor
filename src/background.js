@@ -46,7 +46,8 @@ import {
   listExtraWebHosts,
   grantExtraWebHost,
   revokeExtraWebHost,
-  syncExtraWebHosts
+  syncExtraWebHosts,
+  queryKimiWebTabs
 } from './background/dynamic-hosts.js';
 import { runTidyAutoIfDue, syncTidyAutoAlarm, TIDY_AUTO_ALARM } from './background/tidy.js';
 import { authorizeMessage } from './background/sender-guard.js';
@@ -65,6 +66,28 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== DEVICE_POLL_ALARM) return;
   runDevicePoll();
 });
+
+async function openBookmarksPage() {
+  await chrome.tabs.create({ url: chrome.runtime.getURL('bookmarks.html') });
+  return { ok: true };
+}
+
+async function jumpToBookmark(payload) {
+  const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : '';
+  const turnId = typeof payload?.turnId === 'string' ? payload.turnId : '';
+  if (!sessionId || !turnId) return failure(new Error('参数不合法'), 'BAD_REQUEST');
+  const tabs = await queryKimiWebTabs();
+  const tab = tabs.find((item) => item?.id != null);
+  if (!tab) return failure(new Error('没有打开的 Kimi Web 页面'), 'NO_TARGET');
+  await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+  if (tab.windowId != null) {
+    await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+  }
+  await chrome.tabs
+    .sendMessage(tab.id, { type: 'bookmarks.jump', payload: { sessionId, turnId } })
+    .catch(() => {});
+  return { ok: true };
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handlers = {
@@ -88,6 +111,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     'external.remove': removeExternalAccount,
     'external.rename': renameExternalAccount,
     'pet.asset.active': getActivePetAsset,
+    // 收藏页在扩展自有标签页打开；跳转由后台转给已授权的 Kimi Web 标签页
+    'bookmarks.open': openBookmarksPage,
+    'bookmarks.jump': jumpToBookmark,
     'hosts.list': listExtraWebHosts,
     'hosts.grant': (payload) => grantExtraWebHost(payload?.origin),
     'hosts.revoke': (payload) => revokeExtraWebHost(payload?.origin),

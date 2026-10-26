@@ -19,6 +19,24 @@ document.documentElement.classList.add('kimi-preload');
 initMode();
 document.getElementById('version').textContent = chrome.runtime.getManifest().version;
 
+// 收藏页在扩展自有标签页打开（不依赖当前是否停在 Kimi 页面）。
+// 功能总开关关闭时与页面内星标一致：入口隐藏，数据保留。
+const openBookmarks = document.getElementById('open-bookmarks');
+openBookmarks?.addEventListener('click', (event) => {
+  event.preventDefault();
+  chrome.runtime.sendMessage({ type: 'bookmarks.open' }).catch(() => {});
+  window.close();
+});
+chrome.storage.local
+  .get('kimiFeatureBookmarks')
+  .then((stored) => {
+    if (stored?.kimiFeatureBookmarks === false && openBookmarks) {
+      openBookmarks.hidden = true;
+      openBookmarks.style.display = 'none';
+    }
+  })
+  .catch(() => {});
+
 // 初始化调用均为 async：统一兜住 rejection，避免在扩展错误页留下噪音
 function kick(promise) {
   Promise.resolve(promise).catch((error) => console.warn('[Kimi Popup] 初始化失败', error));

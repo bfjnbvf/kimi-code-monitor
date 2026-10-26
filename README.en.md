@@ -144,8 +144,9 @@ Grab the latest `kimi-code-monitor-v*.zip` from [Releases](https://github.com/bf
 0. Build first: `npm install && npm run build` (bundles `src/` into `dist/`; re-run after any source change)
 1. Enable Developer Mode at `chrome://extensions` and load this folder (or the unzipped release)
 2. Open the local page started by `kimi web`
-3. A walkthrough shows on first load; complete the one-time device authorization when the panel prompts
-4. For 24h / 7d / 30d long-term stats, click "Connect local CLI" in the usage module or the popup and choose the sessions directory: `~/.kimi-code/sessions` on macOS / Linux, `%USERPROFILE%\.kimi-code\sessions` on Windows
+3. The default port (58627) works out of the box; if you started it with `kimi web --port`, click the extension icon → "Enable on this site" and the page reloads once
+4. A walkthrough shows on first load; complete the one-time device authorization when the panel prompts
+5. For 24h / 7d / 30d long-term stats, click "Connect local CLI" in the usage module or the popup and choose the sessions directory: `~/.kimi-code/sessions` on macOS / Linux, `%USERPROFILE%\.kimi-code\sessions` on Windows
 
 > `.kimi-code` is a hidden folder. In the macOS picker press `⌘⇧.` to show hidden folders; on Linux usually `Ctrl+H`; on Windows press `Ctrl+L` and paste the path. If you configured `KIMI_CODE_HOME`, choose its `sessions` subdirectory.
 
@@ -159,9 +160,11 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 
 - **In-memory by default**: input/output/cache/speed and sparklines only hold current-page data; nothing is uploaded. Without the local CLI connection, long-term stats stay locked
 - **Usage-only when connected**: just `usage.record` entries and model names from `wire.jsonl` (auto-tidy likewise reads session-list metadata only) — conversation text, tool arguments, and answers are never stored or uploaded
-- **Bookmarks stay local**: extension storage holds only the turn id + a text excerpt; deleting bookmarks or uninstalling the extension wipes them
+- **Bookmarks stay local**: each bookmark stores a turn id, session/question excerpt, and a rendered HTML copy of the reply (capped at about 150 KB); deleting bookmarks or uninstalling the extension wipes them
 - **Credentials encrypted at rest**: OAuth tokens and external API keys are stored through the local encrypted vault (AES-GCM); the extension never reads or writes Kimi Code CLI credentials
 - **Sender validation**: the background only trusts extension pages and content scripts from loopback or granted sites; note that loopback means any port — any local service on your machine counts as a semi-trusted sender (it can trigger the device-auth flow or query external-account balances, the whitelisted operations), an inherent trade-off of the local-client architecture
+- **Message source check**: the background only accepts content-script messages from the default port or origins you enabled from the popup. Unenabled local ports have no content script at all — no panel, no bookmarks
+- **Official RC site is statically granted**: `code-rc.kimi.com` gets host permission and a static content script at install time so Chrome's site menu can enable the panel directly; the main-frame CSP header is removed for that site so Rive WASM can compile. Other self-hosted `kimi web --host` origins still require manual opt-in from the popup
 - **One known detectability**: the Rive animation assets are visible to all http(s) pages, so a web page can probe whether this extension is installed; no other resource or interface is exposed to arbitrary pages
 
 ## 4. Technical Implementation

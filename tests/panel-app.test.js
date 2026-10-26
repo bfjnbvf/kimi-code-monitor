@@ -616,6 +616,7 @@ test('panel-app：标题行右侧数据位与宠物共用口径，余额口径�
     const refreshBtn = doc.getElementById('ksb-header-stat-refresh');
     assert.ok(refreshBtn, '余额口径应挂刷新图标');
     assert.equal(refreshBtn.hidden, false);
+    // 刷新图标只触发取数，不做手势校验，jsdom 的合成点击可以直接驱动
     refreshBtn.dispatchEvent(new first.window.MouseEvent('click', { bubbles: true }));
     assert.equal(refreshed, 1, '点图标应触发一次手动刷新');
     // 宠物模块选的是「今日消耗」，不挂刷新图标（非余额口径本来就会自动更新）

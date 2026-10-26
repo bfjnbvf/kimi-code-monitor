@@ -78,6 +78,7 @@ const EN = {
   '统计中…': 'Counting…',
   '连接中…': 'Connecting…',
   '即将重置': 'Resetting soon',
+  '没有打开的 Kimi Web 页面': 'No Kimi Web page is open',
   '{days}天{hours}小时后重置': 'Resets in {days}d {hours}h',
   '{hours}小时{minutes}分钟后重置': 'Resets in {hours}h {minutes}m',
   '{totalMin}分钟后重置': 'Resets in {totalMin}m',

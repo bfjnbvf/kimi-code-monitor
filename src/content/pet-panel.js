@@ -10,7 +10,7 @@
 
 import { panel } from './panel-state.js';
 import { statusAppearance } from '../metrics.js';
-import { PET_ANSWER_STATUSES, openDataLink } from './utils.js';
+import { PET_ANSWER_STATUSES, openDataLink, isUserGesture } from './utils.js';
 import { statusText } from '../i18n.js';
 import { getDisplayedAgentStatus } from './render.js';
 import { create as createRoamPet } from '../pet/sprites.js';
@@ -317,6 +317,7 @@ export function petStart() {
   if (petClickBoundCanvas !== panel.els.petCanvas) {
     panel.els.petCanvas.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (!isUserGesture(event)) return;
       petHandleClick();
       // 跳转目标与标题行数据位共用同一份逻辑（utils.openDataLink）
       openDataLink(panel.widgetConfig.modules.pet?.ballLink);

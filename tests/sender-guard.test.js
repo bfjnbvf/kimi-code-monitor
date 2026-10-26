@@ -1,6 +1,6 @@
 // 消息来源守卫（src/background/sender-guard.js）：
 // 扩展自有页面（popup 无 tab / 选项页带 tab）按自身扩展 ID 的 URL 前缀全量放行；
-// 内容脚本仅放行「回环 / 已动态授权 origin」来源，且消息类型限于内容脚本
+// 内容脚本仅放行「静态授权的默认端口 / 已动态授权 origin」来源，且消息类型限于内容脚本
 // 实际使用的白名单——特权消息一律拒绝。
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -61,13 +61,14 @@ test('他方扩展页面的消息（URL 前缀不是自身 ID）按不可信处�
   assert.equal(await authorizeMessage('accounts.remove', sender), false);
 });
 
-test('回环来源的内容脚本：白名单消息放行，特权消息拒绝', async () => {
-  const sender = contentSender('http://127.0.0.1:3000/sessions/s1');
+test('默认端口的内容脚本：白名单消息放行，特权消息拒绝', async () => {
+  const sender = contentSender('http://127.0.0.1:58627/sessions/s1');
   assert.equal(await authorizeMessage('quota.fetch', sender), true);
   assert.equal(await authorizeMessage('oauth.start', sender), true);
   assert.equal(await authorizeMessage('cli.usage.refresh', sender), true);
   assert.equal(await authorizeMessage('pet.asset.active', sender), true);
-  assert.equal(await authorizeMessage('webtoken.report', sender), true);
+  // 月额度通路休眠，内容侧没有发送点，白名单已收掉
+  assert.equal(await authorizeMessage('webtoken.report', sender), false);
   // v2 起命名走系统「生成标题」，rename.model 已移出白名单
   assert.equal(await authorizeMessage('rename.model', sender), false);
 
@@ -78,6 +79,12 @@ test('回环来源的内容脚本：白名单消息放行，特权消息拒绝',
   assert.equal(await authorizeMessage('external.add', sender), false);
   assert.equal(await authorizeMessage('hosts.grant', sender), false);
   assert.equal(await authorizeMessage('hosts.revoke', sender), false);
+});
+
+test('未授权的回环端口：没有内容脚本，也不接受它的消息', async () => {
+  const sender = contentSender('http://127.0.0.1:3000/sessions/s1');
+  assert.equal(await authorizeMessage('quota.fetch', sender), false);
+  assert.equal(await authorizeMessage('bookmarks.open', sender), false);
   assert.equal(await authorizeMessage('cli.usage.disconnect', sender), false);
 });
 

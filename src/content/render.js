@@ -749,7 +749,7 @@ function fmtCountdownLong(diffMs, resetMs) {
   const totalMin = Math.floor(diffMs / 60_000);
   const date = new Date(resetMs);
   const abs = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  if (totalMin < 1) return t('即将重置');
+  if (totalMin < 1) return `${t('即将重置')}（${abs}）`;
   const hours = Math.floor(totalMin / 60);
   const minutes = totalMin % 60;
   const days = Math.floor(hours / 24);

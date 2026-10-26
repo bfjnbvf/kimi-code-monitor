@@ -16,8 +16,9 @@
 import { isAuthorizedContentUrl } from './dynamic-hosts.js';
 
 // 内容脚本会发送的全部消息类型（与 src/content.js、src/content/ 的
-// chrome.runtime.sendMessage 调用点一一对应；v3.4.0 起命名走系统「生成标题」，
-// rename.model 已随旧管线移出白名单）。
+// chrome.runtime.sendMessage 调用点一一对应）。
+// webtoken.report 已从白名单移除：月额度通路休眠，内容侧没有发送点，
+// 该 handler 仍留在后台备用——重新启用时须同时恢复白名单并改为加密存储。
 const CONTENT_MESSAGE_TYPES = new Set([
   'quota.fetch',
   'oauth.start',
@@ -26,9 +27,8 @@ const CONTENT_MESSAGE_TYPES = new Set([
   'cli.usage.open_settings',
   'external.status',
   'pet.asset.active',
-  // 网页端 token 中转当前未注册：重新启用月额度通路时它注入 www.kimi.com，
-  // 需同时把该 origin 纳入 isAuthorizedContentUrl 的放行集合
-  'webtoken.report'
+  // 打开扩展自有收藏页：只创建标签页，不携带任何数据
+  'bookmarks.open'
 ]);
 
 export async function authorizeMessage(type, sender) {
@@ -38,7 +38,7 @@ export async function authorizeMessage(type, sender) {
   if (url.startsWith(ownPrefix)) return true;
   // 其余无 tab 的发送者视为扩展上下文（防御性放行，正常路径不会出现）
   if (!sender?.tab) return true;
-  // 内容脚本：来源必须是本机回环或已动态授权的站点，且消息类型在白名单内
+  // 内容脚本：来源必须是静态或动态授权站点，且消息类型在白名单内
   if (!CONTENT_MESSAGE_TYPES.has(type)) return false;
   return isAuthorizedContentUrl(sender.url);
 }

@@ -3,6 +3,15 @@
  * content / render / websocket-session / pet 各域共用。
  */
 
+/**
+ * 只接受真实用户手势。页面脚本的 element.click() / dispatchEvent 产生的事件
+ * isTrusted 为 false；面板里的授权、刷新、跳转、收藏都靠这一层挡住合成点击。
+ * 键盘触发（Enter/空格）是可信事件，不受影响。
+ */
+export function isUserGesture(event) {
+  return event?.isTrusted === true;
+}
+
 // 外部 API / CLI 扫描来源的字符串进 innerHTML 前统一转义（title 属性插值单层即可）
 export function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (ch) => ({

@@ -45,7 +45,8 @@ test('智谱 coding plan 窗口做宽容解析，无窗口无套餐时报错', (
       planName: 'Coding Plan Pro',
       limits: [
         { type: 'TOKENS_LIMIT', usage: 40, total: 100, nextResetTime: 1786000000000 },
-        { type: 'TIME_LIMIT', percentage: 12.5 }
+        // 真实响应带 number/unit（1 month）；TIME_LIMIT 必须优先判为 MCP（issue #13）
+        { type: 'TIME_LIMIT', percentage: 12.5, number: 1, unit: 'month', nextResetTime: 1786000000000 }
       ]
     }
   });

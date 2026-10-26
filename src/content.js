@@ -71,10 +71,12 @@ import {
   disposeBookmarks,
   handleBookmarksStorageChanged,
   repaintBookmarkStars,
-  refreshBookmarksLocale
+  refreshBookmarksLocale,
+  jumpToBookmark
 } from './content/bookmarks.js';
 import { initSessionTidy } from './content/session-tidy.js';
 import { syncLocaleFromPage } from './i18n.js';
+import { isRemoteControl } from './content/utils.js';
 
 // ESM 静态依赖：缺失即加载失败，错误会直接在控制台可见，不再需要运行时守卫。
 
@@ -304,6 +306,10 @@ function handleStorageChanged(changes, area) {
 function handleRuntimeMessage(message) {
   if (disposed) return;
   if (message?.type === 'auth.completed') fetchQuota();
+  if (message?.type === 'bookmarks.jump') {
+    const { sessionId, turnId } = message.payload || {};
+    if (sessionId && turnId) jumpToBookmark(sessionId, turnId);
+  }
   if (message?.type === 'auth.switched') {
     // 切换账户：先展示该账户的缓存额度（若有），再强制刷新为最新值
     fetchQuota(false, { allowStale: true });
@@ -388,7 +394,11 @@ function pageShowsKimiWebSigns() {
 let bookmarksActive = false;
 
 function startBookmarks() {
-  if (bookmarksActive || disposed) return;
+  // 收藏页已迁到扩展自有标签页，内容脚本只保留星标注入与当前轮次捕获。
+  // RC 远程页面不初始化收藏域：那里没有本机会话可收藏，也不需要入口。
+  if (bookmarksActive || disposed || isRemoteControl() || location.hostname === 'code-rc.kimi.com') {
+    return;
+  }
   bookmarksActive = true;
   initBookmarks({
     isDisposed: () => disposed,

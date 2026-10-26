@@ -9,7 +9,35 @@
       ]
     },
     "condition": {
-      "requestDomains": ["127.0.0.1", "localhost"],
+      "urlFilter": "|http://127.0.0.1:58627/",
+      "resourceTypes": ["main_frame"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "content-security-policy", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "|http://localhost:58627/",
+      "resourceTypes": ["main_frame"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "content-security-policy", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "|https://code-rc.kimi.com/",
       "resourceTypes": ["main_frame"]
     }
   }

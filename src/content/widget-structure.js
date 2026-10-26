@@ -10,7 +10,7 @@
 
 import { normalizeWidgetConfig } from '../metrics.js';
 import { panel, agentDisplayName, agentModelLabel, quotaPollingWanted } from './panel-state.js';
-import { escapeHtml, openDataLink } from './utils.js';
+import { escapeHtml, openDataLink, isUserGesture } from './utils.js';
 import {
   renderAll,
   renderChart,
@@ -197,11 +197,13 @@ function buildModule(id) {
   module.innerHTML = `${id === 'header' ? headerModuleHTML() : MODULE_HTML[id]()}<span class="ksb-module-badge" title="${t('模块设置')}">≡</span>`;
   module.querySelector('.ksb-module-badge').addEventListener('click', (event) => {
     event.stopPropagation();
-    if (editing) openModuleMenu(id);
+    if (isUserGesture(event) && editing) openModuleMenu(id);
   });
   module.addEventListener('pointerdown', (event) => beginModuleDrag(event, module));
   // 手动刷新小图标：标题行与宠物模块各有一个（余额口径才显示），
-  // 点一下立刻重新拉一次余额——扩展走后台真请求，桌面端重读快照文件
+  // 点一下立刻重新拉一次余额——扩展走后台真请求，桌面端重读快照文件。
+  // 这里不校验 isTrusted：动作只是触发一次取数（后台 30s 缓存 + 1.2s 旋转节流），
+  // 不涉及授权、跳转或数据外发；页面最多让余额早刷一次。
   for (const button of module.querySelectorAll('.ksb-stat-refresh')) {
     button.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -214,20 +216,20 @@ function buildModule(id) {
   if (id === 'header') {
     module.querySelector('.ksb-title').addEventListener('click', (event) => {
       event.stopPropagation();
-      if (!editing) deps.manualRefresh();
+      if (isUserGesture(event) && !editing) deps.manualRefresh();
     });
     // 点药丸按配置跳转（与宠物小球共用 utils.openDataLink 同一份逻辑）；
     // ≡ 菜单可切换目标，只有余额口径之外的数据位才有意义——非余额口径药丸不可点
     module.querySelector('.ksb-header-stat')?.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (editing) return;
+      if (!isUserGesture(event) || editing) return;
       openDataLink(panel.widgetConfig.modules.header?.dataLink);
     });
   }
   if (id === 'usageChart') {
     module.querySelector('.ksb-cli-lock')?.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (editing || deps.cliLockAccumulate) return;
+      if (!isUserGesture(event) || editing || deps.cliLockAccumulate) return;
       chrome.runtime.sendMessage({ type: 'cli.usage.open_settings' }).catch(() => {});
     });
   }
@@ -315,6 +317,7 @@ function createWidget() {
   widget.setAttribute('role', 'status');
   widget.addEventListener('click', handleWidgetClick);
   widget.addEventListener('keydown', (event) => {
+    if (!isUserGesture(event)) return;
     if (panel.quotaAuthRequired && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
       deps.beginOAuth();
@@ -330,13 +333,14 @@ function createWidget() {
   // 底部（迷你）区域整面可点切换模式，含模块间隙；编辑模式与待授权时让位
   widget.querySelector('.ksb-region-mini').addEventListener('click', (event) => {
     event.stopPropagation();
-    if (editing || panel.quotaAuthRequired) return;
+    if (!isUserGesture(event) || editing || panel.quotaAuthRequired) return;
     toggleMini();
     // 缩放仍随机播放轻动作，但使用独立安全池，排除会让球从无到有蹦出的 in。
     if (panel.widgetConfig.orderMini.includes('pet')) petHandleToggle();
   });
   widget.querySelector('#ksb-edit-menu').addEventListener('click', (event) => {
     event.stopPropagation();
+    if (!isUserGesture(event)) return;
     const opt = event.target.closest('.ksb-menu-opt');
     if (opt && menuModuleId) applyMenuOption(menuModuleId, opt.dataset.kind, opt.dataset.value);
   });
@@ -355,6 +359,7 @@ function createWidget() {
 
 // 卡片级点击：待授权 → 开始授权；编辑模式点非模块空白 → 退出编辑
 function handleWidgetClick(event) {
+  if (!isUserGesture(event)) return;
   // 长按进入编辑模式后紧随松开的那次 click 一律吞掉（不论落在哪）
   if (suppressExitClick) {
     suppressExitClick = false;
@@ -538,6 +543,7 @@ function toggleMini() {
 /* ---------- 编辑模式：长按进入，拖拽排序，角标配置 ---------- */
 
 function handleLongPressStart(event) {
+  if (!isUserGesture(event)) return;
   if (editing || panel.quotaAuthRequired || event.button !== 0) return;
   if (event.target.closest('.ksb-edit-menu')) return;
   cancelLongPress();
@@ -773,6 +779,7 @@ function applyMenuOption(id, kind, value) {
 }
 
 function beginModuleDrag(event, moduleEl) {
+  if (!isUserGesture(event)) return;
   if (!editing || event.button !== 0) return;
   if (event.target.closest('.ksb-module-badge')) return;
   event.preventDefault();

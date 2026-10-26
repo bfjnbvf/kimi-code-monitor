@@ -359,3 +359,11 @@ test('独立面板（桌面客户端注入）的宠物 ≡ 菜单不显示「侧
   assert.match(widgetSource, /menuOpts\('sidebarTidy', \[\[true, t\('开启'\)\], \[false, t\('关闭'\)\]\]/);
   assert.match(widgetSource, /\$\{statRow\}\s*\$\{tidyRow\}/);
 });
+
+test('收藏域不在 RC 远程静态站点初始化（远程页面不得通过侧栏读取收藏正文）', () => {
+  assert.match(source, /import \{ isRemoteControl \} from '\.\/content\/utils\.js'/);
+  assert.match(
+    source,
+    /function startBookmarks\(\) \{[\s\S]*?isRemoteControl\(\) \|\| location\.hostname === 'code-rc\.kimi\.com'[\s\S]*?return;/
+  );
+});
