@@ -4,7 +4,7 @@
 
 > [一、主要特性](#一主要特性)：[宠物](#通用-codex-桌面宠物) · [用量分析](#用量分析) · [AI 回复收藏](#ai-回复收藏) · [分享卡片](#用量分享卡片) · [吉祥物](#会反映状态的吉祥物) · [自定义面板](#模块化自定义面板) · [自动归档](#自动归档不活跃对话实验性) · [更多](#更多)
 >
-> [**二、安装与授权**](#二安装与授权)：[客户端](#二安装与授权) · [Chrome 插件](#二安装与授权)
+> [**二、安装与授权**](#二安装与授权)：[客户端](#二安装与授权) · [Chrome 插件](#二安装与授权) · [CLI HUD](#二安装与授权)
 >
 > [三、数据与隐私](#三数据与隐私)
 >
@@ -23,6 +23,19 @@
 ![Kimi Code Monitor：Kimi Code Web 的侧边栏监控扩展](docs/screenshots/head.png)
 
 Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌面客户端（macOS / Windows，补丁形式安装）。一套完整的用量分析与分享 + 一只兼容 Codex 格式的桌面宠物 + 一个便于整理回看的 AI 回复收藏夹。
+
+### 三个版本
+
+同一套面板/思路拆成三个可独立安装的版本，Release 里分开发布：
+
+| 版本 | 形态 | 安装 | Release 资产 |
+|---|---|---|---|
+| **Web 扩展** | Chrome / Edge 侧边栏面板 | 加载 zip 到 `chrome://extensions` | `kimi-code-monitor-v*.zip` |
+| **桌面客户端** | Kimi Code 桌面端补丁（侧边栏面板 + 缓存提醒） | 解压运行 `install.sh` / `install.cmd` | `kcm-desktop-patch.zip` |
+| **终端 CLI HUD**（实验） | 原生 `kimi` 的状态栏 | 解压后 `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
+| 运维技能（附赠） | 给 Kimi 的技能包 | 解压到 `~/.kimi-code/skills/` | `kimi-code-monitor-skill.zip` |
+
+> CLI HUD 是独立实现，不改 Kimi 本体，也不依赖 Web/桌面代码；目前作者只在 Windows 的 Kimi 2.2/2.3 上验证过，macOS/Linux 与真实订阅额度尚未实测。
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
 
@@ -154,6 +167,30 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 > 在 `chrome://extensions` 重新加载扩展后，需要手动刷新一次 Kimi Code Web 页面，面板才会恢复。
 
 扩展使用自己的 OAuth token，不读写 Kimi Code CLI 的凭据。CLI 目录授权仅用于可选的长期用量统计。
+
+</details>
+
+<details>
+<summary>终端 CLI HUD（实验）</summary>
+
+Kimi Code CLI 2.2.0+ 的原生状态栏 HUD，独立于 Web / 桌面，不修改 Kimi 本体。
+
+**安装**：从 Releases 下载 `kimi-code-monitor-cli-v*.zip`，解压后：
+
+```bash
+node scripts/install-cli-hud.mjs --width 120
+kimi
+```
+
+需要 Node.js 20+、Python 3.10+。已有 Kimi 窗口需退出后重开；安装器备份 `~/.kimi-code/tui.toml`，只改 `[status_line].command`。
+
+**卸载**：
+
+```bash
+node scripts/install-cli-hud.mjs --uninstall
+```
+
+详见 [docs/CLI-HUD.md](docs/CLI-HUD.md)。当前为实验版：作者只在 Windows 的 Kimi 2.2/2.3 上验证过，macOS/Linux 与真实订阅额度尚未实测。
 
 </details>
 

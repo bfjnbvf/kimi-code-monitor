@@ -4,7 +4,7 @@
 
 > [1. Features](#1-features): [Pet](#universal-codex-desktop-pet) · [Usage Analytics](#usage-analytics) · [Bookmarks](#ai-reply-bookmarks) · [Share Card](#usage-share-card) · [Mascot](#a-mascot-that-reflects-state) · [Custom Panel](#modular-customizable-panel) · [Auto-Archive](#auto-archive-inactive-chats-experimental) · [More](#more)
 >
-> [**2. Installation & Authorization**](#2-installation--authorization): [desktop client](#2-installation--authorization) · [Chrome extension](#2-installation--authorization)
+> [**2. Installation & Authorization**](#2-installation--authorization): [desktop client](#2-installation--authorization) · [Chrome extension](#2-installation--authorization) · [CLI HUD](#2-installation--authorization)
 >
 > [3. Data & Privacy](#3-data--privacy)
 >
@@ -24,6 +24,19 @@
 ![Kimi Code Monitor: the sidebar monitor extension for Kimi Code Web](docs/screenshots/head.png)
 
 A sidebar monitor extension for Kimi Code Web — the same panel also runs inside the Kimi Code desktop client (macOS / Windows, installed as a patch). A mascot that mirrors the agent's working state, a desktop pet compatible with Codex pet galleries, a complete usage analytics & sharing suite, and an AI-reply bookmark manager — all running locally, nothing uploaded.
+
+### Three builds
+
+The project ships three independently installable builds, published as separate Release assets:
+
+| Build | Form | Install | Release asset |
+|---|---|---|---|
+| **Web extension** | Chrome / Edge sidebar panel | Load the zip at `chrome://extensions` | `kimi-code-monitor-v*.zip` |
+| **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kcm-desktop-patch.zip` |
+| **Terminal CLI HUD** (experimental) | Native `kimi` status line | Unzip, then `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
+| Ops skill (bonus) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill.zip` |
+
+> The CLI HUD is a separate implementation: it does not modify Kimi itself and does not depend on the Web/desktop code. The author has only verified it on Windows with Kimi 2.2/2.3; macOS/Linux and real subscription quota are still untested.
 
 <img src="docs/screenshots/hero.png" alt="Full mode vs Mini mode" width="476" height="353">
 
@@ -155,6 +168,30 @@ Grab the latest `kimi-code-monitor-v*.zip` from [Releases](https://github.com/bf
 > After reloading the extension at `chrome://extensions`, refresh the Kimi Code Web page once for the panel to come back.
 
 The extension uses its own OAuth token and never reads or writes Kimi Code CLI credentials. The CLI directory grant is only used for optional long-term usage stats.
+
+</details>
+
+<details>
+<summary>Terminal CLI HUD (experimental)</summary>
+
+A native status-line HUD for Kimi Code CLI 2.2.0+, independent of the Web/desktop builds. It does not modify Kimi itself.
+
+**Install**: download `kimi-code-monitor-cli-v*.zip` from Releases, unzip, then:
+
+```bash
+node scripts/install-cli-hud.mjs --width 120
+kimi
+```
+
+Requires Node.js 20+ and Python 3.10+. Restart any running Kimi window. The installer backs up `~/.kimi-code/tui.toml` and only changes `[status_line].command`.
+
+**Uninstall**:
+
+```bash
+node scripts/install-cli-hud.mjs --uninstall
+```
+
+See [docs/CLI-HUD.md](docs/CLI-HUD.md) (Chinese). Experimental: only Windows with Kimi 2.2/2.3 has been verified by the author; macOS/Linux and real subscription quota are untested.
 
 </details>
 

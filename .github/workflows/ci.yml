@@ -36,13 +36,15 @@ jobs:
         run: npm test
 
       # 两个发行包由 shell 脚本产出、不在测试覆盖内，这里至少守住"能构建出来"
-      - name: 打包产物可构建性（扩展 zip / 技能 zip / 桌面补丁 zip）
+      - name: 打包产物可构建性（扩展 / 桌面补丁 / CLI HUD / 技能）
         run: |
           npm run pack
           npm run pack:patch
           test -s kimi-code-monitor-skill.zip
           test -s kcm-desktop-patch.zip
+          test -s kimi-code-monitor-cli-v*.zip
           unzip -l kimi-code-monitor-v*.zip >/dev/null
+          unzip -l kimi-code-monitor-cli-v*.zip >/dev/null
 
   # Windows 安装链路：install.cmd 的 node 分支 + 借客户端 Node 的分支
   # （ELECTRON_RUN_AS_NODE 是「零依赖安装」唯一无法在 macOS 上验证的前提，

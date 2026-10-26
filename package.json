@@ -3,10 +3,17 @@
   "version": "3.6.0",
   "private": true,
   "type": "module",
-  "description": "Kimi Code Web UI 底部 Agent 状态 HUD 浏览器扩展",
+  "description": "Kimi Code 的 Web 扩展、桌面客户端补丁与 CLI HUD",
   "scripts": {
+    "hud:build": "node scripts/build-cli-hud.mjs",
+    "hud:install": "node scripts/build-cli-hud.mjs && node scripts/install-cli-hud.mjs",
+    "hud:test": "node scripts/build-cli-hud.mjs && node --test tests/cli-hud.test.js tests/cli-hud-quota.test.js tests/kap-auth.test.js",
+    "hud:verify": "node scripts/build-cli-hud.mjs && node scripts/verify-cli-hud.mjs",
     "build": "node scripts/build.mjs",
     "pack": "bash scripts/build.sh",
+    "pack:web": "bash scripts/pack-web.sh",
+    "pack:desktop": "node scripts/build-patch.mjs",
+    "pack:cli": "bash scripts/pack-cli-hud.sh",
     "lint": "eslint src/",
     "test": "node scripts/build.mjs && node --test",
     "pack:patch": "node scripts/build-patch.mjs"

@@ -19,11 +19,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** server.token 文件内容；缺失/读失败/空文件返回空串 */
-export function kapToken() {
+export function kapToken(home = process.env.KIMI_CODE_HOME || path.join(os.homedir(), '.kimi-code')) {
   try {
     return fs
       .readFileSync(
-        path.join(process.env.KIMI_CODE_HOME || path.join(os.homedir(), '.kimi-code'), 'server.token'),
+        path.join(home, 'server.token'),
         'utf8'
       )
       .trim();
@@ -33,7 +33,7 @@ export function kapToken() {
 }
 
 /** kap 请求用的鉴权头；无令牌时返回空对象（老客户端裸调，向后兼容） */
-export function kapAuthHeaders() {
-  const token = kapToken();
+export function kapAuthHeaders(home) {
+  const token = kapToken(home);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

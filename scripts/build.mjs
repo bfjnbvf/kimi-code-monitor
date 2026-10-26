@@ -31,3 +31,4 @@ for (const [entryPoint, outfile] of entries) {
     outfile: path.join(ROOT, outfile)
   });
 }
+

@@ -7,6 +7,12 @@
 - **对话缓存过期提醒（桌面端）**：最后一轮模型请求之后 27 分钟，宠物进入提示态——宠物球持续变红（复用限流的红色外观），四槽改为「对话缓存 / 即将过期 / 预估剩余 / 3:00 倒计时」，大字缓慢脉冲。30 分钟后大字停止脉冲、宠物转灰，四槽改为「对话缓存 / 可能过期 / 已闲置 / 已闲置分钟数」，一直保留到下一次输入。阈值按实测的 ~30 分钟有效 TTL 估算，文案带「预估/可能」；可在宠物 ≡ 菜单关闭。
 - **angryface / angryeye 从点击彩蛋中移除**：缓存提醒改用持续的红色外观，不再依赖一次性的怒脸动画；灰色外观继续同时表达离线与缓存过期，由右侧文案区分。
 
+### 其他
+
+- **CLI HUD 并入仓库（PR #11，@Alpaca233114514）**：新增 `src/cli-hud/`（Python 标准库渲染 + Node 额度 worker）、`scripts/build-cli-hud.mjs` / `install-cli-hud.mjs` / `verify-cli-hud.mjs`、`docs/CLI-HUD.md` 与 16 项专项测试，通过官方 `status_line.command` 在原生 `kimi` 终端显示模型、状态与额度；安装可恢复，不修改 Kimi 本体
+- **Release 拆成三个独立资产**：Web 扩展 `kimi-code-monitor-v3.6.0.zip`、桌面补丁 `kcm-desktop-patch.zip`、CLI HUD `kimi-code-monitor-cli-v3.6.0.zip`；技能包作为附赠单独发布。新增 `pack:web` / `pack:desktop` / `pack:cli`，Web/桌面的 `npm run build` 不再耦合 CLI worker
+- CLI HUD 为实验性：作者只在 Windows 的 Kimi 2.2/2.3 上验证过，macOS/Linux 与真实订阅额度尚未实测；本次合并未改变 Web/桌面行为
+
 ## v3.5.5（2026-10-26）
 
 ### 新增
