@@ -2286,10 +2286,10 @@ html[data-color-scheme="dark"] {
 }
 
 /* ===== 缓存提醒（content/cache-hint.js） =====
- * 27 分钟进入 warn：宠物持续红色（复用限流的红色外观），四槽显示缓存文案；
- * 30 分钟进入 cold：停红、球变灰。文字只复用宠物模块现有四槽，不弹气泡。 */
+ * 27 分钟进入 warn：宠物持续黄/琥珀（与警示文案同色），四槽显示缓存文案；
+ * 30 分钟进入 cold：停黄、球变灰。文字只复用宠物模块现有四槽，不弹气泡。 */
 .ksb-pet-canvas.ksb-cache-hot {
-  filter: hue-rotate(140deg) saturate(1.35);
+  filter: hue-rotate(190deg) saturate(1.45) brightness(1.05);
 }
 
 /* 缓存过期的灰与离线灰同一套视觉；右侧文案负责区分语义 */
@@ -2331,6 +2331,21 @@ html[data-color-scheme="dark"] {
 @media (prefers-reduced-motion: reduce) {
   .ksb-pet-total.ksb-cache-state.ksb-cache-warn {
     animation: none;
+  }
+}
+
+/* 侧栏会话列表的相对时间：27–29 分钟标黄，不用盯着面板也能看到 */
+[data-session-id] .ksb-cache-idle-warn {
+  color: #b26a00 !important;
+}
+
+html[data-color-scheme="dark"] [data-session-id] .ksb-cache-idle-warn {
+  color: #ffb020 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-color-scheme]) [data-session-id] .ksb-cache-idle-warn {
+    color: #ffb020 !important;
   }
 }
 

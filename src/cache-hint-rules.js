@@ -32,3 +32,9 @@ export function formatCacheRemaining(ms) {
 export function formatCacheIdleMinutes(ms) {
   return Math.max(0, Math.floor(Number(ms) / 60_000));
 }
+
+/** 会话列表的相对时间文本 → 空闲分钟数：27m / 28 分钟 / 29分钟前 → 27/28/29；1h/刚刚 → null */
+export function parseIdleMinutes(text) {
+  const m = String(text || '').trim().match(/(\d+)\s*(?:minutes?|min|m|分钟|分)(?:前|\s*ago)?$/i);
+  return m ? Number(m[1]) : null;
+}

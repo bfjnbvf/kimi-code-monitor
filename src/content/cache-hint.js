@@ -8,7 +8,7 @@
  * 四个槽位全部复用宠物模块现有 DOM，不发气泡：
  *   27 分钟：左上「对话缓存」/ 大字「即将过期」/ 左下「预估剩余」/ 右下倒计时
  *   30 分钟：左上「对话缓存」/ 大字「可能过期」/ 左下「已闲置」/ 右下已闲置分钟数
- * warn 段宠物持续红色（复用限流的红色外观），cold 段转灰；
+ * warn 段宠物持续黄色/琥珀（与警示文案同色），cold 段转灰；
  * 新输入由 bridge 调 touch() 立即恢复常规状态。
  */
 
@@ -20,7 +20,8 @@ import {
   CACHE_WARN_MS,
   cacheStageFor,
   formatCacheIdleMinutes,
-  formatCacheRemaining
+  formatCacheRemaining,
+  parseIdleMinutes
 } from '../cache-hint-rules.js';
 import { t } from '../i18n.js';
 
@@ -95,7 +96,27 @@ function paint(stage, now) {
   panel.cacheHint.painted = true;
 }
 
+// 侧栏会话列表的相对时间：27–29 分钟标黄，给一个不用盯着面板的提示
+function paintSidebarIdleTimes() {
+  for (const el of document.querySelectorAll('.ksb-cache-idle-warn')) {
+    el.classList.remove('ksb-cache-idle-warn');
+  }
+  if (!enabled()) return;
+  for (const row of document.querySelectorAll('[data-session-id]')) {
+    for (const el of row.querySelectorAll('span, time, div, small')) {
+      if (el.children.length || el.closest('.t')) continue;
+      const text = (el.textContent || '').trim();
+      if (!text || text.length > 16) continue;
+      const minutes = parseIdleMinutes(text);
+      if (minutes != null && minutes >= 27 && minutes < 30) {
+        el.classList.add('ksb-cache-idle-warn');
+      }
+    }
+  }
+}
+
 function sync() {
+  paintSidebarIdleTimes();
   if (!enabled() || !visible()) {
     panel.cacheHint.stage = 'idle';
     restore();
@@ -167,7 +188,7 @@ export function cacheHintPreview(stage) {
     panel.cacheHint.stage = 'idle';
     restore();
     sync();
-  }, 8_000);
+  }, 12_000);
 }
 
 function clearPreviewTimer() {
@@ -200,6 +221,9 @@ export function disposeCacheHint() {
   timer = null;
   clearPreview();
   restore();
+  for (const el of document.querySelectorAll('.ksb-cache-idle-warn')) {
+    el.classList.remove('ksb-cache-idle-warn');
+  }
   try {
     delete globalThis.__kcmCacheHint;
   } catch (error) {

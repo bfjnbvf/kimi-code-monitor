@@ -87,6 +87,8 @@ const EN = {
   '已闲置': 'Idle',
   '{n} 分钟': '{n} min',
   '缓存提醒': 'Cache reminder',
+  '预览': 'Preview',
+  '恢复正常': 'Reset',
   '没有打开的 Kimi Web 页面': 'No Kimi Web page is open',
   '{days}天{hours}小时后重置': 'Resets in {days}d {hours}h',
   '{hours}小时{minutes}分钟后重置': 'Resets in {hours}h {minutes}m',

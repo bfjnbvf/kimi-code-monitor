@@ -24,7 +24,7 @@ const PET_LOADING_ANIM = 'loading';
 const PET_DONE_ANIM = 'stars';
 // stars 只负责让星星出现，粒子退场由 nostars 负责（v2.0 的 stars→nostars 链）
 const PET_DONE_OUTRO_ANIM = 'nostars';
-// angryface / angryeye 从点击池移除；缓存提醒改用持续的红色外观
+// angryface / angryeye 从点击池移除；缓存提醒改用持续的黄色/琥珀外观
 const PET_CLICK_ANIMS = [
   'yaoyiyao', 'wink',
   'hover', 'hover100', 'wink_stop', 'paopao_stop'

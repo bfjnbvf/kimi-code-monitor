@@ -978,8 +978,23 @@ test('panel-app：缓存提醒接管宠物四槽，warn→cold→恢复正常', 
     assert.ok(doc.getElementById('ksb-pet-total').classList.contains('ksb-cache-warn'));
     assert.ok(!doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-cold'));
 
+    const idleRow = doc.createElement('div');
+    idleRow.dataset.sessionId = 'preview-sidebar';
+    const idleTime = doc.createElement('span');
+    idleTime.textContent = '28m';
+    idleRow.appendChild(idleTime);
+    doc.body.appendChild(idleRow);
+    window.__kcmCacheHint.preview('warn');
+    await tick(window);
+    assert.ok(idleTime.classList.contains('ksb-cache-idle-warn'), '28m 应标黄');
+
     window.__kcmCacheHint.preview('cold');
     await tick(window);
+    idleTime.textContent = '31m';
+    window.__kcmCacheHint.preview('cold');
+    await tick(window);
+    assert.ok(!idleTime.classList.contains('ksb-cache-idle-warn'), '31m 不应标黄');
+    idleRow.remove();
     assert.equal(total(), '可能过期');
     assert.equal(status(), '已闲置');
     assert.equal(clock(), '31 分钟');

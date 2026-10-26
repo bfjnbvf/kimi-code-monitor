@@ -8,7 +8,8 @@ import {
   CACHE_WARN_MS,
   cacheStageFor,
   formatCacheIdleMinutes,
-  formatCacheRemaining
+  formatCacheRemaining,
+  parseIdleMinutes
 } from '../src/cache-hint-rules.js';
 import { defaultWidgetConfig, normalizeWidgetConfig } from '../src/metrics.js';
 
@@ -52,4 +53,16 @@ test('angryface / angryeye 不再作为点击彩蛋，提醒改用红色外观',
   assert.doesNotMatch(toggle, /angryface|angryeye/);
   assert.match(hint, /ksb-cache-hot/);
   assert.doesNotMatch(hint, /ksb-cache-alert/);
+});
+
+test('侧栏相对时间：27m / 28 分钟 / 29分钟前 → 27/28/29；1h / 刚刚 → null', () => {
+  assert.equal(parseIdleMinutes('27m'), 27);
+  assert.equal(parseIdleMinutes('28 分钟'), 28);
+  assert.equal(parseIdleMinutes('29分钟前'), 29);
+  assert.equal(parseIdleMinutes('27 min'), 27);
+  assert.equal(parseIdleMinutes('27m ago'), 27);
+  assert.equal(parseIdleMinutes('27 minutes ago'), 27);
+  assert.equal(parseIdleMinutes('1h'), null);
+  assert.equal(parseIdleMinutes('刚刚'), null);
+  assert.equal(parseIdleMinutes(''), null);
 });
