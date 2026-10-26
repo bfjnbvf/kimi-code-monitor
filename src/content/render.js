@@ -696,6 +696,8 @@ function paintStatValue(textEl, def, refreshBtn) {
 
 export function renderPetStats() {
   if (!panel.els?.petTotal) return;
+  // 缓存提醒接管四槽时不要用「今日消耗 / 数字」覆盖
+  if (panel.cacheHint?.painted) return;
   const def = STAT_DEFS[panel.widgetConfig.modules.pet?.stat] || STAT_DEFS.daily;
   if (panel.els.petLabel) panel.els.petLabel.textContent = t(def.display || def.label);
   paintStatValue(panel.els.petTotalText || panel.els.petTotal, def, panel.els.petRefresh);

@@ -231,7 +231,9 @@ export function startDirectMode() {
       if (data && typeof data === 'object') {
         snapshot = {
           usage: data.usage,
-          busy: Boolean(data.busy || data.main_turn_active)
+          busy: Boolean(data.busy || data.main_turn_active),
+          // 缓存提醒的种子：切进一个已经闲置很久的会话时，只能靠它判断
+          updatedAt: data.updated_at
         };
       }
     } catch (error) {

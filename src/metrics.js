@@ -351,7 +351,7 @@ function defaultWidgetConfig() {
       quota5h: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       quotaWeek: { show: 'mini', span: 1, pace: true, resetFormat: 'countdown' },
       usageChart: { show: 'full', span: 2, chartRange: 'week' },
-      pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none' },
+      pet: { show: 'mini', span: 2, stat: 'daily', sidebarTidy: true, ballLink: 'none', cacheHint: true },
       agents: { show: 'hidden', span: 2, hiddenAgents: [] },
       external: { show: 'hidden', span: 1, hiddenAccounts: [] }
     },
@@ -416,6 +416,7 @@ function normalizeWidgetConfig(raw) {
         ? entry.sidebarTidy
         : fallback.sidebarTidy;
       normalized.ballLink = BALL_LINKS.includes(entry.ballLink) ? entry.ballLink : fallback.ballLink;
+      normalized.cacheHint = typeof entry.cacheHint === 'boolean' ? entry.cacheHint : fallback.cacheHint;
     }
     if (id.startsWith('quota')) {
       normalized.pace = typeof entry.pace === 'boolean' ? entry.pace : fallback.pace;

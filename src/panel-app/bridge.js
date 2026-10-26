@@ -18,7 +18,7 @@
  *   - { type: 'external', providers, unsupported, fetchedAt }：外部账户余额，
  *     direct.js 直连客户端 provider 配置与厂商接口的抓取结果，直写
  *     panel.externalProviders 后重绘。
- *   - { type: 'session', sid, snapshot?: { usage, busy } }：切换当前会话（跟随桌面端
+ *   - { type: 'session', sid, snapshot?: { usage, busy, updatedAt } }：切换当前会话（跟随桌面端
  *     SPA 路由焦点）——切走先存档面板状态，切回瞬时恢复；服务器快照只在
  *     usage 非零时当底数（kap 目前恒返回全零，见 usableSnapshotUsage）。
  *   - 可选 sessionId 字段（任意消息上）：标记当前会话 id（宠物轮次归属用）。
@@ -30,6 +30,7 @@ import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metri
 import { noteStepUsage, mergeDaily, hasAccumulated } from './accumulate.js';
 import { summarizeStatus, STATUS_LONG } from './status-copy.js';
 import { t } from '../i18n.js';
+import { cacheHintSeed, cacheHintTouch } from '../content/cache-hint.js';
 import {
   panel,
   noteAgentUsage,
@@ -227,11 +228,13 @@ function handleEvent(message) {
 
   switch (message.type) {
     case 'turn.started':
+      cacheHintTouch(cacheTouchAt(message));
       clearToolStatus();
       petBeginTurn();
       setAgentStatus('thinking');
       break;
     case 'turn.step.started':
+      if (!isSubagentEvent(message, payload)) cacheHintTouch(cacheTouchAt(message));
       setAgentWorkStatus(isSubagentEvent(message, payload) ? 'subagent' : 'thinking');
       break;
     case 'turn.step.completed': {
@@ -488,6 +491,12 @@ function restorePanelState(sid) {
   return true;
 }
 
+// WS 事件的 time 是毫秒时间戳；缺失时退回本机时钟
+function cacheTouchAt(message) {
+  const time = Number(message?.time);
+  return Number.isFinite(time) && time > 0 ? time : Date.now();
+}
+
 // 当前会话切换（direct.js 按 SPA 路由焦点推送）：切走先存档、切回瞬时恢复，
 // 服务器快照只当「非零才可信」的底数——三条来源的优先级写在 handleSessionSwitch 里。
 function handleSessionSwitch(msg) {
@@ -506,6 +515,8 @@ function handleSessionSwitch(msg) {
   cachePanelState(currentSessionId);
   currentSessionId = sid;
   lastUsageSeq = 0;
+  // 缓存计时跟着会话走：快照的 updated_at 是切进来时唯一可用的历史时间
+  cacheHintSeed(Date.parse(msg.snapshot?.updatedAt || '') || 0);
   clearToolStatus();
   resetMetrics();
   const restored = restorePanelState(sid);

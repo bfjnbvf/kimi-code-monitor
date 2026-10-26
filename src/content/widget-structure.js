@@ -646,6 +646,10 @@ function moduleMenuHTML(id) {
     ? `<div class="ksb-menu-label">${t('右侧数据')}</div>${menuOpts('stat', statMenuOptions(), mod.stat)}
       <div class="ksb-menu-label">${t('点击小球跳转')}</div>${menuOpts('ballLink', dataLinkOptions(), mod.ballLink || 'none')}`
     : '';
+  // 缓存提醒只在桌面补丁生效（事件与快照来自 kap-server）；网页端没有这条通路
+  const cacheHintRow = id === 'pet' && panel.standaloneMode
+    ? `<div class="ksb-menu-label">${t('缓存提醒')}</div>${menuOpts('cacheHint', [[true, t('开启')], [false, t('关闭')]], mod.cacheHint !== false)}`
+    : '';
   // 侧栏改造只作用于网页端侧栏；独立面板（桌面客户端注入）本就不生效
   // （applySidebarTidy 在 standaloneMode 下强制关闭），菜单里不显示这个死开关
   const tidyRow = id === 'pet' && !panel.standaloneMode
@@ -656,6 +660,7 @@ function moduleMenuHTML(id) {
     ${agentsRow}
     ${externalRow}
     ${statRow}
+    ${cacheHintRow}
     ${tidyRow}
     ${paceRow}
     ${rangeRow}
@@ -718,9 +723,11 @@ function openModuleMenu(id) {
     const belowTop = rect.bottom - widgetRect.top + 4;
     // 卡片贴近屏幕底边，下方放不下时改为向上弹出
     if (belowTop + menu.offsetHeight > widgetRect.height) {
-      menu.style.top = `${rect.top - widgetRect.top - menu.offsetHeight - 4}px`;
+      const upTop = rect.top - widgetRect.top - menu.offsetHeight - 4;
+      // 菜单比面板还高时向上也会顶出去：夹在面板内，靠 max-height/滚动兜底
+      menu.style.top = `${Math.max(4, upTop)}px`;
     } else {
-      menu.style.top = `${belowTop}px`;
+      menu.style.top = `${Math.min(belowTop, Math.max(4, widgetRect.height - menu.offsetHeight - 4))}px`;
     }
     menu.style.left = `${Math.max(0, Math.min(rect.left - widgetRect.left, widgetRect.width - menu.offsetWidth - 4))}px`;
   }
@@ -748,6 +755,8 @@ function applyMenuOption(id, kind, value) {
     next.modules[id].ballLink = value;
   } else if (kind === 'sidebarTidy') {
     next.modules[id].sidebarTidy = value === 'true';
+  } else if (kind === 'cacheHint') {
+    next.modules[id].cacheHint = value === 'true';
   } else if (kind === 'chartRange') {
     next.modules[id].chartRange = value;
   } else if (kind === 'agentToggle') {

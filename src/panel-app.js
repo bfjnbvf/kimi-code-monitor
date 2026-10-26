@@ -27,6 +27,7 @@ import {
 import { initRender, renderAll } from './content/render.js';
 import { initPet, petUpdateStatus } from './content/pet-panel.js';
 import { panel, resetMetrics } from './content/panel-state.js';
+import { initCacheHint, disposeCacheHint } from './content/cache-hint.js';
 import { syncLocaleFromPage } from './i18n.js';
 
 // 独立面板标记：渲染层据此切换状态短词（扩展里对应位置显示「需连接」）
@@ -111,6 +112,9 @@ if (typeof globalThis.__kcmMountInto === 'function') {
   document.body.appendChild(host);
 }
 mountWidget(host);
+// 缓存提醒：桌面端专属（事件时间来自 bridge，种子来自 direct 的会话快照）
+initCacheHint();
+window.addEventListener('pagehide', disposeCacheHint, { once: true });
 
 // 语言跟随 kimi-locale（桌面端按系统语言预写该键）；
 // 缺省时保持 i18n 模块默认的中文，不跟系统语言走

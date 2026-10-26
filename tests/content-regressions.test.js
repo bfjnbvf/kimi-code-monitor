@@ -123,7 +123,9 @@ test('Mini 缩放排除弹入动画，并扩充安全随机动作', () => {
   assert.doesNotMatch(togglePool, /'in'/);
   assert.doesNotMatch(clickPool, /'in'/);
   assert.match(widgetSource, /toggleMini\(\);[\s\S]{0,180}?petHandleToggle\(\);/);
-  assert.ok((togglePool.match(/'/g) || []).length >= 12);
+  // angryface / angryeye 已划给缓存提醒，点击池保留 4 个安全动作
+  assert.ok((togglePool.match(/'/g) || []).length >= 8);
+  assert.doesNotMatch(togglePool, /angryface|angryeye/);
 });
 
 test('空闲时低频播放眨眼或侧看，完成后回到 paopao', () => {
@@ -357,7 +359,7 @@ test('独立面板（桌面客户端注入）的宠物 ≡ 菜单不显示「侧
   // standaloneMode 下 applySidebarTidy 强制不生效，菜单同步隐藏该项；网页端保留
   assert.match(widgetSource, /const tidyRow = id === 'pet' && !panel\.standaloneMode/);
   assert.match(widgetSource, /menuOpts\('sidebarTidy', \[\[true, t\('开启'\)\], \[false, t\('关闭'\)\]\]/);
-  assert.match(widgetSource, /\$\{statRow\}\s*\$\{tidyRow\}/);
+  assert.match(widgetSource, /\$\{statRow\}\s*\$\{cacheHintRow\}\s*\$\{tidyRow\}/);
 });
 
 test('收藏域不在 RC 远程静态站点初始化（远程页面不得通过侧栏读取收藏正文）', () => {

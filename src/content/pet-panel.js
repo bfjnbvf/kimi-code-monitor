@@ -24,12 +24,13 @@ const PET_LOADING_ANIM = 'loading';
 const PET_DONE_ANIM = 'stars';
 // stars 只负责让星星出现，粒子退场由 nostars 负责（v2.0 的 stars→nostars 链）
 const PET_DONE_OUTRO_ANIM = 'nostars';
+// angryface / angryeye 从点击池移除；缓存提醒改用持续的红色外观
 const PET_CLICK_ANIMS = [
-  'yaoyiyao', 'angryface', 'wink', 'angryeye',
+  'yaoyiyao', 'wink',
   'hover', 'hover100', 'wink_stop', 'paopao_stop'
 ];
 const PET_TOGGLE_ANIMS = [
-  'yaoyiyao', 'angryface', 'wink', 'angryeye', 'hover', 'hover100'
+  'yaoyiyao', 'wink', 'hover', 'hover100'
 ];
 // 不重新引入颜色/状态混合的官网状态机，只恢复它的低频空闲变化。
 const PET_IDLE_AMBIENT_ANIMS = ['wink', 'look_right_stop'];
@@ -92,6 +93,8 @@ function petClockStart() {
 
 export function petClockTick() {
   if (!panel.els?.petClock || !panel.els.petClockNum) return;
+  // 缓存提醒接管期间由 cache-hint 自己写倒计时/闲置时长，挂钟让位
+  if (panel.cacheHint?.painted) return;
   const pad = (n) => String(n).padStart(2, '0');
   if (!PET_CLOCK_STATUSES.includes(petStatus)) {
     // 日常：挂钟（12 小时制 h:MM，AM/PM 独立标签便于窄宽降级）
@@ -330,7 +333,8 @@ export function petStart() {
 // Stars 由同一会话的 turn 生命周期触发，不再从显示状态变化推断。
 export function petUpdateStatus(display) {
   if (panel.els?.petStatusText) {
-    panel.els.petStatusText.textContent = statusText(display);
+    // 缓存提醒接管时保留提醒文案；data-status 照常更新，颜色由提醒 class 覆盖
+    if (!panel.cacheHint?.painted) panel.els.petStatusText.textContent = statusText(display);
     panel.els.petStatus.dataset.status = display;
   }
   if (display === petStatus) {

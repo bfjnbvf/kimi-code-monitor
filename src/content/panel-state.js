@@ -79,7 +79,10 @@ export const panel = {
   // 未授权时状态灯恒红（WS 断开优先显示未连接）
   quotaAuthRequired: false,
   // 本轮回答进行中（pet 域写，渲染层读）
-  petTurnActive: false
+  petTurnActive: false,
+  // 缓存提醒（cache-hint.js 写，render/pet-panel 读）：
+  // stage 只表达时间阶段；painted 表示宠物四槽当前由提醒接管
+  cacheHint: { stage: 'idle', lastTouchAt: 0, painted: false, preview: false }
 };
 
 // 显示名：主代理 / 子代理 1 / 子代理 2…（按本会话首次出现顺序）

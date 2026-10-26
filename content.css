@@ -543,6 +543,10 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   min-width: 132px;
   /* shrink-to-fit 会随 left 左移不断变宽（正反馈），必须封顶 */
   max-width: 190px;
+  /* 宠物菜单新增缓存提醒/预览后变长：矮面板里整块可滚，不被顶部裁掉 */
+  max-height: min(62vh, 430px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   border-radius: 10px;
   border: 1px solid var(--ksb-border);
@@ -2279,4 +2283,66 @@ html[data-color-scheme="dark"] {
 .kbm-flash {
   animation: kbm-flash-bg 1.8s ease-out;
   border-radius: 8px;
+}
+
+/* ===== 缓存提醒（content/cache-hint.js） =====
+ * 27 分钟进入 warn：宠物持续红色（复用限流的红色外观），四槽显示缓存文案；
+ * 30 分钟进入 cold：停红、球变灰。文字只复用宠物模块现有四槽，不弹气泡。 */
+.ksb-pet-canvas.ksb-cache-hot {
+  filter: hue-rotate(140deg) saturate(1.35);
+}
+
+/* 缓存过期的灰与离线灰同一套视觉；右侧文案负责区分语义 */
+.ksb-pet-canvas.ksb-cache-cold {
+  filter: grayscale(1) saturate(0.2);
+  opacity: 0.72;
+}
+
+.ksb-pet-total.ksb-cache-state {
+  font-size: 14px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  font-variant-numeric: normal;
+  color: var(--ksb-text);
+}
+
+.ksb-pet-total.ksb-cache-state.ksb-cache-warn {
+  color: #b26a00;
+  animation: ksb-cache-pulse 1.8s ease-in-out infinite;
+}
+
+.ksb-pet-total.ksb-cache-state.ksb-cache-cold {
+  color: var(--ksb-text-tertiary);
+}
+
+.ksb-pet-status.ksb-cache-warn {
+  color: #b26a00;
+}
+
+.ksb-pet-status.ksb-cache-cold {
+  color: var(--ksb-text-quaternary);
+}
+
+@keyframes ksb-cache-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ksb-pet-total.ksb-cache-state.ksb-cache-warn {
+    animation: none;
+  }
+}
+
+/* 深色主题下把警示橙提亮，避免 #b26a00 在深底上发闷 */
+html[data-color-scheme="dark"] .ksb-pet-total.ksb-cache-state.ksb-cache-warn,
+html[data-color-scheme="dark"] .ksb-pet-status.ksb-cache-warn {
+  color: #ffb020;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-color-scheme]) .ksb-pet-total.ksb-cache-state.ksb-cache-warn,
+  html:not([data-color-scheme]) .ksb-pet-status.ksb-cache-warn {
+    color: #ffb020;
+  }
 }
