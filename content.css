@@ -1504,7 +1504,9 @@ html[data-color-scheme="dark"] #ksb-walk {
   cursor: pointer;
   opacity: 1;
   filter: none;
-  transition: filter 180ms ease, opacity 180ms ease;
+  /* 颜色瞬时切换：filter 从 none 过渡到 hue-rotate(190deg) 会经过红色，
+     缓存提醒会出现「先闪红再变黄」。只保留透明度过渡。 */
+  transition: opacity 180ms ease;
 }
 
 /* 动作由 Rive 命名动画控制；灰/红仅作为独立语义外观，移除后立即恢复默认蓝。 */
