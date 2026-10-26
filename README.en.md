@@ -34,7 +34,7 @@ The project ships three independently installable builds, published as separate 
 | **Web extension** | Chrome / Edge sidebar panel | Load the zip at `chrome://extensions` | `kimi-code-monitor-v*.zip` |
 | **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kcm-desktop-patch.zip` |
 | **Terminal CLI HUD** (experimental) | Native `kimi` status line | Unzip, then `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
-| Ops skill (bonus) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill.zip` |
+| Ops skill (optional) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill.zip` |
 
 > The CLI HUD is a separate implementation: it does not modify Kimi itself and does not depend on the Web/desktop code. The author has only verified it on Windows with Kimi 2.2/2.3; macOS/Linux and real subscription quota are still untested.
 

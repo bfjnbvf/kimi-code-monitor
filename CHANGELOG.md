@@ -10,7 +10,7 @@
 ### 其他
 
 - **CLI HUD 并入仓库（PR #11，@Alpaca233114514）**：新增 `src/cli-hud/`（Python 标准库渲染 + Node 额度 worker）、`scripts/build-cli-hud.mjs` / `install-cli-hud.mjs` / `verify-cli-hud.mjs`、`docs/CLI-HUD.md` 与 16 项专项测试，通过官方 `status_line.command` 在原生 `kimi` 终端显示模型、状态与额度；安装可恢复，不修改 Kimi 本体
-- **Release 拆成三个独立资产**：Web 扩展 `kimi-code-monitor-v3.6.0.zip`、桌面补丁 `kcm-desktop-patch.zip`、CLI HUD `kimi-code-monitor-cli-v3.6.0.zip`；技能包作为附赠单独发布。新增 `pack:web` / `pack:desktop` / `pack:cli`，Web/桌面的 `npm run build` 不再耦合 CLI worker
+- **Release 拆成三个独立资产**：Web 扩展 `kimi-code-monitor-v3.6.0.zip`、桌面补丁 `kcm-desktop-patch.zip`、CLI HUD `kimi-code-monitor-cli-v3.6.0.zip`；技能包作为可选组件单独发布。新增 `pack:web` / `pack:desktop` / `pack:cli`，Web/桌面的 `npm run build` 不再耦合 CLI worker
 - CLI HUD 为实验性：作者只在 Windows 的 Kimi 2.2/2.3 上验证过，macOS/Linux 与真实订阅额度尚未实测；本次合并未改变 Web/桌面行为
 
 ## v3.5.5（2026-10-26）

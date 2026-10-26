@@ -30,4 +30,4 @@ npm run pack
 - 三个主资产都存在且 `unzip -t` 通过；CLI zip 里能看到 `dist/quota-worker.cjs` 与 `src/cli-hud/hud.py`
 - CLI HUD 标注为**实验性**：作者只在 Windows 的 Kimi 2.2/2.3 上验证过，macOS/Linux 与真实订阅额度尚未实测（见 `docs/CLI-HUD.md`）
 - Web/桌面/CLI 的安装说明分别对应各自的资产，不要把源码包（Code → Download ZIP）当成发行包
-- 技能包是附赠，不占“三个版本”的名额；`skill-version` 与 `patch-version` 分开维护
+- 技能包是可选组件，不占“三个版本”的名额；`skill-version` 与 `patch-version` 分开维护

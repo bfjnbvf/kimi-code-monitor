@@ -75,4 +75,4 @@ node scripts/verify-cli-hud.mjs --installed
 
 - [Alpaca233114514/claude-hud](https://github.com/Alpaca233114514/claude-hud)：参考紧凑布局，没有复制实现代码。
 - [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/src/tui/utils/status-line-command.ts)：核对官方协议、刷新节奏和超时，没有复制或修改 Kimi 本体。
-- 额度计算复用本仓库 [metrics.js](../src/metrics.js)，Python 用量口径移植自该文件，适用 [MIT License](../LICENSE)，Copyright (c) 2026 十叶。安装产物附带 LICENSE。
+- 额度计算复用本仓库 [metrics.js](../src/metrics.js)，Python 用量口径移植自该文件，适用 [MIT License](../LICENSE)，Copyright (c) 2026 十叶。安装产物包含 LICENSE。
