@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "120",
   "name": "Kimi Code Monitor",
-  "version": "3.5.4",
+  "version": "3.5.5",
   "author": "十叶",
   "description": "Kimi Code Web UI 底部 Agent 状态 HUD：额度、Token、缓存、性能一目了然",
   "icons": {
@@ -26,7 +26,8 @@
     {
       "matches": [
         "http://127.0.0.1/*",
-        "http://localhost/*"
+        "http://localhost/*",
+        "https://code-rc.kimi.com/*"
       ],
       "js": [
         "rive/rive.js",
@@ -62,7 +63,8 @@
     "https://petdex.dev/*",
     "https://assets.petdex.dev/*",
     "http://127.0.0.1/*",
-    "http://localhost/*"
+    "http://localhost/*",
+    "https://code-rc.kimi.com/*"
   ],
   "optional_host_permissions": [
     "https://api.deepseek.com/*",

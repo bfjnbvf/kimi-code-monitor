@@ -38,7 +38,7 @@ export async function authorizeMessage(type, sender) {
   if (url.startsWith(ownPrefix)) return true;
   // 其余无 tab 的发送者视为扩展上下文（防御性放行，正常路径不会出现）
   if (!sender?.tab) return true;
-  // 内容脚本：来源必须是本机回环或已动态授权的站点，且消息类型在白名单内
+  // 内容脚本：来源必须是静态或动态授权站点，且消息类型在白名单内
   if (!CONTENT_MESSAGE_TYPES.has(type)) return false;
   return isAuthorizedContentUrl(sender.url);
 }

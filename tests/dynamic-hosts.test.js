@@ -2,6 +2,7 @@
 // 验证登记表、内容脚本动态注册、CSP 动态规则与即时注入的联动。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 function installChromeStub() {
   const storage = new Map();
@@ -60,9 +61,19 @@ function installChromeStub() {
 const { storage, calls, listeners, stubState } = installChromeStub();
 const hosts = await import('../src/background/dynamic-hosts.js');
 
-test('登记表为空时 URL 匹配表只有本机回环', async () => {
+test('登记表为空时 URL 匹配表包含本机回环与 RC 固定站点', async () => {
   assert.deepEqual(await hosts.kimiWebUrlPatterns(), hosts.BASE_URL_PATTERNS);
+  assert.ok(hosts.BASE_URL_PATTERNS.includes('https://code-rc.kimi.com/*'));
   assert.deepEqual(await hosts.listExtraWebHosts(), []);
+});
+
+test('RC 固定权限、内容脚本与 CSP 规则在清单中保持一致', () => {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const cspRules = JSON.parse(fs.readFileSync(new URL('../rules/csp_relax.json', import.meta.url), 'utf8'));
+  const pattern = 'https://code-rc.kimi.com/*';
+  assert.ok(manifest.host_permissions.includes(pattern));
+  assert.ok(manifest.content_scripts[0].matches.includes(pattern));
+  assert.ok(cspRules[0].condition.requestDomains.includes('code-rc.kimi.com'));
 });
 
 test('授权：登记 origin、注册内容脚本、补 CSP 规则、刷新已开页面', async () => {
@@ -126,9 +137,12 @@ test('后台复核 optional host 权限：未授权的 origin 不登记、不补
   }
 });
 
-test('isAuthorizedContentUrl：回环直接放行，其余按登记表匹配', async () => {
+test('isAuthorizedContentUrl：静态站点直接放行，其余按登记表匹配', async () => {
   assert.equal(await hosts.isAuthorizedContentUrl('http://127.0.0.1:3000/sessions/x'), true);
   assert.equal(await hosts.isAuthorizedContentUrl('http://localhost/sessions/x'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('https://code-rc.kimi.com/devices/device-id/'), true);
+  assert.equal(await hosts.isAuthorizedContentUrl('http://code-rc.kimi.com/devices/device-id/'), false);
+  assert.equal(await hosts.isAuthorizedContentUrl('https://code-rc.kimi.com.evil.example/'), false);
   assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3000/sessions/x'), true);
   assert.equal(await hosts.isAuthorizedContentUrl('http://192.168.1.5:3001/sessions/x'), false);
   assert.equal(await hosts.isAuthorizedContentUrl('https://evil.example.com/'), false);
@@ -137,10 +151,15 @@ test('isAuthorizedContentUrl：回环直接放行，其余按登记表匹配', a
   assert.equal(await hosts.isAuthorizedContentUrl(undefined), false);
 });
 
-test('queryKimiWebTabs 合并本机与已授权 origin 查询标签页', async () => {
+test('queryKimiWebTabs 合并静态站点与已授权 origin 查询标签页', async () => {
   await hosts.queryKimiWebTabs();
   assert.deepEqual(calls.tabsQuery.at(-1), {
-    url: ['http://127.0.0.1/*', 'http://localhost/*', 'http://192.168.1.5:3000/*']
+    url: [
+      'http://127.0.0.1/*',
+      'http://localhost/*',
+      'https://code-rc.kimi.com/*',
+      'http://192.168.1.5:3000/*'
+    ]
   });
 });
 

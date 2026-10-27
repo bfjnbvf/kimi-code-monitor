@@ -1,6 +1,6 @@
 /**
- * 动态站点授权板块：当前标签页是非本机的 http(s) 页面（如 kimi web --host
- * 暴露的局域网地址、或 kimi rc 的云端中继页）时显示，样式与「本地记录已授权」
+ * 动态站点授权板块：当前标签页是未静态授权的 http(s) 页面（如 kimi web --host
+ * 暴露的局域网地址）时显示，样式与「本地记录已授权」
  * 行完全一致：圆点 + 状态文字 + 右侧文字按钮。
  * 权限申请必须发生在点击手势里（optional_host_permissions），登记与注入
  * 交给后台 dynamic-hosts 域完成。
@@ -8,7 +8,7 @@
 import { send, UI_MESSAGE_RESET_MS } from './shared.js';
 import { t } from '../i18n.js';
 
-const LOCAL_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const STATIC_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]', 'code-rc.kimi.com']);
 
 export async function initHostsSection() {
   const row = document.getElementById('hosts-row');
@@ -25,8 +25,8 @@ export async function initHostsSection() {
   } catch {
     url = null;
   }
-  // 本机回环由静态 content_scripts 覆盖；非 http(s) 页面无从授权，直接隐藏
-  if (!url || !/^https?:$/.test(url.protocol) || LOCAL_HOSTNAMES.has(url.hostname)) return;
+  // 固定站点由静态 content_scripts 覆盖；非 http(s) 页面无从授权，直接隐藏
+  if (!url || !/^https?:$/.test(url.protocol) || STATIC_HOSTNAMES.has(url.hostname)) return;
 
   const pattern = `${url.protocol}//${url.host}/*`;
   let enabled = false;

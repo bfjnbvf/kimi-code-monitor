@@ -9,7 +9,7 @@
       ]
     },
     "condition": {
-      "requestDomains": ["127.0.0.1", "localhost"],
+      "requestDomains": ["127.0.0.1", "localhost", "code-rc.kimi.com"],
       "resourceTypes": ["main_frame"]
     }
   }

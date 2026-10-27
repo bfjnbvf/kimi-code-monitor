@@ -1,8 +1,8 @@
 /**
  * 动态站点授权：支持 kimi web --host 对外暴露的非本机地址。
  *
- * 静态 content_scripts 只匹配 127.0.0.1/localhost；用户在 popup 对某个
- * http(s) origin 点「在此站点启用」后，这里负责：
+ * 静态 content_scripts 覆盖 127.0.0.1/localhost 与 code-rc.kimi.com；
+ * 用户在 popup 对其他 http(s) origin 点「在此站点启用」后，这里负责：
  * - 把 origin pattern 登记进 chrome.storage.local（REGISTRY_STORAGE_KEY）；
  * - 用 chrome.scripting 动态注册与静态一致的内容脚本（持久化，重启后仍生效）；
  * - 为该 origin 补一条动态 CSP 放行规则（与 rules/csp_relax.json 同动作）；
@@ -10,7 +10,11 @@
  *   CSP 规则同时生效，宠物 Rive 的 WASM 才能编译）。
  * 授权被移除（popup 撤销或浏览器站点设置）时同步清理以上三处。
  */
-export const BASE_URL_PATTERNS = ['http://127.0.0.1/*', 'http://localhost/*'];
+export const BASE_URL_PATTERNS = [
+  'http://127.0.0.1/*',
+  'http://localhost/*',
+  'https://code-rc.kimi.com/*'
+];
 
 const REGISTRY_STORAGE_KEY = 'kimiExtraWebHosts';
 const CONTENT_SCRIPT_ID = 'kimi-extra-web-hosts';
@@ -90,12 +94,12 @@ async function reloadOpenTabs(patterns) {
   }
 }
 
-// 本机回环 + 已授权 origin 的完整匹配表，供各处 tabs.query 使用
+// 静态授权站点 + 已动态授权 origin 的完整匹配表，供各处 tabs.query 使用
 export async function kimiWebUrlPatterns() {
   return [...BASE_URL_PATTERNS, ...(await loadRegistry())];
 }
 
-// 消息来源守卫用：该 URL 是否属于「静态注入的回环页面」或「已动态授权的站点」。
+// 消息来源守卫用：该 URL 是否属于静态注入站点或已动态授权的站点。
 // 内容脚本只可能出现在这两类 origin 上；其余一律视为不可信来源。
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost']);
 
@@ -108,8 +112,10 @@ export async function isAuthorizedContentUrl(url) {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   if (LOOPBACK_HOSTNAMES.has(parsed.hostname)) return true;
+  const originPattern = `${parsed.protocol}//${parsed.host}/*`;
+  if (BASE_URL_PATTERNS.includes(originPattern)) return true;
   const registry = await loadRegistry();
-  return registry.includes(`${parsed.protocol}//${parsed.host}/*`);
+  return registry.includes(originPattern);
 }
 
 export async function queryKimiWebTabs() {
