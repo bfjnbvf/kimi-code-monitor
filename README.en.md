@@ -89,7 +89,9 @@ The panel hosts Kimi's official blue ball (the same animation as kimi.com's chat
 
 The status text beside it distinguishes "Thinking" (model generating) from "Executing" (tool calls), colored by state; the data slot cycles through six metrics: 24h usage / input / output / cache hit / speed / balance.
 
-Desktop builds add a **context-cache expiry reminder**: 27 minutes after the last model request the ball turns amber-yellow (matching the warning text); the four slots switch to "Chat cache / Expiring soon / Est. left / 3:00 countdown" and the headline pulses slowly. The relative time of sessions in the sidebar also turns amber between 27 and 29 minutes. At 30 minutes the pulse stops, the ball turns gray, and the slots read "Chat cache / May have expired / Idle / idle minutes" until your next input. The threshold is an estimate from the measured ~30 minute effective TTL, hence the "estimated / may" wording. **Off by default**; enable it from the pet's ≡ menu, where Preview also works while it is off.
+Desktop builds add a **context-cache expiry reminder**. Multi-turn chats reuse previously processed context to reduce unnecessary quota usage; after a long pause, that cache may expire and the next prompt may need to process the earlier context again. If you already intend to continue the conversation, the reminder helps you do so while the cache may still be valid—no need to send a message solely to preserve it.
+
+When enabled, relative times in the sidebar turn amber between 25 and 29 minutes of inactivity. Between 29 and 30 minutes after the last model request, the ball turns amber-yellow and shows a one-minute estimated countdown, then returns to the regular appearance and metrics. Thresholds come from local and community data rather than an official guarantee. **Off by default**; enable it from the pet's ≡ menu.
 
 ### Modular Customizable Panel
 
@@ -174,16 +176,25 @@ The extension uses its own OAuth token and never reads or writes Kimi Code CLI c
 <details>
 <summary>Terminal CLI HUD (experimental)</summary>
 
-A native status-line HUD for Kimi Code CLI 2.2.0+, independent of the Web/desktop builds. It does not modify Kimi itself.
+A CLI HUD for Kimi Code CLI 2.2.0+, independent of the Web/desktop builds. It does not modify Kimi itself.
 
 **Install**: download `kimi-code-monitor-cli-v*.zip` from Releases, unzip, then:
 
 ```bash
 node scripts/install-cli-hud.mjs --width 120
-kimi
 ```
 
-Requires Node.js 20+ and Python 3.10+. Restart any running Kimi window. The installer backs up `~/.kimi-code/tui.toml` and only changes `[status_line].command`.
+Requires Node.js 20+ and Python 3.10+. Run `/reload-tui` in Kimi (or restart the window). The installer backs up `~/.kimi-code/tui.toml` and only changes `[status_line].command`.
+
+**Customize**: choose modules with `--modules` and their order with `--order`:
+
+```bash
+node scripts/install-cli-hud.mjs \
+  --modules status,model,quotaPair,cache \
+  --order status,model,quotaPair,cache
+```
+
+The model name shares the status light's color and returns to gray when a reply ends.
 
 **Uninstall**:
 
@@ -191,7 +202,7 @@ Requires Node.js 20+ and Python 3.10+. Restart any running Kimi window. The inst
 node scripts/install-cli-hud.mjs --uninstall
 ```
 
-See [docs/CLI-HUD.md](docs/CLI-HUD.md) (Chinese). Experimental: only Windows with Kimi 2.2/2.3 has been verified by the author; macOS/Linux and real subscription quota are untested.
+See [docs/CLI-HUD.md](docs/CLI-HUD.md) (Chinese).
 
 </details>
 
@@ -201,7 +212,6 @@ See [docs/CLI-HUD.md](docs/CLI-HUD.md) (Chinese). Experimental: only Windows wit
 - **Usage-only when connected**: just `usage.record` entries and model names from `wire.jsonl` (auto-tidy likewise reads session-list metadata only) — conversation text, tool arguments, and answers are never stored or uploaded
 - **Bookmarks stay local**: each bookmark stores a turn id, session/question excerpt, and a rendered HTML copy of the reply (capped at about 150 KB); deleting bookmarks or uninstalling the extension wipes them
 - **Credentials encrypted at rest**: OAuth tokens and external API keys are stored through the local encrypted vault (AES-GCM); the extension never reads or writes Kimi Code CLI credentials
-- **Sender validation**: the background only trusts extension pages and content scripts from loopback or granted sites; note that loopback means any port — any local service on your machine counts as a semi-trusted sender (it can trigger the device-auth flow or query external-account balances, the whitelisted operations), an inherent trade-off of the local-client architecture
 - **Message source check**: the background only accepts content-script messages from the default port or origins you enabled from the popup. Unenabled local ports have no content script at all — no panel, no bookmarks
 - **Official RC site is statically granted**: `code-rc.kimi.com` gets host permission and a static content script at install time so Chrome's site menu can enable the panel directly; the main-frame CSP header is removed for that site so Rive WASM can compile. Other self-hosted `kimi web --host` origins still require manual opt-in from the popup
 - **One known detectability**: the Rive animation assets are visible to all http(s) pages, so a web page can probe whether this extension is installed; no other resource or interface is exposed to arbitrary pages

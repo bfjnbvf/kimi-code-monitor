@@ -84,7 +84,6 @@ test('默认端口的内容脚本：白名单消息放行，特权消息拒绝',
 test('未授权的回环端口：没有内容脚本，也不接受它的消息', async () => {
   const sender = contentSender('http://127.0.0.1:3000/sessions/s1');
   assert.equal(await authorizeMessage('quota.fetch', sender), false);
-  assert.equal(await authorizeMessage('bookmarks.open', sender), false);
   assert.equal(await authorizeMessage('cli.usage.disconnect', sender), false);
 });
 

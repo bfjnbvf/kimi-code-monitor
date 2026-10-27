@@ -955,9 +955,12 @@ test('panel-app：未适配的供应商不进外部账户列表，只在模块�
   }
 });
 
-test('panel-app：缓存提醒接管宠物四槽，warn→cold→恢复正常', async () => {
+test('panel-app：缓存提醒只显示一分钟黄色提示，随后恢复常规外观', async () => {
   const { dom, window } = createPage();
   try {
+    window.localStorage.setItem('kimi-statusbar.config', JSON.stringify({
+      modules: { pet: { cacheHint: true } }
+    }));
     const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
     injectScript(window, 'dist/panel-app.js');
     await ready;
@@ -968,7 +971,8 @@ test('panel-app：缓存提醒接管宠物四槽，warn→cold→恢复正常', 
     const status = () => doc.getElementById('ksb-pet-status-text').textContent;
     const clock = () => doc.getElementById('ksb-pet-clock-num').textContent;
 
-    window.__kcmCacheHint.preview('warn');
+    assert.equal(window.__kcmCacheHint.preview, undefined);
+    window.__kcmCacheHint.seed(Date.now() - 29 * 60_000);
     await tick(window);
     assert.equal(label(), '对话缓存');
     assert.equal(total(), '即将过期');
@@ -976,37 +980,25 @@ test('panel-app：缓存提醒接管宠物四槽，warn→cold→恢复正常', 
     assert.match(clock(), /^\d:\d{2}$/);
     assert.ok(doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-hot'));
     assert.ok(doc.getElementById('ksb-pet-total').classList.contains('ksb-cache-warn'));
-    assert.ok(!doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-cold'));
 
     const idleRow = doc.createElement('div');
-    idleRow.dataset.sessionId = 'preview-sidebar';
+    idleRow.dataset.sessionId = 'cache-sidebar';
     const idleTime = doc.createElement('span');
     idleTime.textContent = '28m';
     idleRow.appendChild(idleTime);
     doc.body.appendChild(idleRow);
-    window.__kcmCacheHint.preview('warn');
+    window.__kcmCacheHint.seed(Date.now() - 29 * 60_000);
     await tick(window);
     assert.ok(idleTime.classList.contains('ksb-cache-idle-warn'), '28m 应标黄');
 
-    window.__kcmCacheHint.preview('cold');
-    await tick(window);
     idleTime.textContent = '31m';
-    window.__kcmCacheHint.preview('cold');
+    window.__kcmCacheHint.seed(Date.now() - 31 * 60_000);
     await tick(window);
     assert.ok(!idleTime.classList.contains('ksb-cache-idle-warn'), '31m 不应标黄');
     idleRow.remove();
-    assert.equal(total(), '可能过期');
-    assert.equal(status(), '已闲置');
-    assert.equal(clock(), '31 分钟');
-    assert.ok(!doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-hot'));
-    assert.ok(doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-cold'));
-
-    window.__kcmCacheHint.preview('idle');
-    await tick(window);
     assert.equal(label(), '今日消耗');
     assert.ok(!doc.getElementById('ksb-pet-total').classList.contains('ksb-cache-state'));
     assert.ok(!doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-hot'));
-    assert.ok(!doc.getElementById('ksb-pet-canvas').classList.contains('ksb-cache-cold'));
   } finally {
     dom.window.close();
   }

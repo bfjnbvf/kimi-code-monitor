@@ -648,13 +648,7 @@ function moduleMenuHTML(id) {
     : '';
   // 缓存提醒只在桌面补丁生效（事件与快照来自 kap-server）；网页端没有这条通路
   const cacheHintRow = id === 'pet' && panel.standaloneMode
-    ? `<div class="ksb-menu-label">${t('缓存提醒')}</div>${menuOpts('cacheHint', [[true, t('开启')], [false, t('关闭')]], mod.cacheHint === true)}
-      <div class="ksb-menu-label">${t('预览')}</div>
-      <div class="ksb-menu-opts">
-        <span class="ksb-menu-opt" data-kind="cachePreview" data-value="warn">${t('即将过期')}</span>
-        <span class="ksb-menu-opt" data-kind="cachePreview" data-value="cold">${t('可能过期')}</span>
-        <span class="ksb-menu-opt" data-kind="cachePreview" data-value="idle">${t('恢复正常')}</span>
-      </div>`
+    ? `<div class="ksb-menu-label">${t('缓存提醒')}</div>${menuOpts('cacheHint', [[true, t('开启')], [false, t('关闭')]], mod.cacheHint === true)}`
     : '';
   // 侧栏改造只作用于网页端侧栏；独立面板（桌面客户端注入）本就不生效
   // （applySidebarTidy 在 standaloneMode 下强制关闭），菜单里不显示这个死开关
@@ -744,12 +738,6 @@ function hideModuleMenu() {
 }
 
 function applyMenuOption(id, kind, value) {
-  // 预览是动作不是配置：临时改 lastTouchAt 看两段效果，12 秒后恢复真实计时
-  if (kind === 'cachePreview') {
-    globalThis.__kcmCacheHint?.preview(value);
-    hideModuleMenu();
-    return;
-  }
   const next = JSON.parse(JSON.stringify(panel.widgetConfig));
   // 标题行的余额显隐开关已由「右侧数据」口径取代（stat === 'balance' 即显示余额）；
   // 跳转目标与宠物小球同一份语义（none/console/subscription），只是配置键各归各

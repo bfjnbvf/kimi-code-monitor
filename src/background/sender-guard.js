@@ -26,9 +26,7 @@ const CONTENT_MESSAGE_TYPES = new Set([
   'cli.usage.refresh',
   'cli.usage.open_settings',
   'external.status',
-  'pet.asset.active',
-  // 打开扩展自有收藏页：只创建标签页，不携带任何数据
-  'bookmarks.open'
+  'pet.asset.active'
 ]);
 
 export async function authorizeMessage(type, sender) {

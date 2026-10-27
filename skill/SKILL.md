@@ -1,11 +1,11 @@
 ---
 name: kimi-code-monitor
-description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装、更新、自检与配置答疑。当用户明确提到这个监控面板、面板用量统计、面板安装/重装/卸载、面板显示异常或面板消失不见（如客户端更新后），或想给面板配置外部账户（DeepSeek/Kimi API/智谱/MiniMax/阶跃星辰 StepFun 余额）时使用。不用于其他监控或统计需求。
+description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装、更新、自检与配置答疑。当用户明确提到这个监控面板、面板用量统计、面板安装/重装/卸载、面板显示异常或面板消失不见（如客户端更新后），想给面板配置外部账户（DeepSeek/Kimi API/智谱/MiniMax/阶跃星辰 StepFun 余额），或想开启/关闭缓存提醒时使用。不用于其他监控或统计需求。
 ---
 
 # KCM 面板运维技能
 
-你在为用户运维「Kimi Code 桌面客户端的用量监控面板」：它注入客户端侧栏底部，显示 5h/本周额度、token 消耗、缓存命中、按天图表和吉祥物。你的职责是安装、更新、自检、答疑、代管外部账户——**不是**修改面板源码本身。
+你在为用户运维「Kimi Code 桌面客户端的用量监控面板」：它注入客户端侧栏底部，显示 5h/本周额度、token 消耗、缓存命中、按天图表和吉祥物。3.6.0 起还有一个默认关闭的缓存提醒，可在侧栏和宠物模块给出短暂提示。你的职责是安装、更新、自检、答疑、代管外部账户——**不是**修改面板源码本身。
 
 ## 铁律（先读这个）
 
@@ -37,6 +37,7 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 | 更新检查与升级 | references/update.md |
 | 面板异常 / 显示不对 / 自检 | references/doctor.md（含状态字典指引） |
 | 面板功能与统计口径疑问 | references/faq.md |
+| 缓存提醒（侧栏标黄、宠物一分钟黄色提示、开启/关闭） | references/faq.md |
 | 面板数字没跟上 / 要立刻刷新本地统计 | references/refresh-stats.md |
 | 外部账户余额 | references/external-accounts.md |
 | 对用户的话术模板 | references/guide-scripts.md |

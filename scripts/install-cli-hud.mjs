@@ -76,21 +76,29 @@ export function findPython(executable = process.platform === 'win32' ? 'python' 
   } catch { throw new Error('Python 3.10+ required. Use --python to select an existing executable.'); }
 }
 
-export function shellCommand(pythonPath, scriptPath, width = 120, platform = process.platform) {
+export function shellCommand(pythonPath, scriptPath, width = 120, platform = process.platform, modules = '', order = '') {
   if (!Number.isInteger(width) || width < 40 || width > 300) throw new Error('--width must be 40..300');
-  const flags = `--width ${width} --color always`;
+  const flags = [`--width ${width}`, '--color always'];
+  for (const [flag, value] of [['--modules', modules], ['--order', order]]) {
+    if (!value) continue;
+    if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9]*(?:,[A-Za-z][A-Za-z0-9]*)*$/.test(value)) {
+      throw new Error(`${flag} must be a comma-separated module list`);
+    }
+    flags.push(`${flag} ${value}`);
+  }
+  const suffix = flags.join(' ');
   if (platform === 'win32') {
     // Kimi 2.2 的 cmd 包装会破坏双引号；路径编码保留空格和中文。
     // Kimi 2.2's cmd wrapper mangles quotes; encoding preserves spaces and Unicode paths.
     const runtime = /^[a-zA-Z]:[\\/][\w.\\/:-]+$/.test(pythonPath) ? pythonPath : 'python';
-    if (/^[a-zA-Z]:[\\/][\w.\\/:-]+$/.test(scriptPath)) return `${runtime} -I -S ${scriptPath} ${flags}`;
+    if (/^[a-zA-Z]:[\\/][\w.\\/:-]+$/.test(scriptPath)) return `${runtime} -I -S ${scriptPath} ${suffix}`;
     const encoded = Buffer.from(scriptPath).toString('base64');
-    return `${runtime} -I -S -c __import__('runpy').run_path(__import__('base64').b64decode('${encoded}').decode(),run_name='__main__') ${flags}`;
+    return `${runtime} -I -S -c __import__('runpy').run_path(__import__('base64').b64decode('${encoded}').decode(),run_name='__main__') ${suffix}`;
   }
   const quote = value => {
     return `'${value.replaceAll("'", "'\\''")}'`;
   };
-  return `${quote(pythonPath)} -I -S ${quote(scriptPath)} ${flags}`;
+  return `${quote(pythonPath)} -I -S ${quote(scriptPath)} ${suffix}`;
 }
 
 export function probe(command, timeoutMs = 300) {
@@ -116,7 +124,7 @@ export function probe(command, timeoutMs = 300) {
   });
 }
 
-export async function install({ home, kimi = 'kimi', width = 120, uninstall = false, python }) {
+export async function install({ home, kimi = 'kimi', width = 120, uninstall = false, python, modules = '', order = '' }) {
   const root = path.resolve(home);
   const config = path.join(root, 'tui.toml');
   const installRoot = path.join(root, 'hud', 'kimi-code-monitor');
@@ -148,7 +156,7 @@ export async function install({ home, kimi = 'kimi', width = 120, uninstall = fa
   fs.copyFileSync(bundle, path.join(release, 'quota-worker.cjs'));
   fs.writeFileSync(path.join(release, 'quota-worker.json'), JSON.stringify({ node: process.execPath, script: path.join(release, 'quota-worker.cjs') }));
   fs.copyFileSync(path.join(repo, 'LICENSE'), path.join(release, 'LICENSE'));
-  const command = shellCommand(runtime.executable, path.join(release, 'hud.py'), width);
+  const command = shellCommand(runtime.executable, path.join(release, 'hud.py'), width, process.platform, modules, order);
   const elapsedMs = await probe(command);
   const next = configure(before, command);
   const backup = path.join(installRoot, `tui-before-install-${stamp}.toml`);
@@ -170,8 +178,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const args = process.argv.slice(2);
   const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
   try {
-    if (args.includes('--help')) console.log('node scripts/install-cli-hud.mjs [--home DIR] [--kimi EXE] [--python EXE] [--width 120] [--uninstall]\nBacks up tui.toml; installs using the public status_line.command interface.');
+    if (args.includes('--help')) console.log('node scripts/install-cli-hud.mjs [--home DIR] [--kimi EXE] [--python EXE] [--width 120] [--modules LIST] [--order LIST] [--uninstall]\nBacks up tui.toml; installs using the public status_line.command interface.');
     else console.log(JSON.stringify(await install({ home: option('--home', process.env.KIMI_CODE_HOME || path.join(os.homedir(), '.kimi-code')),
-      kimi: option('--kimi', 'kimi'), width: Number(option('--width', 120)), python: option('--python'), uninstall: args.includes('--uninstall') }), null, 2));
+      kimi: option('--kimi', 'kimi'), width: Number(option('--width', 120)), python: option('--python'),
+      modules: option('--modules', ''), order: option('--order', ''), uninstall: args.includes('--uninstall') }), null, 2));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

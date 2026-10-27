@@ -20,7 +20,6 @@ const entries = [
   ['src/content.js', 'dist/content.js'],
   ['src/background.js', 'dist/background.js'],
   ['src/popup.js', 'dist/popup.js'],
-  ['src/bookmarks-page.js', 'dist/bookmarks-page.js'],
   ['src/panel-app.js', 'dist/panel-app.js']
 ];
 

@@ -24,8 +24,8 @@ cp docs/CLI-HUD.md "$STAGE/docs/"
 cat > "$STAGE/README.md" <<EOF
 # Kimi Code Monitor · CLI HUD v${VERSION}
 
-原生 \`kimi\` 终端的状态栏 HUD（实验性）。通过官方 \`status_line.command\` 显示模型、
-会话状态、Context 与 Kimi 额度；不修改 Kimi 本体。
+Kimi Code CLI 的状态栏 HUD（实验性）。通过官方 \`status_line.command\` 显示模型、
+会话状态与 Kimi 额度；不修改 Kimi 本体。
 
 ## 要求
 
@@ -37,11 +37,20 @@ cat > "$STAGE/README.md" <<EOF
 
 \`\`\`bash
 node scripts/install-cli-hud.mjs --width 120
-kimi
 \`\`\`
 
-已有 Kimi 窗口需要退出后重新启动。安装器会备份 \`~/.kimi-code/tui.toml\`，
+在 Kimi 中执行 \`/reload-tui\`（或重启窗口）。安装器会备份 \`~/.kimi-code/tui.toml\`，
 只更新 \`[status_line].command\`。
+
+## 自定义
+
+\`\`\`bash
+node scripts/install-cli-hud.mjs \\
+  --modules status,model,quotaPair,cache \\
+  --order status,model,quotaPair,cache
+\`\`\`
+
+模型名与状态灯同色联动，回复结束后回到灰色空闲。
 
 ## 卸下
 
@@ -51,9 +60,8 @@ node scripts/install-cli-hud.mjs --uninstall
 
 ## 说明
 
-- 详细布局、额度口径、已验证范围见 \`docs/CLI-HUD.md\`。
+- 详细布局与额度口径见 \`docs/CLI-HUD.md\`。
 - 本包只包含 CLI HUD，不含 Web 扩展或桌面补丁。
-- 实验性：macOS/Linux 原生终端、真实订阅额度尚未由作者完整验证。
 EOF
 
 rm -f "$OUT"

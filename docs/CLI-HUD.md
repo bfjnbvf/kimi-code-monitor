@@ -3,7 +3,7 @@
 使用 Kimi 官方 `status_line.command`，显示在原生终端输入框下方。支持 Kimi 2.2.0 起沿用此接口的版本；本机已验证 2.2.0 和 2.3.0。
 
 ```text
-Ctx ███░░░░░░░ 30%    DeepSeek V4.1 Flash    思考 high              Kimi 5h █░░░ 25%  周 ███░ 75%
+● DeepSeek V4.1 Flash 思考 high 按需询问    5h/7d ▉░░░ 21% ██▋░ 67%    缓存 83% 上轮8.4s    gabriel
 ```
 
 ## 安装（Release zip）
@@ -27,7 +27,7 @@ npm run hud:install -- --width 120
 kimi
 ```
 
-已有 Kimi 窗口需要退出后重新启动。安装器备份 `~/.kimi-code/tui.toml`，只更新 `[status_line].command`，将运行文件放入 `~/.kimi-code/hud/kimi-code-monitor/releases/`；更新保留旧版文件和最初的状态栏设置。
+在 Kimi 中执行 `/reload-tui` 即可生效，也可以退出后重新启动。安装器备份 `~/.kimi-code/tui.toml`，只更新 `[status_line].command`，将运行文件放入 `~/.kimi-code/hud/kimi-code-monitor/releases/`；更新保留旧版文件和最初的状态栏设置。
 
 可选参数：`--home DIR`、`--kimi EXE`、`--python EXE`、`--width 80`。`--home` 应与启动 Kimi 时的 `KIMI_CODE_HOME` 一致。宽度是配置上限；运行时从所属终端读取当前列数（Windows 使用 `CONOUT$`，其他系统使用 `/dev/tty`），预留 Kimi 两侧边距。窗口缩小时缩短彩条、减少间距并收起放不下的次要信息；无法读取所属终端时使用配置宽度。
 
@@ -41,15 +41,47 @@ node scripts/install-cli-hud.mjs --uninstall
 
 ## 显示与数据
 
-- 浅蓝模型名、绿/琥珀/红色状态、灰色辅助信息、紫色短分支；用留白分组。安装命令强制开启颜色，避免 `NO_COLOR` 环境变量吞掉颜色。
-- Context Window 彩条固定在左，Kimi 额度彩条靠右；正常宽度下分别为 10 格和 4 格，使用色块与八分格显示低占用，随占用从绿色变为琥珀色、红色。中间信息按空间显示，窄于 60 列时只保留首个可用额度窗口。上例为布局示意数字。
+- 模型和状态点位于最前，状态语义与网页面板一致：空闲与等待为灰色，主代理思考、回复与工具执行为蓝色，子代理为绿色，限流为琥珀色，离线与未授权为红色；任何轮次结束都回到灰色空闲，不再单独显示“已完成”绿色。加粗的模型名与状态点同色联动，辅助信息为灰色，分支为紫色。安装命令强制开启颜色，避免 `NO_COLOR` 环境变量吞掉颜色。
+- `5h/7d` 后依次显示 5 小时与本周额度彩条和百分比，正常宽度下各 4 格，使用色块与八分格显示低占用，随占用从绿色变为琥珀色、红色。两个额度始终保留，避免右侧截断遮住额度；空间不足时先收起其他模块。组内统一 1 空格、组间 4 空格。自定义行不重复显示 Context Window，原生第二行继续显示上下文数值。
 - 模型、目录、分支和权限模式来自官方 stdin JSON。状态来自当前 `sessionId` 的主代理日志末尾，最多读取 512 KiB；不会选择其他终端的最新会话。
-- 思考强度显示在模型旁。官方输入若提供 `thinkingEffort` 则优先使用，否则读取当前会话的 `profile.bind`、`config.update`、`llm.request`。Kimi 2.3.0 的官方输入没有该字段，首条消息前的临时选择仅存于进程内，因此未建会话时显示 `思考 --`；不能把配置文件的默认值当成当前值。已有会话随记录刷新，未知也显示 `--`。
-- 默认收起 token、缓存率和速度；在状态栏命令末尾加 `--details` 可显示。用量是末次记录，输入包括非缓存输入、缓存读取和缓存写入；速度只计算生成阶段，不包含等待、工具和重试。
+- 思考强度显示在模型旁。官方输入若提供 `thinkingEffort` 则优先使用，否则读取当前会话的 `profile.bind`、`config.update`、`llm.request`。未建会话或未知时显示 `思考 --`，不把全局默认值当成当前会话的选择。
+- 缓存率来自末次用量，输入包括非缓存输入、缓存读取和缓存写入；上轮耗时直接读取 `turn.ended.durationMs`；生成速度只计算生成阶段，不包含等待、工具和重试。
 - 额度优先查询已登记的本地 Kimi 服务；不可用时，读取 Kimi 保存的 access token，查询官方 `https://api.kimi.com/coding/v1/usages`，global 区使用 `api.kimi.ai`。令牌只进入请求头，不打印、不另存、不跟随重定向，也不刷新或修改凭据。
-- 底栏读取小型缓存，每 60 秒按需启动隐藏 worker。空响应显示“额度暂无”，认证失效显示“需登录”；网络失败最多沿用 5 分钟旧值并标 `~`。没有额度数据时保留阴影条、`--%` 和文字提示，不冒充 0%。Kimi 原生第二行仍显示自己的上下文数值。
+- 底栏读取小型缓存，每 60 秒按需启动隐藏 worker。没有额度数据时保留两个额度窗口、阴影条和 `--%`，不冒充 0%；`quotaStatus` 模块可额外显示“额度暂无”、“需登录”及旧数据标记 `~`。
 - 官方自定义接口仅接收第一行 stdout，无法把 Git 分支移到原生 context 下一行；原生 `/dance` 也只处理内置模型栏。双层自定义布局与彩虹联动需要改 Kimi 原生底栏，目前未支持。
-- 官方状态栏每秒最多启动一次，执行上限 300ms；短工具调用可能来不及显示，日志格式变化也可能影响状态增强。macOS/Linux 尚未实测。
+- 官方状态栏每秒最多启动一次，执行上限 300ms；短工具调用可能来不及显示，日志格式变化也可能影响状态增强。macOS 的 Kimi 2.3.3 已完成安装和探针验证；Linux 与真实订阅额度尚未实测。
+
+## 模块与顺序
+
+默认模块依次为 `status,model,thinking,permission,quotaPair,cache,duration,project`：
+
+| ID | 内容 | 默认 |
+|---|---|---|
+| `status` | 状态点 | 显示 |
+| `model` | 模型名称 | 显示 |
+| `thinking` | 思考强度 | 显示 |
+| `permission` | 权限模式 | 显示 |
+| `quotaPair` | `5h/7d` + 5 小时彩条与百分比 + 本周彩条与百分比 | 显示 |
+| `cache` | 缓存率 | 显示 |
+| `duration` | `上轮{耗时}` | 显示 |
+| `project` | 当前目录名 | 显示 |
+| `quota5h` / `quotaWeek` | 独立 5 小时 / 本周额度，替代合并显示时使用 | 可选 |
+| `input` / `output` | 末次输入 / 输出 token（不是整轮合计） | 可选 |
+| `speed` | 生成速度 | 可选 |
+| `branch` | Git 分支 | 可选 |
+| `quotaStatus` | 暂无、需登录、旧数据标记 | 可选 |
+
+`--modules` 选择启用的模块，`--order` 只调整顺序；`--order` 未列出的启用模块会自动接在后面。安装时传入即可，例如：
+
+```bash
+# 默认模块 + 输入输出和生成速度
+node scripts/install-cli-hud.mjs --modules status,model,thinking,permission,quotaPair,cache,duration,project,input,output,speed
+
+# 只要状态、合并额度和缓存率，并调整顺序
+node scripts/install-cli-hud.mjs --modules status,model,quotaPair,cache --order status,model,quotaPair,cache
+```
+
+匀速参照线当前没有 CLI 实现，不占用模块位。
 
 ## 开发与验证
 

@@ -6,8 +6,7 @@
  * - 收藏入口：AI 回复底部控件行（.a-msg-ft）注入星标按钮。
  * - 展示：右侧目录（.conversation-toc）注入绿色收藏行（复制官方行的 Vue scoped
  *   属性，样式与官方行一致）；侧栏 .sidebar-actions 注入「收藏」入口，点击打开
- *   扩展自有收藏页（bookmarks.html：列表/卡片两种视图 + 批量管理）。收藏正文
- *   只在扩展页面渲染，不进宿主页面 DOM。
+ *   整页收藏页面（列表/卡片两种视图 + 批量管理）。
  * - 跳转：同会话滚动定位（缺页时自动点「加载更早」有界重试）；跨会话优先点击侧栏
  *   会话行，找不到则整页导航后在目标页续跳（sessionStorage 接力）。
  * - 所有注入点找不到就静默降级，绝不影响页面本身。
@@ -67,14 +66,13 @@ const STAR_PATH =
 
 let deps = {
   isDisposed: () => false,
-  getSessionId: () => '',
-  jumpTo: null
+  getSessionId: () => ''
 };
 
 // 内存镜像：{ sessions: { [sessionId]: { title, items: { [turnId]: { title, createdAt } } } } }
 let store = { sessions: {} };
 let observer = null;
-let pageMode = false;
+let pageOpen = false;
 let jumpTimer = null;
 // 收藏页视图状态
 let viewMode = 'list';
@@ -429,17 +427,55 @@ function syncSidebarButton() {
   btn.addEventListener('click', (event) => {
     event.stopPropagation();
     if (!isUserGesture(event)) return;
-    openBookmarksPage();
+    togglePage();
   });
   actions.append(btn);
 }
 
-// 收藏页放在扩展自有页面：宿主页面拿不到页面 DOM，也就读不到收藏正文
-function openBookmarksPage() {
-  chrome.runtime.sendMessage({ type: 'bookmarks.open' }).catch(() => {});
+/* ---------- 收藏页面（整页覆盖主区）：列表 / 卡片 / 批量管理 ---------- */
+
+function positionPage() {
+  const page = document.getElementById('kbm-page');
+  if (!page) return;
+  // 覆盖主区但不遮侧栏：左缘贴侧栏右边线；侧栏隐藏（窄窗口）时铺满全宽
+  const side = document.querySelector('aside.side');
+  const left = side ? Math.round(side.getBoundingClientRect().right) : 0;
+  page.style.left = `${left}px`;
 }
 
-/* ---------- 收藏页面（整页覆盖主区）：列表 / 卡片 / 批量管理 ---------- */
+function refocusSidebarToWorkspace() {
+  if (location.pathname === '/') return;
+  try {
+    history.pushState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch (error) {
+    // 路由不可用时保持现状（仅侧栏聚焦不跳）
+  }
+}
+
+function togglePage(force) {
+  pageOpen = typeof force === 'boolean' ? force : !pageOpen;
+  const page = ensurePageDom();
+  positionPage();
+  page.classList.toggle('open', pageOpen);
+  if (pageOpen) {
+    refocusSidebarToWorkspace();
+    renderPage();
+  }
+}
+
+function onWindowResize() {
+  if (pageOpen) positionPage();
+}
+
+// 与「新建对话 / 搜索」同为动作入口：点页面外的任何位置（切换会话、点聊天区等）
+// 收藏页即关闭，不持有开关状态
+function onDocumentClick(event) {
+  if (!pageOpen) return;
+  const keep = event.target.closest('#kbm-page, .kbm-side-btn, #kbm-detail');
+  if (keep) return;
+  togglePage(false);
+}
 
 function rowKey(sessionId, turnId) {
   return `${sessionId}/${turnId}`;
@@ -637,6 +673,10 @@ function onPageClick(event) {
     }
     return;
   }
+  if (event.target.closest('.kbm-close')) {
+    togglePage(false);
+    return;
+  }
   const viewBtn = event.target.closest('.kbm-seg-btn[data-view]');
   if (viewBtn) {
     viewMode = viewBtn.dataset.view === 'cards' ? 'cards' : 'list';
@@ -723,7 +763,7 @@ function ensureDetailDom() {
       return;
     }
     if (event.target.closest('.kbm-detail-jump') && detailRow) {
-      (deps.jumpTo || jumpTo)(detailRow.sessionId, detailRow.turnId);
+      jumpTo(detailRow.sessionId, detailRow.turnId);
     }
   });
   return detail;
@@ -875,11 +915,13 @@ function jumpTo(sessionId, turnId) {
   clearJump();
   closeDetail();
   if (sessionId === deps.getSessionId()) {
+    togglePage(false);
     scrollToTurn(turnId);
     return;
   }
   // 跨会话：优先点击侧栏对应会话行（最贴近 app 行为）
   const row = document.querySelector(`[data-session-id="${CSS.escape(sessionId)}"]`);
+  togglePage(false);
   if (row) {
     row.click();
     waitSessionThenScroll(sessionId, turnId, 0);
@@ -924,7 +966,7 @@ function syncAll() {
   decorateAllTurns();
   paintAllStars();
   syncToc();
-  if (pageMode) renderPage();
+  if (pageOpen) renderPage();
 }
 
 function onMutations() {
@@ -944,16 +986,21 @@ function onKeydown(event) {
     closeDetail();
     return;
   }
+  if (pageOpen) togglePage(false);
 }
 
 export async function initBookmarks(nextDeps) {
   deps = { ...deps, ...nextDeps };
   loadViewPrefs();
   await loadStore();
+  ensurePageDom();
   syncAll();
   syncSidebarButton();
   observer = new MutationObserver(onMutations);
   observer.observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('keydown', onKeydown);
+  document.addEventListener('click', onDocumentClick, true);
+  window.addEventListener('resize', onWindowResize);
   // 整页导航（跨会话收藏跳转）后的续跳
   setTimeout(resumePendingJump, 800);
 }
@@ -972,7 +1019,7 @@ export function refreshBookmarksLocale() {
   // 强制重绘星标（tooltip 文案随语言变化；守卫重置后重画）
   for (const star of document.querySelectorAll('.kbm-star')) delete star.dataset.on;
   paintAllStars();
-  if (pageMode) renderPage();
+  if (pageOpen) renderPage();
 }
 
 export function handleBookmarksStorageChanged(changes) {
@@ -987,40 +1034,15 @@ export function disposeBookmarks() {
   hideTip();
   if (observer) observer.disconnect();
   observer = null;
+  document.removeEventListener('keydown', onKeydown);
+  document.removeEventListener('click', onDocumentClick, true);
+  window.removeEventListener('resize', onWindowResize);
   document.getElementById('kbm-detail')?.remove();
   document.getElementById('kbm-page')?.remove();
   document.querySelector('.kbm-side-btn')?.remove();
   for (const btn of document.querySelectorAll('.kbm-star')) btn.remove();
   for (const row of document.querySelectorAll('.kbm-toc-row')) row.remove();
+  pageOpen = false;
   managing = false;
   selected.clear();
-}
-
-
-// 收藏页（扩展页面）发来的跳转：定位到宿主页面里的某条回复
-export function jumpToBookmark(sessionId, turnId) {
-  if (!sessionId || !turnId) return;
-  jumpTo(sessionId, turnId);
-}
-
-/* ---------- 扩展自有页面（bookmarks.html） ---------- */
-
-// 同一份渲染代码跑在扩展页：没有宿主会话可读，跳转交给页面注入的 jump 回调
-export async function mountBookmarksPage({ jump = null } = {}) {
-  pageMode = true;
-  deps = {
-    isDisposed: () => false,
-    getSessionId: () => '',
-    jumpTo: jump
-  };
-  loadViewPrefs();
-  await loadStore();
-  const page = document.getElementById('kbm-page');
-  if (!page) return;
-  page.addEventListener('click', onPageClick);
-  document.addEventListener('keydown', onKeydown);
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local') handleBookmarksStorageChanged(changes);
-  });
-  renderPage();
 }

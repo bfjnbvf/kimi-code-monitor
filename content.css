@@ -543,7 +543,7 @@ html[data-color-scheme="dark"] #ksb-widget .ksb-title {
   min-width: 132px;
   /* shrink-to-fit 会随 left 左移不断变宽（正反馈），必须封顶 */
   max-width: 190px;
-  /* 宠物菜单新增缓存提醒/预览后变长：矮面板里整块可滚，不被顶部裁掉 */
+  /* 模块菜单在矮面板里整块可滚，不被顶部裁掉 */
   max-height: min(62vh, 430px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2288,8 +2288,8 @@ html[data-color-scheme="dark"] {
 }
 
 /* ===== 缓存提醒（content/cache-hint.js） =====
- * 27 分钟进入 warn：宠物持续黄/琥珀（与警示文案同色），四槽显示缓存文案；
- * 30 分钟进入 cold：停黄、球变灰。文字只复用宠物模块现有四槽，不弹气泡。 */
+ * 29–30 分钟进入 warn：宠物持续黄/琥珀（与警示文案同色），四槽显示缓存文案；
+ * 30 分钟恢复常规外观。文字只复用宠物模块现有四槽，不弹气泡。 */
 .ksb-pet-canvas.ksb-cache-hot {
   /* 不能直接过渡 filter：蓝→黄会经过红色。先褪色到灰、在灰态转色相、
      再上饱和，全程不经过红；420ms 接近一次呼吸。 */
@@ -2301,12 +2301,6 @@ html[data-color-scheme="dark"] {
   12% { filter: hue-rotate(0deg) saturate(0); }
   24% { filter: hue-rotate(190deg) saturate(0); }
   100% { filter: hue-rotate(190deg) saturate(1.45) brightness(1.05); }
-}
-
-/* 缓存过期的灰与离线灰同一套视觉；右侧文案负责区分语义 */
-.ksb-pet-canvas.ksb-cache-cold {
-  filter: grayscale(1) saturate(0.2);
-  opacity: 0.72;
 }
 
 .ksb-pet-total.ksb-cache-state {
@@ -2321,16 +2315,8 @@ html[data-color-scheme="dark"] {
   animation: ksb-cache-pulse 1.8s ease-in-out infinite;
 }
 
-.ksb-pet-total.ksb-cache-state.ksb-cache-cold {
-  color: var(--ksb-text-tertiary);
-}
-
 .ksb-pet-status.ksb-cache-warn {
   color: #b26a00;
-}
-
-.ksb-pet-status.ksb-cache-cold {
-  color: var(--ksb-text-quaternary);
 }
 
 @keyframes ksb-cache-pulse {
@@ -2353,7 +2339,7 @@ html[data-color-scheme="dark"] {
   visibility: hidden;
 }
 
-/* 侧栏会话列表的相对时间：27–29 分钟标黄，不用盯着面板也能看到 */
+/* 侧栏会话列表的相对时间：25–29 分钟标黄，不用盯着面板也能看到 */
 [data-session-id] .ksb-cache-idle-warn {
   color: #b26a00 !important;
 }

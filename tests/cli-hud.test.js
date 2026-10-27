@@ -10,12 +10,40 @@ import { compatibleVersion, configure, restore, shellCommand, probe } from '../s
 const payload = { model: 'DeepSeek V4.1 Flash', cwd: 'C:/work/中文项目', gitBranch: 'codex/hud-demo', permissionMode: 'manual', contextTokens: 26214, maxContextTokens: 262144, contextUsage: .8 };
 const jsonl = rows => rows.map(r => JSON.stringify(r)).join('\n') + '\n';
 
-test('native counts override stale ratios and future fields do not affect rendering', () => {
-  const line = callHud('render', payload, {}, 120, false);
-  assert.match(line, /10%/);
-  assert.equal(callHud('render', { ...payload, future: true }, {}, 120, false), line);
-  assert.match(callHud('render', {}, {}, 120, false), /--%/);
-  assert.doesNotMatch(line, /^K | │ /);
+test('context payload is not rendered and status, model, thinking and permission precede the quota pair', () => {
+  const activity = { quota: { fiveHour: { percent: 25 }, week: { percent: 75 } } };
+  const line = callHud('render', payload, activity, 120, false);
+  assert.match(line, /5h\/7d.*25%.*75%/);
+  assert.match(line, /^● DeepSeek V4\.1 Flash 思考 -- 询问    5h\/7d/);
+  assert.match(line, /缓存 --% 上轮--    中文项目/);
+  assert.ok(line.indexOf('●') < line.indexOf('DeepSeek'));
+  assert.ok(line.indexOf('DeepSeek') < line.indexOf('思考'));
+  assert.ok(line.indexOf('思考') < line.indexOf('询问'));
+  assert.ok(line.indexOf('询问') < line.indexOf('5h/7d'));
+  assert.doesNotMatch(line, /Ctx/);
+  assert.equal(callHud('render', { ...payload, future: true }, activity, 120, false), line);
+  const empty = callHud('render', {}, {}, 120, false);
+  assert.match(empty, /5h\/7d.*--%.*--%/);
+});
+
+test('model name and status light share the web panel appearance in every state', () => {
+  const cases = [
+    ['idle', '38;2;139;153;173'],
+    ['thinking', '38;2;132;210;255'],
+    ['executing', '38;2;132;210;255'],
+    ['replying', '38;2;132;210;255'],
+    ['subagent', '38;2;113;210;166'],
+    ['ratelimit', '38;2;239;194;111'],
+    ['offline', '38;2;255;126;145'],
+  ];
+  for (const [status, color] of cases) {
+    const line = callHud('render', payload, { status }, 120, true);
+    assert.ok(line.startsWith(`\x1b[${color}m●\x1b[0m \x1b[1;${color}mDeepSeek`), status);
+  }
+  const empty = callHud('render', payload, {}, 120, true);
+  assert.ok(empty.startsWith('\x1b[38;2;139;153;173m●\x1b[0m \x1b[1;38;2;139;153;173mDeepSeek'));
+  const unauthorized = callHud('render', payload, { status: 'thinking', quota: { authRequired: true } }, 120, true);
+  assert.ok(unauthorized.startsWith('\x1b[38;2;255;126;145m●\x1b[0m \x1b[1;38;2;255;126;145mDeepSeek'));
 });
 
 test('latest usage includes both cache types exactly once', () => {
@@ -47,25 +75,76 @@ test('a global thinking default never stands in for an unsaved live selection', 
   } finally { fs.rmSync(home, { recursive: true }); }
 });
 
-test('windowed layouts retain context and quota within the available columns', () => {
+test('windowed layouts keep the quota pair and model/status order within the available columns', () => {
   for (const width of [20, 40, 58, 78, 98, 120]) {
     const activity = { thinkingEffort: 'high', quota: { authRequired: true } };
     const line = callHud('render', payload, activity, width, false);
     assert.ok(callHud('cell_width', line) <= width, `${width}: ${line}`);
-    assert.match(line, /^Ctx /);
-    if (width >= 40) assert.match(line, /Kimi /);
-    if (width >= 78) {
-      assert.match(line, /思考 high/);
-      assert.match(line, /需登录$/);
-    }
+    assert.match(line, /^●/);
+    assert.ok(line.indexOf('●') < line.indexOf('D'));
+    assert.doesNotMatch(line, /Ctx|Kimi /);
+    assert.ok((line.match(/--%/g) || []).length >= 2, '两个额度始终保留未知占位');
+    if (width >= 40) assert.match(line, /5h\/7d/);
+    if (width >= 78) assert.match(line, /思考 high/);
   }
 });
 
-test('pending approval survives tool completion and turn end clears it', () => {
+test('module selection, ordering, duration, cache rate and optional metrics', () => {
+  const rows = [
+    { type: 'context.append_loop_event', event: { type: 'step.end', llmStreamDurationMs: 2000, usage: { output: 50 } } },
+    { type: 'usage.record', usage: { inputOther: 25, inputCacheRead: 50, inputCacheCreation: 25, output: 50 } },
+    { type: 'turn.ended', reason: 'completed', durationMs: 8400 },
+  ];
+  const activity = callHud('parse_activity', jsonl(rows));
+  assert.equal(activity.durationMs, 8400);
+  assert.equal(activity.speed, 25);
+  const normal = callHud('render', payload, activity, 120, false);
+  assert.match(normal, /缓存 50%/);
+  assert.match(normal, /上轮8\.4s/);
+  const custom = callHud('render', payload, activity, 120, false, ['branch', 'output', 'input', 'speed', 'cache', 'duration']);
+  assert.match(custom, /^hud-demo/);
+  assert.match(custom, /输出 50/);
+  assert.match(custom, /输入 100/);
+  assert.match(custom, /25\.0 tok\/s/);
+  assert.doesNotMatch(custom, /5h|周 /);
+  assert.deepEqual(callHud('module_options', ['--modules', 'model,input', '--order', 'input,model']), ['input', 'model']);
+  assert.match(callHud('render', payload, { quota: { authRequired: true } }, 120, false, ['quotaStatus']), /需登录/);
+});
+
+test('waiting and every turn ending use idle like the web panel', () => {
   const rows = [{ type: 'turn.prompt' }, { type: 'context.append_loop_event', event: { type: 'tool.call', name: 'Read', toolCallId: 'a' } }, { type: 'interaction.request', id: 'approval' }, { type: 'context.append_loop_event', event: { type: 'tool.result', toolCallId: 'a' } }];
-  assert.equal(callHud('parse_activity', jsonl(rows)).status, '等待确认');
-  rows.push({ type: 'turn.ended', reason: 'completed' });
-  assert.equal(callHud('parse_activity', jsonl(rows)).status, '已完成');
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'idle');
+  for (const reason of ['completed', 'cancelled', 'failed', 'blocked', 'unknown']) {
+    assert.equal(callHud('parse_activity', jsonl([...rows, { type: 'turn.ended', reason }])).status, 'idle', reason);
+  }
+});
+
+test('tail-only tool and step events still infer an active turn', () => {
+  const toolRows = [
+    { type: 'context.append_loop_event', event: { type: 'tool.call', name: 'Read', toolCallId: 'a' } },
+    { type: 'context.append_loop_event', event: { type: 'tool.result', toolCallId: 'a' } },
+  ];
+  assert.equal(callHud('parse_activity', jsonl(toolRows)).status, 'thinking');
+  const stepRows = [{ type: 'context.append_loop_event', event: { type: 'step.end', llmStreamDurationMs: 2000, usage: { output: 50 } } }];
+  assert.equal(callHud('parse_activity', jsonl(stepRows)).status, 'thinking');
+});
+
+test('subagent, rate limit and work status events follow the web state machine', () => {
+  const rows = [
+    { type: 'turn.prompt' },
+    { type: 'subagent.spawned', payload: { subagentId: 'agent-1' } },
+  ];
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'subagent');
+  rows.push({ type: 'subagent.completed', payload: { subagentId: 'agent-1' } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'thinking');
+  rows.push({ type: 'error', payload: { code: 'provider.rate_limit' } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'ratelimit');
+  rows.push({ type: 'agent.status.updated', payload: { status: 'waiting' } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'idle');
+  rows.push({ type: 'agent.status.updated', payload: { status: 'working' } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'thinking');
+  rows.push({ type: 'event.session.work_changed', payload: { busy: false } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'idle');
 });
 
 test('session lookup ignores incomplete records and never selects a different session', () => {
@@ -74,7 +153,7 @@ test('session lookup ignores incomplete records and never selects a different se
     const file = path.join(home, 'sessions', 'wd_demo', 'session_demo', 'agents', 'main', 'wire.jsonl');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, 'x'.repeat(512 * 1024 + 32) + '\n' + jsonl([{ type: 'turn.ended', reason: 'cancelled' }]) + '{"type":"turn.prompt"');
-    assert.equal(callHud('read_activity', home, 'session_demo').status, '已停止');
+    assert.equal(callHud('read_activity', home, 'session_demo').status, 'idle');
     assert.deepEqual(callHud('read_activity', home, 'session_other'), {});
   } finally { fs.rmSync(home, { recursive: true }); }
 });
@@ -106,5 +185,9 @@ test('Kimi shell command works from paths with spaces and Chinese', async () => 
     // 功能测试不与并行测试争抢 300ms；独立验证保留原时限。
     // Functional tests allow contention; hud:verify retains the native 300ms deadline.
     assert.ok(await probe(shellCommand(python, script), 5000) < 5000);
+    const custom = shellCommand(python, script, 120, process.platform, 'status,model,quotaPair', 'model,status,quotaPair');
+    assert.match(custom, /--modules status,model,quotaPair --order model,status,quotaPair/);
+    assert.ok(await probe(custom, 5000) < 5000);
+    assert.throws(() => shellCommand(python, script, 120, process.platform, 'status,model;bad'), /comma-separated/);
   } finally { fs.rmSync(dir, { recursive: true }); }
 });

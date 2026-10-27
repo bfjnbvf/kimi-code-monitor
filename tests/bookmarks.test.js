@@ -149,10 +149,9 @@ test('侧栏入口与整页收藏页面', () => {
   assert.match(source, /btn\.className = 'kbm-side-btn'/);
   assert.match(contentCss, /#kbm-page \{[\s\S]*?position: fixed/);
   assert.match(contentCss, /#kbm-page\.open \{ display: flex/);
-  // 收藏页在扩展自有标签页打开，不再在宿主页面铺覆盖层
-  assert.match(source, /function openBookmarksPage\(\)/);
-  assert.match(source, /type: 'bookmarks\.open'/);
-  assert.match(source, /export async function mountBookmarksPage/);
+  // 页面左缘贴侧栏右边线，不遮侧栏
+  assert.match(source, /querySelector\('aside\.side'\)/);
+  assert.match(source, /getBoundingClientRect\(\)\.right/);
 });
 
 test('跳转：同会话滚动 + 加载更早重试；跨会话点行或整页导航接力', () => {
@@ -310,7 +309,7 @@ test('卡片详情弹层：标题 + 用户提问 + 回复全文 + 跳转按钮 +
   assert.match(source, /用户提问/);
   assert.doesNotMatch(source, /你的提问/);
   assert.match(source, /kbm-detail-jump">\$\{t\('跳转到原文 →'\)\}/);
-  assert.match(source, /getElementById\('kbm-detail'\)/);
+  assert.match(source, /#kbm-detail/);
   // 同会话时读实时正文（渲染后 HTML，完整且带 markdown 样式）
   assert.match(source, /const live = turnHtml\(anchor\)/);
   // 列表与卡片点击都打开详情
@@ -323,8 +322,7 @@ test('卡片详情弹层：标题 + 用户提问 + 回复全文 + 跳转按钮 +
   assert.match(contentCss, /\.kbm-detail-jump \{[\s\S]*?background: var\(--kbm-accent, #1783ff\) !important;[\s\S]*?color: #ffffff !important;[\s\S]*?font-weight: 500/);
   // Esc 先关详情再关页面；点详情不触发页面关闭
   assert.match(source, /if \(detailRow\) \{\s*closeDetail\(\)/);
-  // 跳转按钮走页面注入的回调（扩展页 → 后台 → 宿主内容脚本）
-  assert.match(source, /\(deps\.jumpTo \|\| jumpTo\)\(detailRow\.sessionId, detailRow\.turnId\)/);
+  assert.match(source, /closest\('#kbm-page, \.kbm-side-btn, #kbm-detail'\)/);
 });
 
 test('回归：侧栏收藏入口与「新建对话/搜索」完全同款（8px 内距、13px/500、16px icon）', () => {
@@ -335,9 +333,12 @@ test('回归：侧栏收藏入口与「新建对话/搜索」完全同款（8px 
   // 无 .on 持色逻辑
   assert.doesNotMatch(contentCss, /\.kbm-side-btn\.on/);
   assert.doesNotMatch(source, /kbm-side-btn'\)\?\.classList\.toggle/);
-  // 入口只接受真实手势；打开的页面不在宿主 DOM 里
-  assert.match(source, /if \(!isUserGesture\(event\)\) return;\s*\n\s*openBookmarksPage\(\)/);
-  assert.doesNotMatch(source, /function onDocumentClick\(event\)/);
+  // 点页面外（切会话/点聊天区）即关闭
+  assert.match(source, /function onDocumentClick\(event\)/);
+  assert.match(source, /closest\('#kbm-page, \.kbm-side-btn, #kbm-detail'\)/);
+  assert.match(source, /document\.addEventListener\('click', onDocumentClick, true\)/);
+  // 窄窗口侧栏消失时收藏页 left 重算
+  assert.match(source, /window\.addEventListener\('resize', onWindowResize\)/);
 });
 
 test('列表与卡片按 HTML 还原 markdown（无 HTML 回退纯文本），旧收藏 DOM 可回填', () => {
@@ -374,11 +375,11 @@ test('列表行删除 ✕ 绝对定位：不占布局空间，左右间距一致
   assert.match(contentCss, /\.kbm-item-meta \{ padding-right: 20px/);
 });
 
-test('侧栏入口打开扩展自有收藏页，宿主页面不再铺整页覆盖层', () => {
-  assert.match(source, /chrome\.runtime\.sendMessage\(\{ type: 'bookmarks\.open' \}\)/);
-  assert.doesNotMatch(source, /function refocusSidebarToWorkspace\(\)/);
-  assert.doesNotMatch(source, /function positionPage\(\)/);
-  assert.match(source, /export async function mountBookmarksPage/);
+test('打开收藏页时侧栏聚焦跳回工作区（pushState / + popstate，失败静默降级）', () => {
+  assert.match(source, /function refocusSidebarToWorkspace\(\)/);
+  assert.match(source, /history\.pushState\(null, '', '\/'\)/);
+  assert.match(source, /window\.dispatchEvent\(new PopStateEvent\('popstate'\)\)/);
+  assert.match(source, /if \(pageOpen\) \{\s*refocusSidebarToWorkspace\(\);/);
 });
 
 test('列表视图右侧快速目录：渲染、点击跳转、滚动高亮；卡片视图不渲染', () => {

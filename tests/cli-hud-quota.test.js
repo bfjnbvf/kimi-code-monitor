@@ -64,14 +64,14 @@ test('installed color override survives NO_COLOR and distinguishes empty quota',
     for (const quota of [{ fiveHour: { percent: 25 }, week: { percent: 81 } }, null]) {
       const now = Date.now();
       fs.writeFileSync(path.join(dir, 'quota.json'), JSON.stringify({ quota, fetchedAt: now, updatedAt: now, status: quota ? 'ok' : 'no_quota' }));
-      const result = spawnSync(python, ['-I', '-S', 'src/cli-hud/hud.py', '--no-wire', '--width', '120', '--color', 'always'],
+      const result = spawnSync(python, ['-I', '-S', 'src/cli-hud/hud.py', '--no-wire', '--width', '120', '--color', 'always', '--modules', 'status,quota5h,quotaWeek,model,quotaStatus'],
         { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, KIMI_CODE_HOME: home, NO_COLOR: '1' } });
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /\x1b\[1;38;2;/);
       // 空额度文案按运行时终端宽度在「暂无 / 额度暂无」间降级；测试不锁死终端宽度
       assert.match(result.stdout, quota ? /25%/ : /(额度)?暂无/);
-      // 部分块字符取决于填充比例与 Python 版本的取整：▏▎▍▌▋▊▉ 都算“有部分块”
-      assert.match(result.stdout, /[▏▎▍▌▋▊▉]/);
+      // 真实额度的部分块字符取决于填充比例与 Python 版本的取整：▏▎▍▌▋▊▉ 均可
+      if (quota) assert.match(result.stdout, /[▏▎▍▌▋▊▉]/);
       if (!quota) assert.match(result.stdout, /░{3,4}.*--%/);
       assert.doesNotMatch(result.stdout, /K DeepSeek/);
       assert.doesNotMatch(result.stdout, / │ /);

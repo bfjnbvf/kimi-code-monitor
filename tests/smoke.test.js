@@ -39,7 +39,7 @@ function makeChromeStub() {
   };
 }
 
-function injectScript(window, file) {
+function injectScript(window, file, { allowSyntheticGestures = false } = {}) {
   // i18n 跟随 Kimi Web 语言设置：测试环境锁定中文
   //（chrome-extension:// 等不透明来源没有 localStorage，静默跳过即可——默认 zh）
   try {
@@ -47,7 +47,9 @@ function injectScript(window, file) {
   } catch {}
 
   const script = window.document.createElement('script');
-  script.textContent = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  // jsdom 的事件实例把 isTrusted 写成不可配置属性；仅在 UI 交互测试中放行合成手势
+  script.textContent = allowSyntheticGestures ? source.replace('event?.isTrusted === true', 'true') : source;
   window.document.body.appendChild(script);
 }
 
@@ -55,9 +57,9 @@ function tick(window, ms = 0) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function createPage() {
+function createPage(url = 'http://localhost:3000/sessions/smoke-session') {
   const dom = new JSDOM(PAGE_HTML, {
-    url: 'http://localhost:3000/sessions/smoke-session',
+    url,
     runScripts: 'dangerously',
     pretendToBeVisual: true
   });
@@ -94,6 +96,58 @@ test('smoke：脚本装配后面板出现在侧边栏，包含模块与关键区
       '面板应渲染出至少一个信息模块'
     );
     assert.ok(widget.querySelector('.ksb-region-mini'), '应存在 Mini 区域');
+  } finally {
+    window.close();
+  }
+});
+
+test('smoke：RC 页面也会初始化收藏星标', async () => {
+  const { dom, window } = createPage('https://code-rc.kimi.com/devices/device-1/sessions/smoke-session');
+  try {
+    window.document.body.insertAdjacentHTML('beforeend', `
+      <div class="a-msg turn-anchor" data-turn-id="turn-rc">
+        <div class="msg">RC 回复</div><div class="a-msg-ft"></div>
+      </div>`);
+    injectScript(window, 'dist/content.js');
+    await tick(window, 20);
+    assert.ok(window.document.querySelector('.a-msg[data-turn-id="turn-rc"] .kbm-star'));
+  } finally {
+    window.close();
+  }
+});
+
+test('smoke：页内收藏覆盖层与详情按原 UI 逐层打开和关闭', async () => {
+  const { dom, window } = createPage();
+  try {
+    window.document.body.insertAdjacentHTML('beforeend', '<div class="sidebar-actions"></div>');
+    window.chrome.storage.local.get = async () => ({
+      'kimi-statusbar.bookmarks': {
+        sessions: {
+          'smoke-session': {
+            title: '收藏会话',
+            items: { 'turn-1': { title: '收藏回复', question: '收藏提问', createdAt: 1 } }
+          }
+        }
+      }
+    });
+    injectScript(window, 'dist/content.js', { allowSyntheticGestures: true });
+    await tick(window, 20);
+    const click = (element) => {
+      element.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    };
+    click(window.document.querySelector('.kbm-side-btn'));
+    const page = window.document.getElementById('kbm-page');
+    assert.ok(page.classList.contains('open'));
+    assert.match(page.textContent, /收藏回复/);
+    click(page.querySelector('.kbm-item'));
+    const detail = window.document.getElementById('kbm-detail');
+    assert.ok(detail.classList.contains('open'));
+    assert.match(detail.textContent, /收藏提问/);
+    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.ok(!detail.classList.contains('open'));
+    assert.ok(page.classList.contains('open'));
+    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.ok(!page.classList.contains('open'));
   } finally {
     window.close();
   }

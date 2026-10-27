@@ -18,7 +18,6 @@ zip -r "$OUT" \
   rive \
   rules \
   popup.html \
-  bookmarks.html bookmarks-page.css \
   icons \
   README.md LICENSE \
   -x "*.DS_Store" "__MACOSX/*" "*~" "dist/panel-app.js" "dist/quota-worker.cjs"
