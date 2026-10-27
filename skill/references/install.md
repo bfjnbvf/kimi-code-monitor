@@ -58,7 +58,7 @@
 用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（固定名，始终最新；版本见包内 `MAINTENANCE`）：
 
 1. 下载技能包：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip`
 2. 解压到用户级技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
    - macOS / Linux：`curl -fsSL -o /tmp/kcm-skill.zip "<URL>" && mkdir -p ~/.kimi-code/skills && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/`
    - Windows（PowerShell）：`Invoke-WebRequest -Uri "<URL>" -OutFile "$env:TEMP\kcm-skill.zip"; Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`
@@ -70,7 +70,7 @@
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
 
 1. **确定补丁包**：GitHub Releases 最新版，固定名直链（始终最新；与 MAINTENANCE 的 patch-version 对照，别装旧包）：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-desktop-v3.6.0.zip`
 2. **下载并解压**到临时目录。下载失败 → 同上面的网络回退说明。
 3. **不需要确认 Node**：安装器自带运行时兜底——`install.sh` / `install.cmd` 会优先借 Kimi Code 客户端自带的 Node（Electron 内置，版本恒定），系统装了 Node 就用系统的。唯一前提是客户端已安装。
 4. **执行**（在补丁解压目录）：

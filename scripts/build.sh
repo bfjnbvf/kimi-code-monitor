@@ -9,9 +9,10 @@ bash scripts/pack-web.sh
 node scripts/build-patch.mjs
 bash scripts/pack-cli-hud.sh
 
-# 技能包（固定名，随 Release 分发；版本号见包内 MAINTENANCE）。
+# 技能包（与其他主资产同规则命名；版本号见包内 MAINTENANCE）。
 # 顶层带 kimi-code-monitor/ 目录：解压到 ~/.kimi-code/skills/ 即就位。
-SKILL_OUT="kimi-code-monitor-skill.zip"
+VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)")
+SKILL_OUT="kimi-code-monitor-skill-v${VERSION}.zip"
 SKILL_STAGE="$(mktemp -d)"
 cp -R skill "$SKILL_STAGE/kimi-code-monitor"
 # run.cmd 强制 CRLF：批处理在 LF 下解析有坑，不信任工作区行尾状态

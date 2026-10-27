@@ -23,7 +23,7 @@
 ## 升级动作（用户同意后）
 
 1. 技能：重新下载技能包解压覆盖本地技能目录（Release 固定名，始终最新）：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip`
    macOS/Linux：`unzip -o <包> -d ~/.kimi-code/skills/`；Windows：`Expand-Archive <包> -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`。
    下载失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」。若本地还是旧路径 `kcm-panel/`（2026-09-21 前安装），装到新目录后删掉旧目录。
 2. 补丁：按 install.md 的安装流程走（幂等重装），它会重新扫描历史数据。
