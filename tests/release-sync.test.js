@@ -11,19 +11,27 @@ const ROOT = path.join(__dirname, '..');
 
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-const maintenance = fs.readFileSync(path.join(ROOT, 'skill', 'MAINTENANCE'), 'utf8');
+const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+const maintenance = fs.readFileSync(path.join(ROOT, 'skill', 'MAINTENANCE.md'), 'utf8');
+const legacyMaintenance = fs.readFileSync(path.join(ROOT, 'skill', 'MAINTENANCE'), 'utf8');
 const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
 
 const maintenanceField = (name) => {
   const m = maintenance.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'));
-  assert.ok(m, `skill/MAINTENANCE 缺少 ${name} 字段`);
+  assert.ok(m, `skill/MAINTENANCE.md 缺少 ${name} 字段`);
   return m[1].trim();
 };
 
 const topUpdateEntry = () => {
-  const m = maintenance.match(/^## (\d+)（/m);
-  assert.ok(m, 'skill/MAINTENANCE 缺少更新记录条目（## N（date））');
-  return Number(m[1]);
+  const m = maintenance.match(/^## ([\d.]+)（/m);
+  assert.ok(m, 'skill/MAINTENANCE.md 缺少更新记录条目（## N（date））');
+  return m[1];
+};
+
+const topPatchEntry = () => {
+  const m = maintenance.match(/^## [\d.]+（[^\n]+）\n\n配套补丁 ([\d.]+)：/m);
+  assert.ok(m, 'skill/MAINTENANCE.md 顶部条目缺少配套补丁版本');
+  return m[1];
 };
 
 const topChangelogVersion = () => {
@@ -32,34 +40,50 @@ const topChangelogVersion = () => {
   return m[1];
 };
 
+const isOfficialReleaseDownload = (value) => {
+  if (/\\|%2f|%5c|\.\.|%2e/i.test(value)) return false;
+  let url;
+  try { url = new URL(value); } catch { return false; }
+  return url.protocol === 'https:' && url.host === 'github.com' && !url.username && !url.password &&
+    /^\/bfjnbvf\/kimi-code-monitor\/releases\/download\/[^/]+\/[^/]+$/.test(url.pathname);
+};
+
 test('发版守卫：manifest 与 package.json 版本一致', () => {
-  assert.equal(
-    manifest.version,
-    pkg.version,
-    `manifest.json（${manifest.version}）与 package.json（${pkg.version}）版本不一致`
-  );
+  assert.equal(manifest.version, pkg.version);
 });
 
-test('发版守卫：MAINTENANCE 的 patch-version 与 manifest 一致', () => {
-  assert.equal(
-    maintenanceField('patch-version'),
-    manifest.version,
-    `skill/MAINTENANCE 的 patch-version 与 manifest.json（${manifest.version}）不一致`
-  );
+test('发版守卫：package-lock 两处版本与 manifest 一致', () => {
+  assert.equal(lock.version, manifest.version);
+  assert.equal(lock.packages[''].version, manifest.version);
 });
 
-test('发版守卫：MAINTENANCE 更新记录顶条编号与 skill-version 一致', () => {
-  assert.equal(
-    topUpdateEntry(),
-    Number(maintenanceField('skill-version')),
-    'MAINTENANCE 更新记录顶条编号与 skill-version 不一致（有文档变更就要 bump 并加条目）'
-  );
+test('发版守卫：MAINTENANCE.md 的 patch-version 与 manifest 一致', () => {
+  assert.equal(maintenanceField('patch-version'), manifest.version);
+});
+
+test('发版守卫：说明书顶条同时对应 skill 与 patch 版本', () => {
+  assert.equal(topUpdateEntry(), maintenanceField('skill-version'));
+  assert.equal(topPatchEntry(), maintenanceField('patch-version'));
 });
 
 test('发版守卫：CHANGELOG 顶部条目版本与 manifest 一致', () => {
-  assert.equal(
-    topChangelogVersion(),
-    `v${manifest.version}`,
-    `CHANGELOG.md 顶部条目（${topChangelogVersion()}）与 manifest.json（v${manifest.version}）不一致`
-  );
+  assert.equal(topChangelogVersion(), `v${manifest.version}`);
+});
+
+test('发版守卫：下载地址属于本仓库官方 Release', () => {
+  assert.ok(isOfficialReleaseDownload(maintenanceField('skill-download')));
+  assert.ok(isOfficialReleaseDownload(maintenanceField('patch-download')));
+});
+
+test('发版守卫：下载地址拒绝路径穿越、编码路径与非官方来源', () => {
+  for (const value of [
+    'https://github.com/bfjnbvf/kimi-code-monitor/releases/download/../../archive/refs/heads/main.zip',
+    'https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/%2e%2e%2fmain.zip',
+    'https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/a%2fb.zip',
+    'https://example.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/skill.zip',
+  ]) assert.equal(isOfficialReleaseDownload(value), false, value);
+});
+
+test('发版守卫：过渡期旧说明书与主说明书一致', () => {
+  assert.equal(legacyMaintenance, maintenance);
 });

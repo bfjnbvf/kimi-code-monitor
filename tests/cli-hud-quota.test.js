@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { normalizeQuota, fetchQuota } from '../src/cli-hud/quota-worker.mjs';
-import { callHud, python } from './helpers/hud-python.js';
+import { callHud, node } from './helpers/hud-node.js';
 
 test('quota adapters accept native, modern official and repository legacy shapes', () => {
   const expected = { fiveHour: { percent: 25, resetAt: null }, week: { percent: 80, resetAt: null } };
@@ -64,17 +64,47 @@ test('installed color override survives NO_COLOR and distinguishes empty quota',
     for (const quota of [{ fiveHour: { percent: 25 }, week: { percent: 81 } }, null]) {
       const now = Date.now();
       fs.writeFileSync(path.join(dir, 'quota.json'), JSON.stringify({ quota, fetchedAt: now, updatedAt: now, status: quota ? 'ok' : 'no_quota' }));
-      const result = spawnSync(python, ['-I', '-S', 'src/cli-hud/hud.py', '--no-wire', '--width', '120', '--color', 'always', '--modules', 'status,quota5h,quotaWeek,model,quotaStatus'],
+      const result = spawnSync(node, ['dist/hud.cjs', '--no-wire', '--width', '120', '--color', 'always', '--modules', 'status,quota5h,quotaWeek,model,quotaStatus'],
         { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, KIMI_CODE_HOME: home, NO_COLOR: '1' } });
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /\x1b\[1;38;2;/);
       // 空额度文案按运行时终端宽度在「暂无 / 额度暂无」间降级；测试不锁死终端宽度
       assert.match(result.stdout, quota ? /25%/ : /(额度)?暂无/);
-      // 真实额度的部分块字符取决于填充比例与 Python 版本的取整：▏▎▍▌▋▊▉ 均可
+      // 真实额度按填充比例显示八分格：▏▎▍▌▋▊▉ 均可
       if (quota) assert.match(result.stdout, /[▏▎▍▌▋▊▉]/);
       if (!quota) assert.match(result.stdout, /░{3,4}.*--%/);
       assert.doesNotMatch(result.stdout, /K DeepSeek/);
       assert.doesNotMatch(result.stdout, / │ /);
     }
   } finally { fs.rmSync(home, { recursive: true }); }
+});
+
+test('eval entry preserves CLI options and finds the quota worker beside the bundle', async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-hud-eval-'));
+  try {
+    const script = path.join(temp, 'hud.cjs');
+    fs.copyFileSync('dist/hud.cjs', script);
+    const worker = path.join(temp, 'worker.mjs');
+    fs.writeFileSync(worker, "import fs from 'node:fs'; import path from 'node:path'; const at = process.argv.indexOf('--home'); fs.writeFileSync(path.join(process.argv[at + 1], 'worker-started'), 'ok');\n");
+    fs.writeFileSync(path.join(temp, 'quota-worker.json'), JSON.stringify({ node, script: worker }));
+    const home = path.join(temp, 'home');
+    const cache = path.join(home, 'hud', 'kimi-code-monitor');
+    fs.mkdirSync(cache, { recursive: true });
+    const now = Date.now();
+    fs.writeFileSync(path.join(cache, 'quota.json'), JSON.stringify({ quota: { fiveHour: { percent: 25 }, week: { percent: 75 } }, fetchedAt: now, updatedAt: 0, status: 'ok' }));
+    const result = spawnSync(node, ['-e', `require(${JSON.stringify(script)})`, '--', '--no-wire', '--width', '58', '--plain', '--modules', 'status,model,quotaPair'], {
+      input: JSON.stringify({ model: 'Eval Node HUD', permissionMode: 'manual' }), encoding: 'utf8',
+      env: { ...process.env, KIMI_CODE_HOME: home, KIMI_CODE_STATUS_LINE: '1' },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Eval Node …/);
+    assert.match(result.stdout, /5h\/7d/);
+    assert.doesNotMatch(result.stdout, /缓存/);
+    let started = false;
+    for (let i = 0; i < 100; i++) {
+      if (fs.existsSync(path.join(home, 'worker-started'))) { started = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.ok(started, 'quota worker should start from the eval-loaded bundle path');
+  } finally { fs.rmSync(temp, { recursive: true }); }
 });

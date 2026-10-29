@@ -1,8 +1,22 @@
-skill-version: 13
+skill-version: 13.1
 patch-version: 3.6.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/kimi-code-monitor-skill.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/kcm-desktop-patch.zip
 
 # 更新记录
+
+## 13.1（2026-10-29）
+
+配套补丁 3.6.0：
+
+- **更新地址收口到说明书**：新增 `skill-download` 与 `patch-download`；新版技能同时检查技能和面板版本，并从说明书读取实际下载地址，不再写死面板附件文件名
+- **更新介绍读取远端记录**：更新前介绍和更新后总结均按本次实际覆盖的说明书条目生成，不再为特定功能预写本地话术
+- **主说明书改为 `MAINTENANCE.md`**：旧 `MAINTENANCE` 在过渡期同步保留，旧版技能仍可正常检查和下载更新
+- **旧附件名继续可用**：本版 Release 的桌面补丁与技能包保留 `kcm-desktop-patch.zip`、`kimi-code-monitor-skill.zip`
+- **下载来源校验**：两个下载地址必须经过 URL 归一化与完整路径校验，拒绝路径穿越、编码斜杠和非官方来源
+- **升级结果核验**：技能与补丁均在安装前核对包内版本、安装后复核实际版本；版本号按小数点分段比较，技能目录为符号链接时写入真实目录
+- **发布守卫补强**：说明书顶条同时核对技能与补丁版本，检查 lockfile 版本、两份说明书同步及四个发行包完整性
 
 ## 13（2026-10-27）
 

@@ -1,6 +1,6 @@
 #!/bin/bash
-# CLI HUD 独立发行包：只含 hud.py、quota worker、安装器与文档。
-# 与 Web 扩展 / 桌面补丁完全解耦；安装器从包根解析 src/cli-hud 与 dist。
+# CLI HUD 独立发行包：只含 Node HUD、quota worker、安装器与文档。
+# 与 Web 扩展 / 桌面补丁完全解耦；安装器从包根解析 dist。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,13 +11,13 @@ VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.j
 OUT="$PWD/kimi-code-monitor-cli-v${VERSION}.zip"
 
 node scripts/build-cli-hud.mjs
+[ -s dist/hud.cjs ] || { echo "Node HUD 构建失败" >&2; exit 1; }
 [ -s dist/quota-worker.cjs ] || { echo "quota worker 构建失败" >&2; exit 1; }
 
 STAGE=$(mktemp -d)
-mkdir -p "$STAGE/scripts" "$STAGE/src/cli-hud" "$STAGE/dist" "$STAGE/docs"
+mkdir -p "$STAGE/scripts" "$STAGE/dist" "$STAGE/docs"
 cp scripts/install-cli-hud.mjs scripts/verify-cli-hud.mjs "$STAGE/scripts/"
-cp src/cli-hud/hud.py "$STAGE/src/cli-hud/"
-cp dist/quota-worker.cjs "$STAGE/dist/"
+cp dist/hud.cjs dist/quota-worker.cjs "$STAGE/dist/"
 cp LICENSE "$STAGE/"
 cp docs/CLI-HUD.md "$STAGE/docs/"
 
@@ -31,7 +31,6 @@ Kimi Code CLI 的状态栏 HUD（实验性）。通过官方 \`status_line.comma
 
 - Kimi Code CLI >= 2.2.0（\`kimi --version\`）
 - Node.js 20+
-- Python 3.10+
 
 ## 安装
 

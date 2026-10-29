@@ -55,23 +55,22 @@
 
 ## 1. 本技能自身的安装（仅首次，A/B 情况下）
 
-用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（固定名，始终最新；版本见包内 `MAINTENANCE`）：
+用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（固定名，始终最新；版本见包内 `MAINTENANCE.md`）：
 
 1. 下载技能包：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip`
 2. 解压到用户级技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
    - macOS / Linux：`curl -fsSL -o /tmp/kcm-skill.zip "<URL>" && mkdir -p ~/.kimi-code/skills && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/`
    - Windows（PowerShell）：`Invoke-WebRequest -Uri "<URL>" -OutFile "$env:TEMP\kcm-skill.zip"; Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`
-3. 验证 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在即装好；已存在则不要重装，先比对 MAINTENANCE 的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
+3. 验证 `~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在，并核对包内说明书的 skill-version 与远端最新说明书一致；不一致则停止并报告，不能当成安装成功。已存在则不要重装，先比对说明书的 skill-version，按 update.md 处理。若旧版技能目录 `~/.kimi-code/skills/kcm-panel/` 还在（2026-09-21 前的安装），装上新目录后提醒用户把旧目录删掉，避免两个同名技能并存。
 4. 告诉用户技能已就位，新会话（或重启客户端）后可持续使用。
 
 下载失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」，稍后再按第 1 步重新下载即可。
 
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
 
-1. **确定补丁包**：GitHub Releases 最新版，固定名直链（始终最新；与 MAINTENANCE 的 patch-version 对照，别装旧包）：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-desktop-v3.6.0.zip`
-2. **下载并解压**到临时目录。下载失败 → 同上面的网络回退说明。
+1. **确定补丁包**：读取远端 `skill/MAINTENANCE.md`；若返回 404，再读旧地址 `skill/MAINTENANCE`。取出 `patch-version` 与 `patch-download`。用 URL 解析器校验下载地址：原始地址及解码后的路径不得包含点段、反斜杠或编码斜杠，不得带用户信息；归一化后必须是 `https://github.com`，路径严格匹配 `/bfjnbvf/kimi-code-monitor/releases/download/<单段标签>/<单段文件名>`。字段缺失或地址不符时停止并说明，不要猜附件名或改用其他来源。
+2. **从 `patch-download` 下载并解压**到临时目录，先核对包内 `kcm/VERSION` 等于本次远端 patch-version；不一致则停止，不得执行安装器。下载失败 → 同上面的网络回退说明。
 3. **不需要确认 Node**：安装器自带运行时兜底——`install.sh` / `install.cmd` 会优先借 Kimi Code 客户端自带的 Node（Electron 内置，版本恒定），系统装了 Node 就用系统的。唯一前提是客户端已安装。
 4. **执行**（在补丁解压目录）：
    - macOS / Linux：`bash install.sh`

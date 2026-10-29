@@ -16,32 +16,32 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 1. 下载技能包（GitHub Release 资产，固定名，始终最新版；版本号见包内 `MAINTENANCE`）：
 
    ```text
-   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip
+   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip
    ```
 
 2. 解压到 Kimi Code 技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
 
    ```bash
    # macOS / Linux
-   curl -fsSL -o /tmp/kcm-skill.zip "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip" \
+   curl -fsSL -o /tmp/kcm-skill.zip "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip" \
      && mkdir -p ~/.kimi-code/skills \
      && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/
    ```
 
    ```powershell
    # Windows（PowerShell）
-   Invoke-WebRequest -Uri "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.6.0.zip" -OutFile "$env:TEMP\kcm-skill.zip"
+   Invoke-WebRequest -Uri "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill.zip" -OutFile "$env:TEMP\kcm-skill.zip"
    Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force
    ```
 
-3. 验证：`~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在即装好（Windows 为 `%USERPROFILE%\.kimi-code\skills\kimi-code-monitor\SKILL.md`）。
+3. 验证：`~/.kimi-code/skills/kimi-code-monitor/SKILL.md` 存在，且包内说明书的 skill-version 与远端最新说明书一致；不一致则停止并报告（Windows 为 `%USERPROFILE%\.kimi-code\skills\kimi-code-monitor\SKILL.md`）。
 4. 启用：新开会话或重启 Kimi Code 客户端后技能生效；之后严格按包内 `SKILL.md` 执行。
 
 ⚠️ 三个坑：
 
 - **解压目标必须是技能目录本身**。解压到别处、或让技能目录外面再套一层（`skills/kimi-code-monitor/kimi-code-monitor/`），技能都不会被识别。
 - **面板安装零前提**：安装入口（`install.sh` / `install.cmd`）优先借客户端自带的 Node（Electron 内置），不需要用户装 Node。技能脚本（doctor / refresh-stats / client-providers）仍是 Node 脚本：有系统 node 就 `node xxx.mjs`，没有则用客户端的（`ELECTRON_RUN_AS_NODE=1 "<客户端>/Contents/MacOS/Kimi Code" xxx.mjs`）。
-- **技能包 URL 返回 404**（发版间隙或网络拦截）→ 用文末备选方案，不要改用其他来源的包。
+- **技能包 URL 返回 404**（发版间隙或网络拦截）→ 停止并报告，稍后从同一官方地址重试，不要改用其他来源的包。
 
 ## 二、接下来做什么
 

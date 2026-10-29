@@ -15,11 +15,11 @@ node scripts/install-cli-hud.mjs --width 120
 kimi
 ```
 
-包内已含构建好的 `dist/quota-worker.cjs`，不需要 `npm install`。要求 Node.js 20+、Python 3.10+、Kimi Code CLI >= 2.2.0。
+包内已含构建好的 `dist/hud.cjs` 和 `dist/quota-worker.cjs`，不需要 `npm install`。要求 Node.js 20+、Kimi Code CLI >= 2.2.0，不需要 Python。
 
 ## 从源码安装（开发）
 
-需要 Node.js 20+ 和 Python 3.10+。构建使用仓库已锁定的 esbuild；Python 状态栏仅用标准库，Node worker 负责后台额度查询。
+需要 Node.js 20+。构建使用仓库已锁定的 esbuild；状态栏和后台额度查询均使用 Node.js。
 
 ```powershell
 npm ci --ignore-scripts
@@ -29,7 +29,7 @@ kimi
 
 在 Kimi 中执行 `/reload-tui` 即可生效，也可以退出后重新启动。安装器备份 `~/.kimi-code/tui.toml`，只更新 `[status_line].command`，将运行文件放入 `~/.kimi-code/hud/kimi-code-monitor/releases/`；更新保留旧版文件和最初的状态栏设置。
 
-可选参数：`--home DIR`、`--kimi EXE`、`--python EXE`、`--width 80`。`--home` 应与启动 Kimi 时的 `KIMI_CODE_HOME` 一致。宽度是配置上限；运行时从所属终端读取当前列数（Windows 使用 `CONOUT$`，其他系统使用 `/dev/tty`），预留 Kimi 两侧边距。窗口缩小时缩短彩条、减少间距并收起放不下的次要信息；无法读取所属终端时使用配置宽度。
+可选参数：`--home DIR`、`--kimi EXE`、`--width 80`。`--home` 应与启动 Kimi 时的 `KIMI_CODE_HOME` 一致。宽度是配置上限；运行时从所属终端读取当前列数（Windows 使用 `CONOUT$`，其他系统使用 `/dev/tty`），预留 Kimi 两侧边距。窗口缩小时缩短彩条、减少间距并收起放不下的次要信息；无法读取所属终端时使用配置宽度。
 
 恢复原状态栏，保留安装文件及备份：
 
@@ -91,7 +91,7 @@ npm run hud:verify
 node scripts/verify-cli-hud.mjs --installed
 ```
 
-只有一套渲染和事件处理实现：`src/cli-hud/hud.py`。`quota-worker.mjs` 负责额度请求，`scripts/install-cli-hud.mjs` 负责安装和恢复。修改后重新执行 `npm run hud:install`。
+只有一套渲染和事件处理实现：`src/cli-hud/hud.mjs`。`quota-worker.mjs` 负责额度请求，`scripts/install-cli-hud.mjs` 负责安装和恢复。修改后重新执行 `npm run hud:install`。
 
 2026-10-23 本机证据：
 
@@ -107,4 +107,4 @@ node scripts/verify-cli-hud.mjs --installed
 
 - [Alpaca233114514/claude-hud](https://github.com/Alpaca233114514/claude-hud)：参考紧凑布局，没有复制实现代码。
 - [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code/blob/main/apps/kimi-code/src/tui/utils/status-line-command.ts)：核对官方协议、刷新节奏和超时，没有复制或修改 Kimi 本体。
-- 额度计算复用本仓库 [metrics.js](../src/metrics.js)，Python 用量口径移植自该文件，适用 [MIT License](../LICENSE)，Copyright (c) 2026 十叶。安装产物包含 LICENSE。
+- 额度计算与用量口径复用本仓库 [metrics.js](../src/metrics.js)，适用 [MIT License](../LICENSE)，Copyright (c) 2026 十叶。安装产物包含 LICENSE。
