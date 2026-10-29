@@ -491,8 +491,10 @@ function restorePanelState(sid) {
   return true;
 }
 
-// WS 事件的 time 是毫秒时间戳；缺失时退回本机时钟
+// 当前 WS 事件携带 ISO timestamp；旧事件可能只有毫秒 time，都没有时退回本机时钟
 function cacheTouchAt(message) {
+  const timestamp = Date.parse(message?.timestamp || '');
+  if (Number.isFinite(timestamp) && timestamp > 0) return timestamp;
   const time = Number(message?.time);
   return Number.isFinite(time) && time > 0 ? time : Date.now();
 }

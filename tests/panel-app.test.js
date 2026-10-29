@@ -972,8 +972,10 @@ test('panel-app：缓存提醒只显示一分钟黄色提示，随后恢复常�
     const clock = () => doc.getElementById('ksb-pet-clock-num').textContent;
 
     assert.equal(window.__kcmCacheHint.preview, undefined);
-    window.__kcmCacheHint.seed(Date.now() - 29 * 60_000);
-    await tick(window);
+    const timestamp = new Date(Date.now() - 29 * 60_000).toISOString();
+    window.__kcm.push({ v: 1, type: 'event', event: { type: 'turn.started', timestamp, payload: {} } });
+    window.__kcm.push({ v: 1, type: 'event', event: { type: 'turn.ended', timestamp, payload: {} } });
+    await new Promise((resolve) => window.setTimeout(resolve, 1_100));
     assert.equal(label(), '对话缓存');
     assert.equal(total(), '即将过期');
     assert.equal(status(), '预估剩余');
