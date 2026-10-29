@@ -31,10 +31,10 @@ import {
 import { isSessionDirName, isSubagentAgentName, wirePathOf } from '../../session-files.js';
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024;
-const MAX_LINE_CHARS = 1024 * 1024;
-const MAX_FILE_BYTES = 64 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
-const MAX_SCAN_MS = 60_000;
+const MAX_LINE_CHARS = 16 * 1024 * 1024;
+const MAX_FILE_BYTES = 512 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024;
+const MAX_SCAN_MS = 600_000;
 
 /** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份）。
  *  返回 path（文件系统路径，读取用）与 key（跨会话汇总键，与扩展侧索引同形）。 */
@@ -100,9 +100,9 @@ function scanFileStream(filePath, daily, hourly, isSubagent, meta, limits) {
     while ((read = fs.readSync(fd, buffer, 0, READ_CHUNK_BYTES, null)) > 0) {
       fileBytes += read;
       limits.totalBytes += read;
-      if (fileBytes > MAX_FILE_BYTES) throw new Error('单文件超过 64 MiB 上限');
-      if (limits.totalBytes > MAX_TOTAL_BYTES) throw new Error('总扫描量超过 512 MiB 上限');
-      if (Date.now() - limits.startedAt > MAX_SCAN_MS) throw new Error('扫描超过 60 秒上限');
+      if (fileBytes > MAX_FILE_BYTES) throw new Error('单文件超过 512 MiB 上限');
+      if (limits.totalBytes > MAX_TOTAL_BYTES) throw new Error('总扫描量超过 8 GiB 上限');
+      if (Date.now() - limits.startedAt > MAX_SCAN_MS) throw new Error('扫描超过 10 分钟上限');
       const text = carry + decoder.write(buffer.subarray(0, read));
       const lastNewline = text.lastIndexOf('\n');
       if (lastNewline < 0) {
