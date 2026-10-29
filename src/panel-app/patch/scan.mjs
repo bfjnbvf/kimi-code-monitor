@@ -32,9 +32,6 @@ import { isSessionDirName, isSubagentAgentName, wirePathOf } from '../../session
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024;
 const MAX_LINE_CHARS = 16 * 1024 * 1024;
-const MAX_FILE_BYTES = 512 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024;
-const MAX_SCAN_MS = 600_000;
 
 /** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份）。
  *  返回 path（文件系统路径，读取用）与 key（跨会话汇总键，与扩展侧索引同形）。 */
@@ -88,37 +85,31 @@ export function listWireFiles(sessionsDir, failures = []) {
 
 /** 流式读单个文件：按完整行喂给 parseUsageLines，跨块的多字节字符由
  *  StringDecoder 兜住；末尾未写完的行（无换行符）跳过，下次重扫补齐 */
-function scanFileStream(filePath, daily, hourly, isSubagent, meta, limits) {
+function scanFileStream(filePath, daily, hourly, isSubagent, meta) {
   const decoder = new StringDecoder('utf8');
   let carry = '';
   let records = 0;
-  let fileBytes = 0;
   const buffer = Buffer.alloc(READ_CHUNK_BYTES);
   const fd = fs.openSync(filePath, 'r');
   try {
     let read;
     while ((read = fs.readSync(fd, buffer, 0, READ_CHUNK_BYTES, null)) > 0) {
-      fileBytes += read;
-      limits.totalBytes += read;
-      if (fileBytes > MAX_FILE_BYTES) throw new Error('单文件超过 512 MiB 上限');
-      if (limits.totalBytes > MAX_TOTAL_BYTES) throw new Error('总扫描量超过 8 GiB 上限');
-      if (Date.now() - limits.startedAt > MAX_SCAN_MS) throw new Error('扫描超过 10 分钟上限');
       const text = carry + decoder.write(buffer.subarray(0, read));
       const lastNewline = text.lastIndexOf('\n');
       if (lastNewline < 0) {
         carry = text;
-        if (carry.length > MAX_LINE_CHARS) throw new Error('单行超过 1 MiB 上限');
+        if (carry.length > MAX_LINE_CHARS) throw new Error('单行超过 16 MiB 上限');
         continue;
       }
       const complete = text.slice(0, lastNewline + 1);
-      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 1 MiB 上限');
+      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 16 MiB 上限');
       carry = text.slice(lastNewline + 1);
       records += parseUsageLines(complete, daily, hourly, isSubagent, meta);
     }
     const tail = carry + decoder.end();
     if (tail.includes('\n')) {
       const complete = tail.slice(0, tail.lastIndexOf('\n') + 1);
-      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 1 MiB 上限');
+      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 16 MiB 上限');
       records += parseUsageLines(complete, daily, hourly, isSubagent, meta);
     }
   } finally {
@@ -146,14 +137,13 @@ function readSecondaryModel(kimiHome) {
 export function scanSessions(sessionsDir) {
   const files = {};
   const failures = [];
-  const limits = { totalBytes: 0, startedAt: Date.now() };
   let recordCount = 0;
   for (const entry of listWireFiles(sessionsDir, failures)) {
     const meta = emptyScanMeta();
     const fileDaily = {};
     const fileHourly = {};
     try {
-      recordCount += scanFileStream(entry.path, fileDaily, fileHourly, entry.isSubagent, meta, limits);
+      recordCount += scanFileStream(entry.path, fileDaily, fileHourly, entry.isSubagent, meta);
       files[entry.key] = { daily: fileDaily, hourly: fileHourly, meta };
     } catch (error) {
       failures.push(`${entry.path}: ${error?.message || error}`);

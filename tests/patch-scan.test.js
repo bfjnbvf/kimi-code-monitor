@@ -253,7 +253,7 @@ test('scan：超长单行进入失败清单而不耗尽内存', () => {
     const home = makeFixture();
     try {
       const wire = path.join(home, 'sessions', 'wd_test', 'session_abc', 'agents', 'main', 'wire.jsonl');
-      fs.writeFileSync(wire, 'x'.repeat(1024 * 1024 + 10) + (trailingNewline ? '\n' : ''));
+      fs.writeFileSync(wire, 'x'.repeat(16 * 1024 * 1024 + 10) + (trailingNewline ? '\n' : ''));
       const result = scanSessions(path.join(home, 'sessions'));
       assert.ok(result.failures.some((failure) => failure.includes('单行超过')));
     } finally {
