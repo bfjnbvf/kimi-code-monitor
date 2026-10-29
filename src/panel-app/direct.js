@@ -14,44 +14,10 @@
  * 加载后推进 push 管道（与本文件无冲突：都只进 push）。
  */
 
-export function normalizeKapOrigin(value) {
-  try {
-    const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol)) return '';
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return '';
-    if (!url.port || url.username || url.password) return '';
-    return url.origin;
-  } catch {
-    return '';
-  }
-}
-
-// kap-server 源：惰性读取（kap 重启换端口后注入器/loader 会更新全局值）。
-// 顺带读桌面端 SPA 自己的 sessionStorage（UI 用同一来源定位 kap）；
-// 再兜底从页面自己的资源记录里学——渲染进程对 kap 的请求都在 performance 里
-const kapOrigin = () => normalizeKapOrigin(globalThis.__kcmKapOrigin) || spaOrigin() || learnKapOrigin() || '';
-
-function spaOrigin() {
-  try {
-    return normalizeKapOrigin(sessionStorage.getItem('kimi-desktop-server-origin'));
-  } catch (error) {
-    return '';
-  }
-}
-
-function learnKapOrigin() {
-  try {
-    for (const e of performance.getEntriesByType('resource')) {
-      const m = /^(https?:\/\/127\.0\.0\.1:\d+)\/api\//.exec(e.name);
-      if (m) return m[1];
-    }
-  } catch (error) {
-    // performance 不可用就放弃兜底
-  }
-  return '';
-}
-
+import { createKapContext } from './kap.js';
 import { refreshDailyChart } from './bridge.js';
+
+export { normalizeKapOrigin } from './kap.js';
 import { panel } from '../content/panel-state.js';
 import { classifyClientProvider } from '../providers.js';
 
@@ -70,6 +36,7 @@ const EVIDENCE_TYPES = new Set([
 ]);
 
 export function startDirectMode() {
+  const { kapOrigin, fetchJson } = createKapContext();
   const push = (msg) => {
     try {
       globalThis.__kcm?.push(msg);
@@ -93,14 +60,6 @@ export function startDirectMode() {
   // kap 源未知时走相对路径：桌面端 app:// 处理器会把 /api/* 代理到 kap-server
   // （实测额度轮询相对路径可用）；WS 不行（ws://renderer 不是有效主机），
   // 所以事件流必须等源解析出来才连。
-  const apiUrl = (path) => `${kapOrigin()}${path}`;
-
-  async function fetchJson(path) {
-    const response = await fetch(apiUrl(path), { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-
   let quotaPending = false;
   async function pollQuota() {
     if (quotaPending) return;

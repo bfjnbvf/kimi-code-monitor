@@ -16,6 +16,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'content', 'bookmarks.js'), 'utf8');
+const sanitizeSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'content', 'bookmarks', 'sanitize.js'), 'utf8');
 const contentCss = fs.readFileSync(path.join(__dirname, '..', 'content.css'), 'utf8');
 const contentJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'content.js'), 'utf8');
 
@@ -178,18 +179,18 @@ test('回归：星标上色幂等（守卫防 observer 循环），会话切换�
 test('详情弹层 markdown 还原：收藏时存渲染后 HTML（消毒），展示包 .msg 上下文', () => {
   // 收藏时存消毒后的渲染 HTML
   assert.match(source, /html: turnHtml\(anchor\)/);
-  assert.match(source, /function sanitizeHtml\(node\)/);
+  assert.match(sanitizeSource, /function sanitizeHtml\(node\)/);
   // 移除名单：执行/框架 + 页面级影响 + SMIL 载体 + 远程图片
-  assert.match(source, /img\[src\^="http:"\]/);
-  assert.match(source, /attr\.name\.startsWith\('on'\)/);
-  assert.match(source, /javascript:/i);
+  assert.match(sanitizeSource, /img\[src\^="http:"\]/);
+  assert.match(sanitizeSource, /attr\.name\.startsWith\('on'\)/);
+  assert.match(sanitizeSource, /javascript:/i);
   // URL 类属性不再按名字枚举（xlink:href 曾漏），data:text/html 一并拦、data:image 放行
-  assert.match(source, /data:text\\?\/html/i);
+  assert.match(sanitizeSource, /data:text\\?\/html/i);
   // 超长不存 HTML（回退纯文本）
   assert.match(source, /html\.length > HTML_LIMIT \? '' : html/);
   // 注释节点用 childNodes 递归删除（曾因 NodeIterator.currentNode 环境差异导致点击静默失败）
-  assert.match(source, /function stripComments\(node\)/);
-  assert.doesNotMatch(source, /createNodeIterator/);
+  assert.match(sanitizeSource, /function stripComments\(node\)/);
+  assert.doesNotMatch(sanitizeSource, /createNodeIterator/);
   // 展示：有 HTML 走 .msg 包裹的 markdown 还原，无则纯文本兜底
   assert.match(source, /<div class="msg kbm-detail-text kbm-md">/);
   assert.match(contentCss, /\.kbm-detail-text\.kbm-md,[\s\S]*?white-space: normal/);

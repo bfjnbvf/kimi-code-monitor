@@ -28,7 +28,8 @@ test('loader 保留宿主引用且 Rive 失败仍加载核心面板', () => {
 test('会话快照在焦点变化后丢弃乱序响应', () => {
   const source = fs.readFileSync(new URL('../src/panel-app/direct.js', import.meta.url), 'utf8');
   assert.match(source, /generation !== focusGeneration \|\| focusedSid !== sid/);
-  assert.match(source, /AbortSignal\.timeout\(15_000\)/);
+  const kapSource = fs.readFileSync(new URL('../src/panel-app/kap.js', import.meta.url), 'utf8');
+  assert.match(kapSource, /AbortSignal\.timeout\(15_000\)/);
 });
 
 test('钱包快照只写入白名单字段且异常金额不落零', () => {

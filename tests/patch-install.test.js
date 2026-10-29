@@ -131,6 +131,9 @@ test('payloadHash：安装器与 doctor 两份自包含实现一致', () => {
 async function makeFakePatchDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-patch-'));
   fs.copyFileSync(INSTALL_MJS, path.join(dir, 'install.mjs'));
+  for (const module of ['html.js', 'payload.js']) {
+    fs.copyFileSync(path.join(ROOT, 'src', 'panel-app', 'patch', module), path.join(dir, module));
+  }
   await build({
     entryPoints: [SCAN_MJS],
     bundle: true,

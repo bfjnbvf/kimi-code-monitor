@@ -33,6 +33,11 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { stripLoaderTagLines, injectLoaderTag, replaceIndex } from './html.js';
+import { syncPayload } from './payload.js';
+
+export { stripLoaderTagLines, injectLoaderTag } from './html.js';
+export { syncPayload } from './payload.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_NAME = 'Kimi Code';
@@ -103,16 +108,6 @@ function reloadKey(platform = process.platform) {
 
 /* ---------- 公共流程（零平台分支） ---------- */
 
-function copyDirSync(src, dst) {
-  fs.mkdirSync(dst, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const from = path.join(src, entry.name);
-    const to = path.join(dst, entry.name);
-    if (entry.isDirectory()) copyDirSync(from, to);
-    else fs.copyFileSync(from, to); // 载荷内无符号链接；万一有，复制指向内容
-  }
-}
-
 /** 载荷内容哈希：与旧 bash 管线（find|shasum|sort|shasum）逐字节兼容，
  *  排除机器数据文件（usage-daily.js）。 */
 export function payloadHash(root) {
@@ -130,35 +125,6 @@ export function payloadHash(root) {
     .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
   const text = lines.map((line) => `${line}\n`).join('');
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 8);
-}
-
-/** 精确移除 loader 的 script 节点，保留同一行里的其他 HTML。 */
-export function stripLoaderTagLines(html) {
-  return html.replace(/\s*<script\b[^>]*\bsrc=(["'])\/kcm\/loader\.js(?:\?[^"']*)?\1[^>]*><\/script>/g, '');
-}
-
-/** 在首个 </head> 前插入 loader 标签；找不到返回 null。 */
-export function injectLoaderTag(html, hash) {
-  const marker = '</head>';
-  const idx = html.indexOf(marker);
-  if (idx < 0) return null;
-  const needsNewline = idx > 0 && html[idx - 1] !== '\n';
-  const tag = `      <script src="${LOADER_SRC}?v=${hash}"></script>${needsNewline ? '' : '\n'}`;
-  return html.slice(0, idx) + (needsNewline ? '\n' : '') + tag + html.slice(idx);
-}
-
-/** 同目录暂存后原子替换，保留原文件权限。 */
-function replaceIndex(index, content) {
-  const staged = path.join(path.dirname(index), `.kcm-index-${process.pid}.html`);
-  const mode = fs.existsSync(index) ? fs.statSync(index).mode : 0o600;
-  fs.rmSync(staged, { force: true });
-  try {
-    fs.writeFileSync(staged, content, { mode });
-    fs.renameSync(staged, index);
-  } catch (error) {
-    fs.rmSync(staged, { force: true });
-    throw error;
-  }
 }
 
 function kimiHome() {
@@ -206,46 +172,6 @@ function fetchWalletSnapshot(dist) {
     fs.rmSync(out, { force: true });
     console.error('[install] 余额快照未生效（不影响安装，可稍后用技能刷新）');
   }
-}
-
-/** 把补丁载荷同步进 desktop-dist/：先整份拷到临时目录、再替换旧载荷。
- *  不能先删后拷：客户端目录受 macOS「App 管理」保护时，创建会被拒（EPERM）
- *  而删除已经生效，留下「没有载荷、index.html 却仍引用 loader」的坏状态。
- *  先在目标目录里建出暂存目录，等于把「这里能不能写」验证在动手之前。 */
-export function syncPayload(dist, renameSync = fs.renameSync, sourceDir = HERE) {
-  const staged = path.join(dist, `${PAYLOAD_DIR}.new-${process.pid}`);
-  const previous = path.join(dist, `${PAYLOAD_DIR}.old-${process.pid}`);
-  const payload = path.join(dist, PAYLOAD_DIR);
-  fs.rmSync(staged, { recursive: true, force: true });
-  fs.rmSync(previous, { recursive: true, force: true });
-  let hadPrevious = false;
-  try {
-    copyDirSync(path.join(sourceDir, PAYLOAD_DIR), staged);
-    for (const tool of ['fetch-wallet.mjs', 'scan.mjs']) {
-      const source = path.join(sourceDir, tool);
-      if (fs.existsSync(source)) fs.copyFileSync(source, path.join(staged, tool));
-    }
-    if (fs.existsSync(payload)) {
-      renameSync(payload, previous);
-      hadPrevious = true;
-    }
-    renameSync(staged, payload);
-  } catch (error) {
-    fs.rmSync(staged, { recursive: true, force: true });
-    try {
-      if (hadPrevious && !fs.existsSync(payload)) renameSync(previous, payload);
-    } catch (rollbackError) {
-      throw new Error(`${error.message}；旧载荷恢复失败：${rollbackError.message}`);
-    }
-    throw error;
-  }
-  return {
-    commit() { fs.rmSync(previous, { recursive: true, force: true }); },
-    rollback() {
-      fs.rmSync(payload, { recursive: true, force: true });
-      if (hadPrevious) renameSync(previous, payload);
-    }
-  };
 }
 
 function install(appRoot, dist) {
@@ -300,7 +226,7 @@ function install(appRoot, dist) {
 
   let payloadSync;
   try {
-    payloadSync = syncPayload(dist);
+    payloadSync = syncPayload(dist, fs.renameSync, HERE);
   } catch (error) {
     console.error(`[install] 载荷写入失败：${error?.message || error}`);
     console.error('[install] 已中止：原有载荷与 index.html 都未改动');

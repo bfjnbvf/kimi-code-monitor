@@ -63,6 +63,9 @@ fs.writeFileSync(
 fs.copyFileSync(path.join(PATCH, 'install.sh'), path.join(STAGE, 'install.sh'));
 fs.chmodSync(path.join(STAGE, 'install.sh'), 0o755);
 fs.copyFileSync(path.join(PATCH, 'install.mjs'), path.join(STAGE, 'install.mjs'));
+for (const module of ['html.js', 'payload.js']) {
+  fs.copyFileSync(path.join(PATCH, module), path.join(STAGE, module));
+}
 fs.copyFileSync(path.join(ROOT, 'content.css'), path.join(STAGE, 'kcm/content.css'));
 fs.cpSync(path.join(ROOT, 'rive'), path.join(STAGE, 'kcm/rive'), { recursive: true });
 

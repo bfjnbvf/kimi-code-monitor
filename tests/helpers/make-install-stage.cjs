@@ -17,7 +17,7 @@ function makeInstallStage() {
     throw new Error('缺 dist/panel-app.js——先跑 npm run build（npm test 会自动做）');
   }
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-stage-'));
-  for (const name of ['install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs']) {
+  for (const name of ['install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'html.js', 'payload.js']) {
     fs.copyFileSync(path.join(PATCH, name), path.join(stage, name));
   }
   fs.chmodSync(path.join(stage, 'install.sh'), 0o755);
