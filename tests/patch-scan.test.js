@@ -209,3 +209,67 @@ test('scan：按会话汇总按「代理 × 模型」分行，Σ 分项 == 会�
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('scan：指向 sessions 外的 wire 符号链接被记录为失败', () => {
+  const home = makeFixture();
+  try {
+    const outside = path.join(home, 'outside.jsonl');
+    fs.writeFileSync(outside, usageLine(ts(0, 9), { inputOther: 1, output: 1 }) + '\n');
+    const wire = path.join(home, 'sessions', 'wd_test', 'session_abc', 'agents', 'main', 'wire.jsonl');
+    fs.rmSync(wire);
+    fs.symlinkSync(outside, wire);
+    const failures = [];
+    assert.equal(listWireFiles(path.join(home, 'sessions'), failures).length, 1);
+    assert.equal(failures.length, 1);
+    assert.match(failures[0], /不是普通文件|sessions 目录之外/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('scan：存在读取失败时 CLI 不覆盖旧统计文件', () => {
+  const home = makeFixture();
+  const out = path.join(home, 'usage-daily.js');
+  try {
+    const outside = path.join(home, 'outside.jsonl');
+    fs.writeFileSync(outside, '{}\n');
+    const wire = path.join(home, 'sessions', 'wd_test', 'session_abc', 'agents', 'main', 'wire.jsonl');
+    fs.rmSync(wire);
+    fs.symlinkSync(outside, wire);
+    fs.writeFileSync(out, 'old-snapshot\n');
+    const scriptPath = new URL('../src/panel-app/patch/scan.mjs', import.meta.url).pathname;
+    assert.throws(
+      () => execFileSync(process.execPath, [scriptPath, '--sessions', path.join(home, 'sessions'), '--out', out], { encoding: 'utf8' }),
+      (error) => error.status === 1
+    );
+    assert.equal(fs.readFileSync(out, 'utf8'), 'old-snapshot\n');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('scan：超长单行进入失败清单而不耗尽内存', () => {
+  for (const trailingNewline of [false, true]) {
+    const home = makeFixture();
+    try {
+      const wire = path.join(home, 'sessions', 'wd_test', 'session_abc', 'agents', 'main', 'wire.jsonl');
+      fs.writeFileSync(wire, 'x'.repeat(1024 * 1024 + 10) + (trailingNewline ? '\n' : ''));
+      const result = scanSessions(path.join(home, 'sessions'));
+      assert.ok(result.failures.some((failure) => failure.includes('单行超过')));
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
+
+test('scan：空会话缺少 agents 目录属于正常情况', () => {
+  const home = makeFixture();
+  try {
+    fs.mkdirSync(path.join(home, 'sessions', 'wd_test', 'session_empty'), { recursive: true });
+    const result = scanSessions(path.join(home, 'sessions'));
+    assert.deepEqual(result.failures, []);
+    assert.equal(result.fileCount, 2);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

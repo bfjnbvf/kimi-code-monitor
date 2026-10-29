@@ -28,6 +28,7 @@ npm run pack
 
 - `manifest.json`、`package.json`、`package-lock.json`、`CHANGELOG.md` 顶部、`skill/MAINTENANCE.md` 的版本号一致；过渡期旧 `skill/MAINTENANCE` 必须与主说明书逐字节一致（`tests/release-sync.test.js` 会守）
 - 三个主资产都存在且 `unzip -t` 通过；CLI zip 里能看到 `dist/hud.cjs` 与 `dist/quota-worker.cjs`
+- `npm run pack` 同时生成 `SHA256SUMS`，发布时随四个 zip 上传。逐个计算已下载文件的 SHA-256 并与清单对应行比较即可，不要求用户下载全部资产；载荷里的短哈希只用于缓存失效，不替代该校验
 - CLI HUD 的安装、布局自定义与卸载说明见 `docs/CLI-HUD.md`
 - Web/桌面/CLI 的安装说明分别对应各自的资产，不要把源码包（Code → Download ZIP）当成发行包
 - 技能包是可选组件，不占“三个版本”的名额；`skill-version` 与 `patch-version` 分开维护

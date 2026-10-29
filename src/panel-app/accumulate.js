@@ -106,12 +106,14 @@ export function resetAccumulatedCache() {
 }
 
 /** turn.step.completed 的增量用量入今日桶（口径见文件头：input 记全部输入） */
-export function noteStepUsage(usage) {
+export function noteStepUsage(usage, isSubagent = false) {
   const normalized = normalizeUsage(usage);
   if (!totalInputTokens(normalized) && !normalized.outputTokens) return;
   const map = load();
   const key = todayKey();
-  addUsageToBucket(map[key] || (map[key] = emptyUsageBucket()), normalized);
+  const bucket = map[key] || (map[key] = emptyUsageBucket());
+  addUsageToBucket(bucket, normalized);
+  if (isSubagent) addUsageToBucket(bucket.sub || (bucket.sub = emptyUsageBucket()), normalized);
   // 裁剪过旧天数
   const keys = Object.keys(map).sort();
   while (keys.length > MAX_DAYS) delete map[keys.shift()];
@@ -129,19 +131,27 @@ export function mergeDaily(fileDaily) {
     if (rec && typeof rec === 'object') out[day] = { ...rec };
   }
   for (const [day, rec] of Object.entries(load())) {
-    const cur = out[day];
-    const accInput = Number(rec?.input) || 0;
-    const curInput = Number(cur?.input) || 0;
-    if (!cur || accInput > curInput) {
-      // 三个已知字段强制成数字：手改坏存储时不至于把 NaN/字符串带进图表
-      out[day] = {
+    if (!rec || typeof rec !== 'object') continue;
+    const cur = out[day] || emptyUsageBucket();
+    const merged = {
+      ...emptyUsageBucket(),
+      ...cur,
+      ...rec,
+      input: Math.max(Number(cur.input) || 0, Number(rec.input) || 0),
+      output: Math.max(Number(cur.output) || 0, Number(rec.output) || 0),
+      cacheRead: Math.max(Number(cur.cacheRead) || 0, Number(rec.cacheRead) || 0)
+    };
+    if (cur.sub || rec.sub) {
+      merged.sub = {
         ...emptyUsageBucket(),
-        ...rec,
-        input: accInput,
-        output: Number(rec?.output) || 0,
-        cacheRead: Number(rec?.cacheRead) || 0
+        ...(cur.sub || {}),
+        ...(rec.sub || {}),
+        input: Math.max(Number(cur.sub?.input) || 0, Number(rec.sub?.input) || 0),
+        output: Math.max(Number(cur.sub?.output) || 0, Number(rec.sub?.output) || 0),
+        cacheRead: Math.max(Number(cur.sub?.cacheRead) || 0, Number(rec.sub?.cacheRead) || 0)
       };
     }
+    out[day] = merged;
   }
   return out;
 }

@@ -47,6 +47,8 @@ jobs:
           unzip -t kcm-desktop-patch.zip >/dev/null
           unzip -t kimi-code-monitor-skill.zip >/dev/null
           unzip -t kimi-code-monitor-cli-v*.zip >/dev/null
+          test -s SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
 
   # Windows 安装链路：install.cmd 的 node 分支 + 借客户端 Node 的分支
   # （ELECTRON_RUN_AS_NODE 是「零依赖安装」唯一无法在 macOS 上验证的前提，

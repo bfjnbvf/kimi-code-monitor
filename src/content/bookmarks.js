@@ -17,6 +17,7 @@
 
 import { t } from '../i18n.js';
 import { isUserGesture } from './utils.js';
+import { allowSensitiveLocalData } from './data-boundary.js';
 
 export const BOOKMARKS_STORAGE_KEY = 'kimi-statusbar.bookmarks';
 const PENDING_JUMP_KEY = 'kbm.pendingJump';
@@ -89,6 +90,13 @@ function cleanSessionTitle(title) {
   return String(title || '').replace(/\s+\d+[smhdw]$/, '').trim();
 }
 
+function sanitizeStoredHtml(html) {
+  if (!html || typeof document === 'undefined') return '';
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  return sanitizeHtml(container);
+}
+
 export function normalizeBookmarkStore(raw) {
   const sessions = {};
   const src = raw && typeof raw === 'object' ? raw.sessions : null;
@@ -102,7 +110,7 @@ export function normalizeBookmarkStore(raw) {
       items[turnId] = {
         title: typeof item.title === 'string' ? item.title : '',
         question: typeof item.question === 'string' ? item.question : '',
-        html: typeof item.html === 'string' ? item.html : '',
+        html: typeof item.html === 'string' ? sanitizeStoredHtml(item.html) : '',
         createdAt: Number.isFinite(item.createdAt) ? item.createdAt : 0
       };
     }
@@ -206,6 +214,7 @@ export function sanitizeHtml(node) {
     .querySelectorAll(
       'script, iframe, object, embed, link, meta, base, style, ' +
       'animate, set, animateTransform, animateMotion, ' +
+      'img[src^="http:"], img[src^="https:"], ' +
       '.a-msg-ft, .kbm-star'
     )
     .forEach((el) => el.remove());
@@ -217,7 +226,18 @@ export function sanitizeHtml(node) {
       // 枚举 URL 属性难免漏（SVG <a> 的 xlink:href 就是漏网案例）。
       // 只拦 data:text/html，图片的 data:image/* 不受影响
       const isDangerousUrl = /^\s*(javascript:|data:text\/html)/i.test(attr.value);
-      if (isEvent || isDangerousUrl) el.removeAttribute(attr.name);
+      let isRemoteResource = false;
+      if (['src', 'poster', 'href', 'xlink:href', 'srcset'].includes(attr.name)) {
+        if (attr.name === 'srcset') {
+          isRemoteResource = true;
+        } else {
+          try {
+            const url = new URL(attr.value.trim(), document.baseURI);
+            isRemoteResource = ['http:', 'https:'].includes(url.protocol);
+          } catch {}
+        }
+      }
+      if (isEvent || isDangerousUrl || isRemoteResource) el.removeAttribute(attr.name);
     }
   }
   // 体积收敛：删 <!----> 注释节点（app 渲染产物里占大头）。
@@ -664,6 +684,7 @@ function ensurePageDom() {
 }
 
 function onPageClick(event) {
+  if (event?.isTrusted !== true) return;
   const tocRow = event.target.closest('.kbm-toc-row');
   if (tocRow) {
     const item = ensurePageDom().querySelector(`.kbm-item[data-toc-idx="${CSS.escape(tocRow.dataset.tocIdx)}"]`);
@@ -823,6 +844,14 @@ async function removeBookmark(sessionId, turnId) {
   syncAll();
 }
 
+export function markdownText(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/\b([a-z][a-z0-9+.-]*):/gi, (match, scheme) =>
+      ['http', 'https', 'mailto'].includes(scheme.toLowerCase()) ? match : `${scheme}&#58;`);
+}
+
 // 导出收藏为 Markdown：按会话分组，每条 = 日期 + 用户提问 + 回复全文
 function exportBookmarks() {
   const all = flattenBookmarks(store);
@@ -847,13 +876,13 @@ function exportBookmarks() {
     group.rows.push(row);
   }
   for (const group of groups) {
-    lines.push(`## ${group.title}`, '');
+    lines.push(`## ${markdownText(group.title)}`, '');
     for (const row of group.rows) {
       lines.push(`### ${dateFmt(row.createdAt)}`, '');
       if (row.question) {
-        lines.push(`**${t('用户提问')}**`, '', row.question.split('\n').map((l) => `> ${l}`).join('\n'), '');
+        lines.push(`**${t('用户提问')}**`, '', markdownText(row.question).split('\n').map((l) => `> ${l}`).join('\n'), '');
       }
-      lines.push(`**${t('AI 回复')}**`, '', row.title || t('AI 回复'), '', '---', '');
+      lines.push(`**${t('AI 回复')}**`, '', markdownText(row.title || t('AI 回复')), '', '---', '');
     }
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
@@ -990,6 +1019,7 @@ function onKeydown(event) {
 }
 
 export async function initBookmarks(nextDeps) {
+  if (!allowSensitiveLocalData()) return;
   deps = { ...deps, ...nextDeps };
   loadViewPrefs();
   await loadStore();
@@ -1023,7 +1053,7 @@ export function refreshBookmarksLocale() {
 }
 
 export function handleBookmarksStorageChanged(changes) {
-  if (!changes[BOOKMARKS_STORAGE_KEY]) return;
+  if (!allowSensitiveLocalData() || !changes[BOOKMARKS_STORAGE_KEY]) return;
   store = normalizeBookmarkStore(changes[BOOKMARKS_STORAGE_KEY].newValue);
   syncAll();
 }

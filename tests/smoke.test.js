@@ -49,7 +49,9 @@ function injectScript(window, file, { allowSyntheticGestures = false } = {}) {
   const script = window.document.createElement('script');
   const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
   // jsdom 的事件实例把 isTrusted 写成不可配置属性；仅在 UI 交互测试中放行合成手势
-  script.textContent = allowSyntheticGestures ? source.replace('event?.isTrusted === true', 'true') : source;
+  script.textContent = allowSyntheticGestures
+    ? source.replace('event?.isTrusted === true', 'true').replace('event?.isTrusted !== true', 'false')
+    : source;
   window.document.body.appendChild(script);
 }
 
@@ -101,7 +103,7 @@ test('smoke：脚本装配后面板出现在侧边栏，包含模块与关键区
   }
 });
 
-test('smoke：RC 页面也会初始化收藏星标', async () => {
+test('smoke：RC 页面不暴露本地收藏内容', async () => {
   const { dom, window } = createPage('https://code-rc.kimi.com/devices/device-1/sessions/smoke-session');
   try {
     window.document.body.insertAdjacentHTML('beforeend', `
@@ -110,7 +112,7 @@ test('smoke：RC 页面也会初始化收藏星标', async () => {
       </div>`);
     injectScript(window, 'dist/content.js');
     await tick(window, 20);
-    assert.ok(window.document.querySelector('.a-msg[data-turn-id="turn-rc"] .kbm-star'));
+    assert.equal(window.document.querySelector('.a-msg[data-turn-id="turn-rc"] .kbm-star'), null);
   } finally {
     window.close();
   }

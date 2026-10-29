@@ -31,5 +31,8 @@ rm -f "$SKILL_OUT"
 rm -rf "$SKILL_STAGE"
 unzip -t "$SKILL_OUT" >/dev/null
 
+shasum -a 256 kimi-code-monitor-web-v*.zip kcm-desktop-patch.zip kimi-code-monitor-cli-v*.zip "$SKILL_OUT" > SHA256SUMS
+
 echo "已生成 $SKILL_OUT"
 unzip -l "$SKILL_OUT"
+echo "已生成 SHA256SUMS"

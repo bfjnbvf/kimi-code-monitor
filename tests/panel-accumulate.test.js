@@ -81,3 +81,33 @@ test('迁移：v1 桶（input 只含非缓存）按 cacheRead 补齐后读入 v2
   const merged = mergeDaily({});
   assert.deepEqual(merged['2026-09-01'], { input: 1000, output: 10, cacheRead: 900 });
 });
+
+test('mergeDaily：逐字段取大并保留文件侧子代理桶', () => {
+  const day = '2026-10-01';
+  freshStorage({
+    'kcm.daily.v2': JSON.stringify({ [day]: { input: 500, output: 5, cacheRead: 100 } })
+  });
+  const merged = mergeDaily({
+    [day]: {
+      input: 100,
+      output: 50,
+      cacheRead: 500,
+      sub: { input: 80, output: 30, cacheRead: 40 }
+    }
+  });
+  assert.deepEqual(merged[day], {
+    input: 500,
+    output: 50,
+    cacheRead: 500,
+    sub: { input: 80, output: 30, cacheRead: 40 }
+  });
+});
+
+test('noteStepUsage：实时子代理同时进入总桶与子桶', () => {
+  freshStorage();
+  noteStepUsage({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 40 }, true);
+  const today = Object.keys(mergeDaily({}))[0];
+  const bucket = mergeDaily({})[today];
+  assert.equal(bucket.input, 140);
+  assert.deepEqual(bucket.sub, { input: 140, output: 20, cacheRead: 40 });
+});

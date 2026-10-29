@@ -10,6 +10,7 @@ import {
   truncateTitle,
   isBookmarked,
   flattenBookmarks,
+  markdownText,
   BOOKMARKS_STORAGE_KEY
 } from '../src/content/bookmarks.js';
 
@@ -178,8 +179,8 @@ test('详情弹层 markdown 还原：收藏时存渲染后 HTML（消毒），�
   // 收藏时存消毒后的渲染 HTML
   assert.match(source, /html: turnHtml\(anchor\)/);
   assert.match(source, /function sanitizeHtml\(node\)/);
-  // 移除名单：执行/框架 + 页面级影响（base/style）+ SMIL 动态 on* 载体
-  assert.match(source, /querySelectorAll\(\s*'script, iframe, object, embed, link, meta, base, style, '\s*\+\s*'animate, set, animateTransform, animateMotion, '\s*\+\s*'\.a-msg-ft, \.kbm-star'\s*\)/);
+  // 移除名单：执行/框架 + 页面级影响 + SMIL 载体 + 远程图片
+  assert.match(source, /img\[src\^="http:"\]/);
   assert.match(source, /attr\.name\.startsWith\('on'\)/);
   assert.match(source, /javascript:/i);
   // URL 类属性不再按名字枚举（xlink:href 曾漏），data:text/html 一并拦、data:image 放行
@@ -437,7 +438,7 @@ test('批量管理条：左侧导出收藏（Markdown），右侧删除所选与
   // 范围：勾了选导出所选，未选导出全部
   assert.match(source, /selected\.size > 0 \? all\.filter/);
   // Markdown 结构：会话分组标题 + 日期 + 提问引用块 + 回复
-  assert.match(source, /lines\.push\(`## \$\{group\.title\}`/);
+  assert.match(source, /lines\.push\(`## \$\{markdownText\(group\.title\)\}`/);
   assert.match(source, /\*\*\$\{t\('用户提问'\)\}\*\*/);
   assert.match(source, /map\(\(l\) => `> \$\{l\}`\)/);
   assert.match(source, /kimi-bookmarks-\$\{stamp\}\.md/);
@@ -453,4 +454,35 @@ test('头部布局：标题行与工具条全宽（靠最左/最右），内容�
   // 内容列逻辑不变：列表 760 居中、卡片全宽
   assert.match(contentCss, /\.kbm-wrap \{[\s\S]*?max-width: 760px/);
   assert.match(source, /kbm-wide kbm-cards/);
+});
+
+test('收藏页所有后续操作统一拒绝合成点击', () => {
+  assert.match(source, /function onPageClick\(event\) \{\s*if \(event\?\.isTrusted !== true\) return;/);
+});
+
+test('存量收藏读取时重新消毒并拦截远程图片', () => {
+  globalThis.document = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  const normalized = normalizeBookmarkStore({
+    sessions: {
+      s1: {
+        title: '会话',
+        items: {
+          t1: {
+            title: '回复',
+            html: '<p onclick="evil()">safe</p><img src="HTTPS://tracker.invalid/a.png"><img src=" https://tracker.invalid/b.png"><img src="data:image/png;base64,AA">',
+            createdAt: 1
+          }
+        }
+      }
+    }
+  });
+  const html = normalized.sessions.s1.items.t1.html;
+  assert.doesNotMatch(html, /onclick|tracker\.invalid/i);
+  assert.match(html, /data:image\/png/);
+});
+
+test('Markdown 导出转义原始 HTML 与危险链接', () => {
+  const out = markdownText('<img src=x onerror=evil()> [x](javascript:alert(1)) [y](data:application/xhtml+xml,<b>x</b>) [z](https://example.com)');
+  assert.doesNotMatch(out, /<img|javascript:|data:application/);
+  assert.match(out, /&lt;img|javascript&#58;|data&#58;|https:\/\/example\.com/);
 });

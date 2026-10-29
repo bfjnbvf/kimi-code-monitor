@@ -22,18 +22,28 @@
   //    Cmd+R 重载后 URL 不再带参数，但 SPA 的会话存储里就是它定位 kap 用的源；
   // ③ localStorage 缓存——跨客户端重启（重启后 ① 会带新值覆盖）。
   // direct.js 另有 performance 资源记录的第四级兜底。
+  function loopbackOrigin(value) {
+    try {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol)) return '';
+      if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return '';
+      if (!url.port || url.username || url.password) return '';
+      return url.origin;
+    } catch { return ''; }
+  }
   try {
-    const urlOrigin = new URLSearchParams(location.search).get('kimi_origin');
+    const urlOrigin = loopbackOrigin(new URLSearchParams(location.search).get('kimi_origin'));
     if (urlOrigin) {
       window.__kcmKapOrigin = urlOrigin;
       try { localStorage.setItem('kcm.kapOrigin', urlOrigin); } catch (e) { /* 忽略 */ }
     }
+    window.__kcmKapOrigin = loopbackOrigin(window.__kcmKapOrigin);
     if (!window.__kcmKapOrigin) {
-      const spa = sessionStorage.getItem('kimi-desktop-server-origin');
+      const spa = loopbackOrigin(sessionStorage.getItem('kimi-desktop-server-origin'));
       if (spa) window.__kcmKapOrigin = spa;
     }
     if (!window.__kcmKapOrigin) {
-      const cached = localStorage.getItem('kcm.kapOrigin');
+      const cached = loopbackOrigin(localStorage.getItem('kcm.kapOrigin'));
       if (cached) window.__kcmKapOrigin = cached;
     }
   } catch (e) { /* 忽略，走兜底 */ }
@@ -159,9 +169,11 @@
   };
 
   // 挂载点与 kimi-code-monitor 扩展一致：aside.side > .col 里 side-footer 之前
+  let panelHost = null;
   window.__kcmMountInto = (host) => {
     const col = document.querySelector('aside.side > .col');
     if (!col) return false;
+    panelHost = host;
     const footer = col.querySelector('.side-footer');
     footer ? col.insertBefore(host, footer) : col.appendChild(host);
     return true;
@@ -174,7 +186,7 @@
     if (watchdogStarted) return;
     watchdogStarted = true;
     setInterval(() => {
-      const host = document.getElementById('ksb-panel-host');
+      const host = panelHost || document.getElementById('ksb-panel-host');
       if (host && !host.isConnected) window.__kcmMountInto(host);
       publishDiag();
       const status = document.getElementById('kcm-data-status');
@@ -204,14 +216,19 @@
       link.href = '/kcm/content.css?v=' + V;
       document.head.appendChild(link);
     }
-    // Rive 运行库先于面板装配（petStart 读 globalThis.rive）
+    // Rive 失败只影响动画，不阻断核心面板
     const rive = document.createElement('script');
     rive.src = '/kcm/rive/rive.js?v=' + V;
-    rive.onload = () => {
+    let appLoading = false;
+    const loadApp = () => {
+      if (appLoading) return;
+      appLoading = true;
       const app = document.createElement('script');
       app.src = '/kcm/panel-app.js?v=' + V;
       document.head.appendChild(app);
     };
+    rive.onload = loadApp;
+    rive.onerror = loadApp;
     document.head.appendChild(rive);
     startWatchdog();
     return true;

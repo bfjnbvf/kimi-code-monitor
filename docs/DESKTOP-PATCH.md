@@ -12,9 +12,9 @@
 
 ## 数据来源（三层）
 
-1. **实时**：面板直连客户端内嵌的本地服务（kap-server），WS 事件流 + REST 轮询，与客户端页面同机回环，无任何外发；
-2. **历史预填**：安装时全量扫描 `~/.kimi-code/sessions`（Kimi Code 自己的会话日志，桌面端与 CLI 共享），生成 `usage-daily.js`——需要本机有 node，没有则跳过。该文件里既带按天/按小时统计，也带**按会话的「代理 × 模型」汇总**（切会话时的本地恢复底数）；之后想刷新，跑载荷里的 `kcm/scan.mjs`（无参即原地重写）或技能脚本 `refresh-stats.mjs`，面板 30 秒内自己跟上；
-3. **页内积累**：面板把每轮用量按天攒进页面 localStorage（存于客户端用户数据目录，**客户端更新不会清掉**），与历史文件按天取大合并，不双算。
+1. **实时**：面板直连客户端内嵌的本地服务（kap-server），WS 事件流 + REST 轮询，与客户端页面同机回环。另有两类明确的外发请求：安装时使用本机 access token 请求 `https://api.kimi.com/coding/v1/usages` 获取加油包余额；外部账户模块开启时，每 60 秒读取客户端已配置的供应商 key 并请求对应厂商的官方余额端点。凭据只进请求头，不写进快照或日志；收起外部账户模块可停止厂商余额轮询；
+2. **历史预填**：安装时全量扫描 `~/.kimi-code/sessions`（Kimi Code 自己的会话日志，桌面端与 CLI 共享），生成 `usage-daily.js`——安装器优先借客户端自带的 Node，无需另装。该文件里既带按天/按小时统计，也带**按会话的「代理 × 模型」汇总**（切会话时的本地恢复底数）；之后想刷新，跑载荷里的 `kcm/scan.mjs`（无参即原地重写）或技能脚本 `refresh-stats.mjs`，面板 30 秒内自己跟上；
+3. **页内积累**：面板把每轮用量按天攒进页面 localStorage（存于客户端用户数据目录，**客户端更新不会清掉**），与历史文件逐字段取大合并并保留子代理桶，避免重复累计。
 
 ## 安装提示词
 
@@ -25,7 +25,7 @@
 
 1. 下载补丁包（Release 资产，固定名直链，始终最新）：
    https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kcm-desktop-patch.zip
-2. 校验文件完整（zip 能正常列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/ 即可）
+2. 下载同 Release 的 SHA256SUMS：macOS 执行 shasum -a 256 kcm-desktop-patch.zip，Windows 执行 Get-FileHash .\kcm-desktop-patch.zip -Algorithm SHA256，将结果与清单中该文件的对应行比较；再确认 zip 能列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/。页面 URL 里的短哈希只用于缓存失效，不能替代 SHA-256 校验
 3. 解压到一个临时目录
 4. 在该目录执行：bash install.sh（Windows：install.cmd；客户端不在默认位置时追加 --app "<客户端目录>"）。不需要安装 Node——壳会优先借客户端自带的 Node，系统有 Node 也可用
 5. 完成后把这些告诉我：

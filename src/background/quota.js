@@ -118,6 +118,7 @@ chrome.notifications.onClicked.addListener((notificationId) => {
  * GetSubscriptionStats 只认这个 web token（设备 OAuth token 401）。 */
 const WEB_TOKEN_STORAGE_KEY = 'kimiWebAccessToken';
 const WEB_TOKEN_REFRESH_MARGIN_SECONDS = 120;
+void chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY).catch(() => {});
 
 export async function reportWebToken(payload) {
   const token = typeof payload?.token === 'string' ? payload.token : '';
@@ -212,7 +213,7 @@ export async function fetchQuotaFresh(accountId) {
   // 纳入当前消息任务生命周期，否则这两次 storage 写入会偶发丢失。
   await Promise.allSettled([
     evaluateQuotaAlerts(data, account.id),
-    recordQuotaSnapshot(data)
+    recordQuotaSnapshot(data, account.id)
   ]);
   const result = { ok: true, data };
   quotaCacheByAccount.set(account.id, { fetchedAt: Date.now(), response: result });
@@ -238,33 +239,35 @@ export async function resolveMonthlyStats(deviceAccessToken) {
   return null;
 }
 
-// 三档额度每日快照（每 6 小时最多一条）；失败静默，不影响主链路
-export async function recordQuotaSnapshot(data) {
+// 三档额度每日快照（每 6 小时最多一条）；按账户隔离，失败静默，不影响主链路
+export async function recordQuotaSnapshot(data, accountId = 'legacy') {
   try {
     const dayKey = KimiMetrics.usageDayKey(new Date());
     const percentages = extractQuotaPercentages(data);
     const monthRatio = Number(data?.monthly?.usedRatio);
-    const stored = await chrome.storage.local.get(QUOTA_SNAPSHOT_STORAGE_KEY);
-    const snapshots =
-      stored[QUOTA_SNAPSHOT_STORAGE_KEY] && typeof stored[QUOTA_SNAPSHOT_STORAGE_KEY] === 'object'
-        ? { ...stored[QUOTA_SNAPSHOT_STORAGE_KEY] }
-        : {};
-    const existing = snapshots[dayKey];
-    if (existing && Date.now() - Number(existing.at || 0) < QUOTA_SNAPSHOT_INTERVAL_MS) return;
-    snapshots[dayKey] = {
-      '5h': percentages['5h'],
-      week: percentages.week,
-      month: Number.isFinite(monthRatio) ? Math.round(monthRatio * 1000) / 10 : null,
-      at: Date.now()
-    };
-    // 与 CLI 长期用量同口径保留 90 天
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - (QUOTA_SNAPSHOT_KEEP_DAYS - 1));
-    const cutoffKey = KimiMetrics.usageDayKey(cutoff);
-    for (const key of Object.keys(snapshots)) {
-      if (key < cutoffKey) delete snapshots[key];
-    }
-    await chrome.storage.local.set({ [QUOTA_SNAPSHOT_STORAGE_KEY]: snapshots });
+    await updateStorage(QUOTA_SNAPSHOT_STORAGE_KEY, async (raw) => {
+      let snapshots = raw && typeof raw === 'object' ? { ...raw } : {};
+      if (Object.values(snapshots).some((value) => value && typeof value === 'object' && '5h' in value)) {
+        snapshots = { legacy: snapshots };
+      }
+      const accountSnapshots = { ...(snapshots[accountId] || {}) };
+      const existing = accountSnapshots[dayKey];
+      if (existing && Date.now() - Number(existing.at || 0) < QUOTA_SNAPSHOT_INTERVAL_MS) return undefined;
+      accountSnapshots[dayKey] = {
+        '5h': percentages['5h'],
+        week: percentages.week,
+        month: Number.isFinite(monthRatio) ? Math.round(monthRatio * 1000) / 10 : null,
+        at: Date.now()
+      };
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - (QUOTA_SNAPSHOT_KEEP_DAYS - 1));
+      const cutoffKey = KimiMetrics.usageDayKey(cutoff);
+      for (const key of Object.keys(accountSnapshots)) {
+        if (key < cutoffKey) delete accountSnapshots[key];
+      }
+      snapshots[accountId] = accountSnapshots;
+      return snapshots;
+    });
   } catch (error) {
     console.warn('[Kimi Status] 额度快照失败', error);
   }

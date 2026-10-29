@@ -84,8 +84,25 @@ async function main() {
     process.exit(3);
   }
 
+  const rawAmount = wallet.balance?.amountLeft;
+  const amountLeft = Number(rawAmount);
+  if (rawAmount == null || rawAmount === '' || !Number.isFinite(amountLeft)) {
+    console.error('[wallet] 余额字段格式异常，未写入快照');
+    process.exit(4);
+  }
+  const safeWallet = {
+    status: typeof wallet.status === 'string' ? wallet.status : '',
+    balance: { amountLeft }
+  };
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
-  fs.writeFileSync(args.out, `window.__kcmWallet = ${JSON.stringify({ wallet, fetchedAt: new Date().toISOString() })};\n`);
+  const staged = `${args.out}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(staged, `window.__kcmWallet = ${JSON.stringify({ wallet: safeWallet, fetchedAt: new Date().toISOString() })};\n`, { mode: 0o600 });
+    fs.renameSync(staged, args.out);
+  } catch (error) {
+    fs.rmSync(staged, { force: true });
+    throw error;
+  }
   const yuan = balanceYuan(wallet);
   console.log(`[wallet] 余额快照已写入 ${args.out}（剩余 ${yuan == null ? '未知' : `¥${yuan.toFixed(2)}`}）`);
 }

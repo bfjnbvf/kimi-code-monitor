@@ -14,15 +14,26 @@
  * 加载后推进 push 管道（与本文件无冲突：都只进 push）。
  */
 
+export function normalizeKapOrigin(value) {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return '';
+    if (!url.port || url.username || url.password) return '';
+    return url.origin;
+  } catch {
+    return '';
+  }
+}
+
 // kap-server 源：惰性读取（kap 重启换端口后注入器/loader 会更新全局值）。
 // 顺带读桌面端 SPA 自己的 sessionStorage（UI 用同一来源定位 kap）；
 // 再兜底从页面自己的资源记录里学——渲染进程对 kap 的请求都在 performance 里
-const kapOrigin = () => globalThis.__kcmKapOrigin || spaOrigin() || learnKapOrigin() || '';
+const kapOrigin = () => normalizeKapOrigin(globalThis.__kcmKapOrigin) || spaOrigin() || learnKapOrigin() || '';
 
 function spaOrigin() {
   try {
-    const value = sessionStorage.getItem('kimi-desktop-server-origin');
-    return /^https?:\/\/127\.0\.0\.1:\d+$/.test(value || '') ? value : '';
+    return normalizeKapOrigin(sessionStorage.getItem('kimi-desktop-server-origin'));
   } catch (error) {
     return '';
   }
@@ -84,26 +95,29 @@ export function startDirectMode() {
   // 所以事件流必须等源解析出来才连。
   const apiUrl = (path) => `${kapOrigin()}${path}`;
 
+  async function fetchJson(path) {
+    const response = await fetch(apiUrl(path), { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  let quotaPending = false;
   async function pollQuota() {
+    if (quotaPending) return;
+    quotaPending = true;
     try {
-      const r = await fetch(apiUrl('/api/v1/oauth/usage'));
-      const body = await r.json();
-      // kap 的 managed quota 形状（app.asar 实测）：{ data: { quota: { usages, extraUsage } } }。
-      // usages = { limit5h: {usedRatio, resetAt}, limit7d: {...} }；
-      // extraUsage = 加油包余额 { balanceCents（分）, totalCents, currency, ... }，
-      // 无加油包时是 null——曾经的 bug：这里只取 usages 把 extraUsage 丢掉，
-      // 面板余额只能靠安装时的 wallet.js 快照，永远不更新
+      const body = await fetchJson('/api/v1/oauth/usage');
       const quota = body?.data?.quota;
       const usages = quota?.usages;
       if (usages) {
         const msg = { v: 1, type: 'quota', quota: usages };
-        // extraUsage 键缺席（老客户端没有该字段）时不开键：bridge 据此回退
-        // wallet.js 快照，而不是把余额当成「没有钱包」清空
         if (quota.extraUsage !== undefined) msg.extraUsage = quota.extraUsage;
         push(msg);
       }
     } catch (error) {
-      // 实例暂不可达：下轮重试
+      // 实例暂不可达或超时：下轮重试
+    } finally {
+      quotaPending = false;
     }
   }
   pollQuota();
@@ -121,15 +135,13 @@ export function startDirectMode() {
   const EXTERNAL_BACKOFF_MAX_MS = 5 * 60_000;
 
   async function fetchClientProviders() {
-    const r = await fetch(apiUrl('/api/v1/providers'));
-    const body = await r.json();
+    const body = await fetchJson('/api/v1/providers');
     const items = body?.data?.items;
     return Array.isArray(items) ? items : [];
   }
 
   async function fetchProviderKey(id) {
-    const r = await fetch(apiUrl(`/api/v1/providers/${encodeURIComponent(id)}`));
-    const body = await r.json();
+    const body = await fetchJson(`/api/v1/providers/${encodeURIComponent(id)}`);
     const key = body?.data?.api_key;
     return typeof key === 'string' ? key : '';
   }
@@ -218,27 +230,26 @@ export function startDirectMode() {
     return location.pathname.match(/\/sessions\/([^/?#]+)/)?.[1] || '';
   }
 
+  let focusGeneration = 0;
   async function applyFocus(sid) {
+    const generation = ++focusGeneration;
     focusedSid = sid;
     debug({ focusedSid: sid, kapOrigin: kapOrigin() || '未知' });
-    // 会话快照：累计用量（usage）与忙碌标志（busy）。
-    // kap 目前把 usage 恒填成 0（见 bridge.js 的 usableSnapshotUsage），
-    // busy 是可靠的独立字段——状态灯先靠它归位，数字部分交给同页缓存与实时事件。
     let snapshot;
     try {
-      const r = await fetch(apiUrl(`/api/v1/sessions/${sid}`));
-      const data = (await r.json())?.data;
+      const body = await fetchJson(`/api/v1/sessions/${sid}`);
+      const data = body?.data;
       if (data && typeof data === 'object') {
         snapshot = {
           usage: data.usage,
           busy: Boolean(data.busy || data.main_turn_active),
-          // 缓存提醒的种子：切进一个已经闲置很久的会话时，只能靠它判断
           updatedAt: data.updated_at
         };
       }
     } catch (error) {
       // 快照失败不阻塞切换：面板从同页缓存与 WS 事件重建
     }
+    if (generation !== focusGeneration || focusedSid !== sid) return;
     push({ v: 1, type: 'session', sid, snapshot });
   }
 
@@ -247,6 +258,7 @@ export function startDirectMode() {
     // 离开会话页（主页/设置等）：清掉焦点，回到同一个会话时会重新取一次快照。
     // 不清的话 sid === focusedSid 会让那次切换被跳过（面板停在离开前的状态）
     if (!sid) {
+      focusGeneration += 1;
       if (focusedSid) {
         cursorBySid.set(focusedSid, focusedSeq);
         focusedSid = '';
@@ -333,6 +345,8 @@ export function startDirectMode() {
   }
 
   function handleServer(m) {
+    const eventSid = m.session_id || m.payload?.session_id;
+    if (eventSid && eventSid !== focusedSid) return;
     if (m.type === 'server_hello') {
       retry = 0;
       awaitingAck = true;

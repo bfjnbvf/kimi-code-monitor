@@ -178,7 +178,8 @@ test('额度响应会等待预警状态与每日快照落盘后再结束', async
   const alertStates = Object.values(app.local.quotaAlertState || {});
   assert.ok(alertStates[0]?.week?.notified80, '预警状态应已写入');
   const todayKey = KimiMetrics.usageDayKey(new Date());
-  assert.ok(app.local.quotaSnapshots?.[todayKey], '当日额度快照应已写入');
+  const accountId = Object.keys(app.local.quotaSnapshots || {})[0];
+  assert.ok(app.local.quotaSnapshots?.[accountId]?.[todayKey], '当日额度快照应按账户写入');
 });
 
 test('resetAndStartOAuth 会等待 pending 的旧授权流程结束后再发起新流程', async () => {
@@ -283,6 +284,32 @@ test('OAuth token 明文迁移为加密存储，重复读取不再重写', async
   };
   await app.run('readAccountStore()');
   assert.equal(writes, 0);
+});
+
+test('旧 token 删除失败后再次读取不会重复创建账户', async () => {
+  const app = await loadBackground({
+    local: {
+      kimiOAuthToken: {
+        access_token: 'duplicate-access',
+        refresh_token: 'duplicate-refresh',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        expires_in: 3600,
+        scope: '',
+        token_type: 'bearer'
+      }
+    }
+  });
+  const originalRemove = app.context.chrome.storage.local.remove;
+  let shouldFail = true;
+  app.context.chrome.storage.local.remove = async (keys) => {
+    if (shouldFail && keys.includes('kimiOAuthToken')) throw new Error('simulated remove failure');
+    return originalRemove(keys);
+  };
+  await assert.rejects(app.run('readAccountStore()'), /simulated remove failure/);
+  shouldFail = false;
+  const store = await app.run('readAccountStore()');
+  assert.equal(store.accounts.length, 1);
+  assert.equal(store.accounts[0].token.access_token, 'duplicate-access');
 });
 
 test('fetchQuota 按账户 id 单飞：同账户并发共享一次网络请求', async () => {

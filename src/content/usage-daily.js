@@ -10,6 +10,7 @@
 import * as KimiCliUsage from '../cli-usage.js';
 import { panel } from './panel-state.js';
 import { renderChart, renderAgents, renderStatSlots, renderExternal } from './render.js';
+import { allowSensitiveLocalData } from './data-boundary.js';
 
 const CLI_REFRESH_AFTER_TURN_MS = 1_500;
 const CLI_REFRESH_STALE_MS = 60_000;
@@ -23,7 +24,12 @@ export function initUsageDaily(nextDeps) {
 }
 
 export async function loadUsageDaily({ refreshIfStale = false } = {}) {
-  if (deps.isDisposed()) return;
+  if (deps.isDisposed() || !allowSensitiveLocalData()) {
+    panel.cliUsageConnected = false;
+    panel.usageDailyCache = {};
+    panel.usageHourlyCache = {};
+    return;
+  }
   try {
     const status = await chrome.runtime.sendMessage({ type: 'cli.usage.status' });
     panel.cliUsageConnected = status?.ok === true && status.connected === true;
@@ -59,7 +65,7 @@ export async function loadUsageDaily({ refreshIfStale = false } = {}) {
 }
 
 export function scheduleCliUsageRefresh() {
-  if (!panel.cliUsageConnected) return;
+  if (!panel.cliUsageConnected || !allowSensitiveLocalData()) return;
   if (cliRefreshTimer) clearTimeout(cliRefreshTimer);
   // turn.ended 可能早于 wire 异步落盘；稍后只触发一次低频增量校准。
   cliRefreshTimer = setTimeout(() => {
@@ -70,7 +76,7 @@ export function scheduleCliUsageRefresh() {
 }
 
 export async function fetchExternalProviders() {
-  if (deps.isDisposed() || panel.widgetConfig.modules.external?.show === 'hidden') return;
+  if (deps.isDisposed() || !allowSensitiveLocalData() || panel.widgetConfig.modules.external?.show === 'hidden') return;
   try {
     const response = await chrome.runtime.sendMessage({ type: 'external.status' });
     if (response?.ok) {

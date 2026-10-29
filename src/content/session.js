@@ -13,6 +13,7 @@ import * as KimiCliUsage from '../cli-usage.js';
 import { panel, clearSessionHistory, resetMetrics, resetSessionAgents, seedSessionAgent } from './panel-state.js';
 import { toNumber, PET_ANSWER_STATUSES, rcApiPrefix, isRemoteControl, localApiAuthHeaders } from './utils.js';
 import { renderAll, setAgentStatus, resetAgentStatusThrottle } from './render.js';
+import { allowSensitiveLocalData } from './data-boundary.js';
 import {
   petCancelTurn,
   petClockTick,
@@ -92,7 +93,7 @@ function applySessionSeed(seed) {
 }
 
 async function readSessionSeed(targetSessionId) {
-  if (deps.isDisposed()) return null;
+  if (deps.isDisposed() || !allowSensitiveLocalData()) return null;
   const stored = await chrome.storage.local.get(KimiCliUsage.SESSIONS_STORAGE_KEY);
   return stored[KimiCliUsage.SESSIONS_STORAGE_KEY]?.[targetSessionId] || null;
 }
@@ -140,7 +141,7 @@ async function restoreSessionFromScan(targetSessionId, stale) {
 // 轮次结束后台重扫完成：本地按会话汇总已包含刚结束的轮次；空闲时用它刷新
 // 面板底数（实时累计已被汇总覆盖，直接替换不双算），忙碌时跳过等下一轮。
 export async function refreshSessionSeedFromScan() {
-  if (deps.isDisposed() || !currentSessionId || panel.petTurnActive) return;
+  if (deps.isDisposed() || !allowSensitiveLocalData() || !currentSessionId || panel.petTurnActive) return;
   if (PET_ANSWER_STATUSES.includes(metrics.agentStatus)) return;
   // await 期间可能已切换会话，旧会话的 seed 不能覆盖新会话面板
   const sid = currentSessionId;

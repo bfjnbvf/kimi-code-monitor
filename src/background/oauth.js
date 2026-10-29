@@ -116,7 +116,7 @@ async function pollDeviceAuthorization() {
       return;
     }
     await clearPendingAuthorization({ closeTab: true });
-    console.warn('[Kimi Status] 设备授权失败', data);
+    console.warn('[Kimi Status] 设备授权失败', { status: response.status, error: typeof data.error === 'string' ? data.error : 'unknown' });
     return;
   }
 
@@ -180,16 +180,20 @@ async function persistAccountStore(store) {
   await chrome.storage.local.set({ [ACCOUNTS_STORAGE_KEY]: persisted });
 }
 
-async function writeAccountStore(store) {
-  await withStorageLock(ACCOUNTS_STORAGE_KEY, async () => {
+async function mutateAccountStore(mutator) {
+  return withStorageLock(ACCOUNTS_STORAGE_KEY, async () => {
+    const store = await readAccountStoreUnlocked(false);
+    const result = await mutator(store);
     await persistAccountStore(store);
+    await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
+    return result;
   });
 }
 
 // 读取账户表；检测到旧版单 token 存储时迁移为首个账户（默认「账户 1」）并删除旧键。
 // 已持久化的 token 是密文（tokenEnc），读入时解密为内存对象 token；写入时再由
 // persistAccountStore 加密回 tokenEnc，实现透明迁移。
-export async function readAccountStore() {
+async function readAccountStoreUnlocked(persistDirty) {
   const stored = await chrome.storage.local.get([ACCOUNTS_STORAGE_KEY, TOKEN_STORAGE_KEY]);
   const raw = stored[ACCOUNTS_STORAGE_KEY];
   let store;
@@ -224,7 +228,7 @@ export async function readAccountStore() {
   }
   const legacy = stored[TOKEN_STORAGE_KEY];
   if (legacy) {
-    if (isTokenShapeValid(legacy)) {
+    if (isTokenShapeValid(legacy) && !store.accounts.some((account) => account.token?.access_token === legacy.access_token)) {
       const account = {
         id: newAccountId(),
         label: nextDefaultLabel(store.accounts),
@@ -245,36 +249,39 @@ export async function readAccountStore() {
       dirty = true;
     }
   }
-  if (dirty) {
+  if (dirty && persistDirty) {
+    await persistAccountStore(store);
     await chrome.storage.local.remove(TOKEN_STORAGE_KEY);
-    await writeAccountStore(store);
   }
   return store;
+}
+
+export async function readAccountStore() {
+  return withStorageLock(ACCOUNTS_STORAGE_KEY, () => readAccountStoreUnlocked(true));
 }
 
 // 授权完成：accountId 命中的为重新授权（保留备注名），否则新建账户；
 // 最新完成授权的账户一律成为当前激活账户
 async function completeAccountAuthorization(authorization, token) {
-  const store = await readAccountStore();
-  const target = store.accounts.find((account) => account.id === authorization.accountId);
-  if (target) {
-    target.token = token;
-    target.needsReauth = false;
-    store.activeId = target.id;
-    await writeAccountStore(store);
-    return target;
-  }
-  const account = {
-    id: newAccountId(),
-    label: authorization.label || nextDefaultLabel(store.accounts),
-    token,
-    needsReauth: false,
-    addedAt: Date.now()
-  };
-  store.accounts.push(account);
-  store.activeId = account.id;
-  await writeAccountStore(store);
-  return account;
+  return mutateAccountStore((store) => {
+    const target = store.accounts.find((account) => account.id === authorization.accountId);
+    if (target) {
+      target.token = token;
+      target.needsReauth = false;
+      store.activeId = target.id;
+      return target;
+    }
+    const account = {
+      id: newAccountId(),
+      label: authorization.label || nextDefaultLabel(store.accounts),
+      token,
+      needsReauth: false,
+      addedAt: Date.now()
+    };
+    store.accounts.push(account);
+    store.activeId = account.id;
+    return account;
+  });
 }
 
 // 在加锁状态下读取最新账户表，定位 accountId 并应用 updater，写回时自动加密 token。
@@ -478,56 +485,63 @@ export function reauthAccountOAuth(payload) {
 // 切换激活账户；额度缓存按账户隔离，面板先显示该账户缓存再强制刷新
 export async function switchAccount(payload) {
   const id = payload?.id;
-  const store = await readAccountStore();
-  if (!store.accounts.some((account) => account.id === id)) {
-    return failure(new Error('账户不存在'));
-  }
-  if (store.activeId !== id) {
+  let changed = false;
+  const result = await mutateAccountStore((store) => {
+    if (!store.accounts.some((account) => account.id === id)) return failure(new Error('账户不存在'));
+    changed = store.activeId !== id;
     store.activeId = id;
-    await writeAccountStore(store);
-    broadcastAuthState('auth.switched');
-  }
-  return { ok: true, activeId: store.activeId };
+    return { ok: true, activeId: id };
+  });
+  if (result.ok && changed) broadcastAuthState('auth.switched');
+  return result;
 }
 
 // 移除账户；移除激活账户时自动切到剩余第一个，无剩余则回到未授权状态
 export async function removeAccount(payload) {
   const id = payload?.id;
-  const store = await readAccountStore();
-  const next = store.accounts.filter((account) => account.id !== id);
-  if (next.length === store.accounts.length) return failure(new Error('账户不存在'));
-  const wasActive = store.activeId === id;
-  store.accounts = next;
-  if (wasActive) store.activeId = next[0]?.id || null;
-  await writeAccountStore(store);
+  let wasActive = false;
+  let remaining = 0;
+  const result = await mutateAccountStore((store) => {
+    const next = store.accounts.filter((account) => account.id !== id);
+    if (next.length === store.accounts.length) return failure(new Error('账户不存在'));
+    wasActive = store.activeId === id;
+    store.accounts = next;
+    remaining = next.length;
+    if (wasActive) store.activeId = next[0]?.id || null;
+    return { ok: true, activeId: store.activeId };
+  });
+  if (!result.ok) return result;
   refreshPromises.delete(id);
   hooks.invalidateQuotaCache(id);
   await hooks.clearQuotaAlertState(id);
-  if (wasActive) broadcastAuthState(next.length ? 'auth.switched' : 'auth.cleared');
-  return { ok: true, activeId: store.activeId };
+  if (wasActive) broadcastAuthState(remaining ? 'auth.switched' : 'auth.cleared');
+  return result;
 }
 
 export async function renameAccount(payload) {
   const id = payload?.id;
   const label = String(payload?.label || '').trim().slice(0, 30);
   if (!label) return failure(new Error('备注名不能为空'));
-  const store = await readAccountStore();
-  const account = store.accounts.find((item) => item.id === id);
-  if (!account) return failure(new Error('账户不存在'));
-  account.label = label;
-  await writeAccountStore(store);
-  return { ok: true };
+  return mutateAccountStore((store) => {
+    const account = store.accounts.find((item) => item.id === id);
+    if (!account) return failure(new Error('账户不存在'));
+    account.label = label;
+    return { ok: true };
+  });
 }
 
 
 export async function resetAndStartOAuth() {
   authRevision += 1;
-  const store = await readAccountStore();
-  const active = activeAccountOf(store);
+  const active = await mutateAccountStore((store) => {
+    const current = activeAccountOf(store);
+    if (current) {
+      current.token = null;
+      current.needsReauth = true;
+    }
+    return current;
+  });
   if (active) {
-    active.token = null;
-    active.needsReauth = true;
-    await writeAccountStore(store);
     hooks.invalidateQuotaCache(active.id);
     refreshPromises.delete(active.id);
   }
@@ -545,7 +559,7 @@ export async function resetAndStartOAuth() {
 // 仅清除授权（测试或换账户前的重置）：清空全部账户
 export async function clearAuth() {
   authRevision += 1;
-  await chrome.storage.local.remove([ACCOUNTS_STORAGE_KEY, TOKEN_STORAGE_KEY]);
+  await chrome.storage.local.remove([ACCOUNTS_STORAGE_KEY, TOKEN_STORAGE_KEY, 'kimiWebAccessToken']);
   await clearPendingAuthorization({ closeTab: true });
   hooks.invalidateQuotaCache(null);
   refreshPromises.clear();

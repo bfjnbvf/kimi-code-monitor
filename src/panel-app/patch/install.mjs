@@ -132,9 +132,9 @@ export function payloadHash(root) {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 8);
 }
 
-/** 去掉所有含 loader 标签的行（幂等重装 / 无备份卸载用） */
+/** 精确移除 loader 的 script 节点，保留同一行里的其他 HTML。 */
 export function stripLoaderTagLines(html) {
-  return html.split('\n').filter((line) => !line.includes(LOADER_SRC)).join('\n');
+  return html.replace(/\s*<script\b[^>]*\bsrc=(["'])\/kcm\/loader\.js(?:\?[^"']*)?\1[^>]*><\/script>/g, '');
 }
 
 /** 在首个 </head> 前插入 loader 标签；找不到返回 null。 */
@@ -142,18 +142,18 @@ export function injectLoaderTag(html, hash) {
   const marker = '</head>';
   const idx = html.indexOf(marker);
   if (idx < 0) return null;
-  const tag = `      <script src="${LOADER_SRC}?v=${hash}"></script>\n`;
-  return html.slice(0, idx) + tag + html.slice(idx);
+  const needsNewline = idx > 0 && html[idx - 1] !== '\n';
+  const tag = `      <script src="${LOADER_SRC}?v=${hash}"></script>${needsNewline ? '' : '\n'}`;
+  return html.slice(0, idx) + (needsNewline ? '\n' : '') + tag + html.slice(idx);
 }
 
-/** 原子替换 index.html：先写同目录暂存文件再 rename 顶替。'w' 直写会先截断
- *  原文件，写一半失败（杀软锁文件/磁盘满）会留下空文件；同目录 rename 顶替
- *  要么成功要么原文件一个字节不动。失败时清掉暂存文件后原样抛出。 */
+/** 同目录暂存后原子替换，保留原文件权限。 */
 function replaceIndex(index, content) {
   const staged = path.join(path.dirname(index), `.kcm-index-${process.pid}.html`);
+  const mode = fs.existsSync(index) ? fs.statSync(index).mode : 0o600;
   fs.rmSync(staged, { force: true });
   try {
-    fs.writeFileSync(staged, content);
+    fs.writeFileSync(staged, content, { mode });
     fs.renameSync(staged, index);
   } catch (error) {
     fs.rmSync(staged, { force: true });
@@ -212,24 +212,40 @@ function fetchWalletSnapshot(dist) {
  *  不能先删后拷：客户端目录受 macOS「App 管理」保护时，创建会被拒（EPERM）
  *  而删除已经生效，留下「没有载荷、index.html 却仍引用 loader」的坏状态。
  *  先在目标目录里建出暂存目录，等于把「这里能不能写」验证在动手之前。 */
-function syncPayload(dist) {
+export function syncPayload(dist, renameSync = fs.renameSync, sourceDir = HERE) {
   const staged = path.join(dist, `${PAYLOAD_DIR}.new-${process.pid}`);
+  const previous = path.join(dist, `${PAYLOAD_DIR}.old-${process.pid}`);
+  const payload = path.join(dist, PAYLOAD_DIR);
   fs.rmSync(staged, { recursive: true, force: true });
+  fs.rmSync(previous, { recursive: true, force: true });
+  let hadPrevious = false;
   try {
-    copyDirSync(path.join(HERE, PAYLOAD_DIR), staged);
-    // 工具随载荷进驻补丁目录：余额抓取（技能「刷新余额」用）、
-    // 历史统计扫描（技能「刷新本地统计」用——默认原地重写同目录的 usage-daily.js）
+    copyDirSync(path.join(sourceDir, PAYLOAD_DIR), staged);
     for (const tool of ['fetch-wallet.mjs', 'scan.mjs']) {
-      const source = path.join(HERE, tool);
+      const source = path.join(sourceDir, tool);
       if (fs.existsSync(source)) fs.copyFileSync(source, path.join(staged, tool));
     }
-    const payload = path.join(dist, PAYLOAD_DIR);
-    fs.rmSync(payload, { recursive: true, force: true });
-    fs.renameSync(staged, payload);
+    if (fs.existsSync(payload)) {
+      renameSync(payload, previous);
+      hadPrevious = true;
+    }
+    renameSync(staged, payload);
   } catch (error) {
     fs.rmSync(staged, { recursive: true, force: true });
+    try {
+      if (hadPrevious && !fs.existsSync(payload)) renameSync(previous, payload);
+    } catch (rollbackError) {
+      throw new Error(`${error.message}；旧载荷恢复失败：${rollbackError.message}`);
+    }
     throw error;
   }
+  return {
+    commit() { fs.rmSync(previous, { recursive: true, force: true }); },
+    rollback() {
+      fs.rmSync(payload, { recursive: true, force: true });
+      if (hadPrevious) renameSync(previous, payload);
+    }
+  };
 }
 
 function install(appRoot, dist) {
@@ -260,56 +276,57 @@ function install(appRoot, dist) {
   }
 
   const backup = index + BACKUP_SUFFIX;
+  const html = fs.readFileSync(index, 'utf8');
   try {
-    if (!fs.existsSync(backup)) {
-      fs.copyFileSync(index, backup);
-      console.error('[install] 已备份原始 index.html');
+    if (!fs.existsSync(backup) || !html.includes(LOADER_SRC)) {
+      const original = stripLoaderTagLines(html);
+      if (!fs.existsSync(backup) || fs.readFileSync(backup, 'utf8') !== original) {
+        replaceIndex(backup, original);
+        console.error('[install] 已备份当前原始 index.html');
+      } else {
+        console.error('[install] 备份已存在且与当前原始页面一致');
+      }
+    } else if (fs.readFileSync(backup, 'utf8').includes(LOADER_SRC)) {
+      replaceIndex(backup, stripLoaderTagLines(fs.readFileSync(backup, 'utf8')));
+      console.error('[install] 已清理备份中的旧注入标签');
     } else {
-      console.error('[install] 备份已存在，保留最早的原始版本');
+      console.error('[install] 备份已存在，保留原始版本');
     }
   } catch (error) {
-    // 预检通过后仍失败（权限竞态/杀软拦截）：原 index.html 未动，直接中止
     console.error(`[install] 备份失败：${error?.message || error}`);
     console.error('[install] 已中止：index.html 未改动，请按上方权限指引处理后重试');
     process.exit(1);
   }
 
+  let payloadSync;
   try {
-    syncPayload(dist);
+    payloadSync = syncPayload(dist);
   } catch (error) {
     console.error(`[install] 载荷写入失败：${error?.message || error}`);
-    if (error?.code === 'EPERM' || error?.code === 'EACCES') {
-      console.error('[install] 客户端目录被系统保护（macOS「App 管理」/ Windows 目录权限）：');
-      console.error('[install] 系统设置 → 隐私与安全性 →「App 管理」里允许当前终端/应用后重试');
-    }
     console.error('[install] 已中止：原有载荷与 index.html 都未改动');
     process.exit(1);
   }
   console.error('[install] 载荷已同步');
 
-  prescanHistory(dist);
-  fetchWalletSnapshot(dist);
-
-  const hash = payloadHash(path.join(dist, PAYLOAD_DIR));
-  const html = fs.readFileSync(index, 'utf8');
-  const injected = injectLoaderTag(stripLoaderTagLines(html), hash);
-  if (injected === null) {
-    console.error('[install] 注入标签失败：index.html 结构与预期不符（可能客户端大版本更新），已中止');
-    fs.copyFileSync(backup, index);
-    fs.rmSync(path.join(dist, PAYLOAD_DIR), { recursive: true, force: true });
-    process.exit(1);
-  }
+  let hash;
   try {
+    prescanHistory(dist);
+    fetchWalletSnapshot(dist);
+    hash = payloadHash(path.join(dist, PAYLOAD_DIR));
+    const injected = injectLoaderTag(stripLoaderTagLines(html), hash);
+    if (injected === null) throw new Error('index.html 结构与预期不符（可能客户端大版本更新）');
     replaceIndex(index, injected);
+    if (!fs.readFileSync(index, 'utf8').includes(`${LOADER_SRC}?v=${hash}`)) {
+      throw new Error('注入后的 index.html 校验失败');
+    }
+    try { payloadSync.commit(); } catch (error) {
+      console.error(`[install] 旧载荷清理未完成（不影响本次安装）：${error?.message || error}`);
+    }
   } catch (error) {
-    console.error(`[install] 写入 index.html 失败：${error?.message || error}`);
-    console.error('[install] 已中止：index.html 未改动（载荷已同步，处理后重跑安装入口即可完成）');
-    process.exit(1);
-  }
-  if (!fs.readFileSync(index, 'utf8').includes(`${LOADER_SRC}?v=${hash}`)) {
-    console.error('[install] 注入校验失败，正在还原备份……');
-    fs.copyFileSync(backup, index);
-    fs.rmSync(path.join(dist, PAYLOAD_DIR), { recursive: true, force: true });
+    let rollbackMessage = '';
+    try { replaceIndex(index, html); } catch (rollbackError) { rollbackMessage += `；页面恢复失败：${rollbackError.message}`; }
+    try { payloadSync.rollback(); } catch (rollbackError) { rollbackMessage += `；旧载荷恢复失败：${rollbackError.message}`; }
+    console.error(`[install] 安装失败：${error?.message || error}${rollbackMessage}`);
     process.exit(1);
   }
 
@@ -322,9 +339,8 @@ function uninstall(dist) {
   const index = path.join(dist, 'index.html');
   const backup = index + BACKUP_SUFFIX;
   if (fs.existsSync(backup)) {
-    // 用 Buffer 原样顶替，兑现「卸载逐字节还原」；失败时备份仍在，可重跑
     try {
-      replaceIndex(index, fs.readFileSync(backup));
+      replaceIndex(index, stripLoaderTagLines(fs.readFileSync(backup, 'utf8')));
     } catch (error) {
       console.error(`[install] 还原 index.html 失败：${error?.message || error}`);
       console.error('[install] 备份仍在（index.html.bak-kcm），处理后重跑 --uninstall 即可');

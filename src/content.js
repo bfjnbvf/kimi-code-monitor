@@ -75,6 +75,7 @@ import {
 } from './content/bookmarks.js';
 import { initSessionTidy } from './content/session-tidy.js';
 import { syncLocaleFromPage } from './i18n.js';
+import { allowSensitiveLocalData } from './content/data-boundary.js';
 
 // ESM 静态依赖：缺失即加载失败，错误会直接在控制台可见，不再需要运行时守卫。
 
@@ -196,7 +197,7 @@ async function activatePage() {
   if (disposed) return;
   pageActivated = true;
   quotaTimer = setInterval(fetchQuota, QUOTA_INTERVAL_MS);
-  externalTimer = setInterval(fetchExternalProviders, QUOTA_INTERVAL_MS);
+  if (allowSensitiveLocalData()) externalTimer = setInterval(fetchExternalProviders, QUOTA_INTERVAL_MS);
 }
 
 function checkPageState() {
@@ -259,14 +260,15 @@ function handleStorageChanged(changes, area) {
       applyWidgetConfig(next);
     }
   }
+  const sensitive = allowSensitiveLocalData();
   const dailyKey = KimiCliUsage.DAILY_STORAGE_KEY;
-  if (dailyKey && changes[dailyKey]) {
+  if (sensitive && dailyKey && changes[dailyKey]) {
     panel.usageDailyCache = changes[dailyKey].newValue || {};
     renderChart();
     renderStatSlots();
   }
   const hourlyKey = KimiCliUsage.HOURLY_STORAGE_KEY;
-  if (hourlyKey && changes[hourlyKey]) {
+  if (sensitive && hourlyKey && changes[hourlyKey]) {
     panel.usageHourlyCache = changes[hourlyKey].newValue || {};
     renderChart();
   }
@@ -277,9 +279,9 @@ function handleStorageChanged(changes, area) {
     setBookmarksEnabled(changes[BOOKMARKS_FEATURE_STORAGE_KEY].newValue !== false);
   }
   // 收藏数据变化（其他标签页写入）：刷新星标/目录行/收藏页
-  handleBookmarksStorageChanged(changes);
+  if (sensitive) handleBookmarksStorageChanged(changes);
   const stateKey = KimiCliUsage.STATE_STORAGE_KEY;
-  if (stateKey && changes[stateKey]) {
+  if (sensitive && stateKey && changes[stateKey]) {
     panel.cliUsageConnected = changes[stateKey].newValue?.connected === true;
     if (!panel.cliUsageConnected) {
       panel.usageDailyCache = {};
@@ -388,7 +390,7 @@ function pageShowsKimiWebSigns() {
 let bookmarksActive = false;
 
 function startBookmarks() {
-  if (bookmarksActive || disposed) return;
+  if (bookmarksActive || disposed || !allowSensitiveLocalData()) return;
   bookmarksActive = true;
   initBookmarks({
     isDisposed: () => disposed,

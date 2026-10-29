@@ -19,8 +19,7 @@ function openVaultDb() {
   });
 }
 
-// 读取或首次生成 AES-GCM 密钥；extractable=false，JS 无法导出原始密钥材料
-async function getVaultKey() {
+async function loadVaultKey() {
   const db = await openVaultDb();
   try {
     const existing = await new Promise((resolve, reject) => {
@@ -42,6 +41,17 @@ async function getVaultKey() {
   } finally {
     db.close();
   }
+}
+
+let vaultKeyPromise;
+function getVaultKey() {
+  if (!vaultKeyPromise) {
+    vaultKeyPromise = loadVaultKey().catch((error) => {
+      vaultKeyPromise = null;
+      throw error;
+    });
+  }
+  return vaultKeyPromise;
 }
 
 function bytesToBase64(bytes) {

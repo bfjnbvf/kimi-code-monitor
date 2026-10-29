@@ -14,7 +14,8 @@ import {
   distDirOf,
   payloadHash,
   stripLoaderTagLines,
-  injectLoaderTag
+  injectLoaderTag,
+  syncPayload
 } from '../src/panel-app/patch/install.mjs';
 import { payloadHash as doctorPayloadHash } from '../skill/scripts/doctor.mjs';
 
@@ -68,8 +69,14 @@ test('stripLoaderTagLines：移除注入行且幂等', () => {
 test('injectLoaderTag：插入首个 </head> 前；缺失返回 null', () => {
   const html = '<html><head><title>t</title></head><body></body></html>';
   const out = injectLoaderTag(html, 'deadbeef');
-  assert.equal(out, '<html><head><title>t</title>      <script src="/kcm/loader.js?v=deadbeef"></script>\n</head><body></body></html>');
+  assert.equal(out, '<html><head><title>t</title>\n      <script src="/kcm/loader.js?v=deadbeef"></script></head><body></body></html>');
   assert.equal(injectLoaderTag('<html><body></body></html>', 'x'), null);
+});
+
+test('单行 HTML：注入后精确移除标签，不删除 head 其他内容', () => {
+  const original = '<html><head><title>t</title><meta charset="utf-8"></head><body></body></html>';
+  const injected = injectLoaderTag(original, 'deadbeef');
+  assert.equal(stripLoaderTagLines(injected), original);
 });
 
 /* ---------- 载荷哈希：与旧 bash 管线（find|shasum|sort|shasum）逐字节兼容 ---------- */
@@ -288,6 +295,66 @@ test('集成：目录不可写时给人话指引而非裸 EPERM 堆栈（Windows
     assert.ok(!fs.existsSync(path.join(dist, 'kcm')), '不应产生载荷');
   } finally {
     fs.chmodSync(dist, 0o755);
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('载荷切换失败时恢复旧目录', async () => {
+  const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-payload-rollback-'));
+  const patchDir = await makeFakePatchDir();
+  try {
+    fs.mkdirSync(path.join(dist, 'kcm'), { recursive: true });
+    fs.writeFileSync(path.join(dist, 'kcm', 'loader.js'), '// old payload\n');
+    assert.throws(() => syncPayload(dist, (from, to) => {
+      if (from.includes('.new-')) throw new Error('simulated rename failure');
+      fs.renameSync(from, to);
+    }, patchDir), /simulated rename failure/);
+    assert.equal(fs.readFileSync(path.join(dist, 'kcm', 'loader.js'), 'utf8'), '// old payload\n');
+    assert.ok(!fs.existsSync(path.join(dist, `kcm.old-${process.pid}`)));
+  } finally {
+    fs.rmSync(dist, { recursive: true, force: true });
+  }
+});
+
+test('单行页面连续安装、无备份卸载与权限保持', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-minified-flow-'));
+  try {
+    const patchDir = await makeFakePatchDir();
+    const appRoot = path.join(work, 'app');
+    const { dist } = makeFakeApp(appRoot);
+    const index = path.join(dist, 'index.html');
+    const original = '<html><head><title>keep</title><meta charset="utf-8"></head><body><div id="app"></div></body></html>';
+    fs.writeFileSync(index, original);
+    if (process.platform !== 'win32') fs.chmodSync(index, 0o600);
+    const env = { KIMI_CODE_HOME: work };
+    runInstaller(patchDir, ['--app', appRoot], env);
+    runInstaller(patchDir, ['--app', appRoot], env);
+    assert.ok(fs.readFileSync(index, 'utf8').includes('<title>keep</title><meta charset="utf-8">'));
+    fs.rmSync(path.join(dist, 'index.html.bak-kcm'));
+    runInstaller(patchDir, ['--uninstall', '--app', appRoot], env);
+    assert.equal(fs.readFileSync(index, 'utf8'), original);
+    if (process.platform !== 'win32') assert.equal(fs.statSync(index).mode & 0o777, 0o600);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('客户端换成新原始页面后重建备份', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-backup-refresh-'));
+  try {
+    const patchDir = await makeFakePatchDir();
+    const appRoot = path.join(work, 'app');
+    const { dist } = makeFakeApp(appRoot);
+    const index = path.join(dist, 'index.html');
+    const env = { KIMI_CODE_HOME: work };
+    runInstaller(patchDir, ['--app', appRoot], env);
+    const updated = '<html><head><title>new client</title></head><body></body></html>\n';
+    fs.writeFileSync(index, updated);
+    runInstaller(patchDir, ['--app', appRoot], env);
+    assert.equal(fs.readFileSync(path.join(dist, 'index.html.bak-kcm'), 'utf8'), updated);
+    runInstaller(patchDir, ['--uninstall', '--app', appRoot], env);
+    assert.equal(fs.readFileSync(index, 'utf8'), updated);
+  } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
 });

@@ -161,7 +161,7 @@ function handleStepCompleted(payload, agentId) {
   panel.metrics.cacheCreationTokens += usage.cacheCreationTokens;
 
   // 按天自积累（补丁模式无看门狗时长期统计的兜底，详见 accumulate.js）
-  noteStepUsage(usage);
+  noteStepUsage(usage, agentId !== 'main');
 
   // 落进「代理 × 模型」：事件自带模型名就用它（主代理中途换过模型时各归各行），
   // 不带就记到该代理的当前模型；代理合计同步累加，两者不会各记一份

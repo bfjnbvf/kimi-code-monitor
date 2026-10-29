@@ -474,3 +474,30 @@ test('缓存与预警按账户隔离：allowStale 命中旧缓存，同一阈值
   assert.equal(alerting.local.quotaAlertState['acc-a'].week.notified80, true);
   assert.equal(alerting.local.quotaAlertState['acc-b'].week.notified80, true);
 });
+
+test('并发切换与移除不会复活已删除账户', async () => {
+  const app = await loadBackground({
+    local: seedStore(
+      [makeAccount('acc-a', '账户 1', makeToken('a')), makeAccount('acc-b', '账户 2', makeToken('b'))],
+      'acc-a'
+    )
+  });
+  await Promise.all([
+    app.run(`removeAccount({ id: 'acc-b' })`),
+    app.run(`switchAccount({ id: 'acc-b' })`)
+  ]);
+  const store = await app.run('readAccountStore()');
+  assert.deepEqual(store.accounts.map((account) => account.id), ['acc-a']);
+  assert.equal(store.activeId, 'acc-a');
+});
+
+test('额度历史快照按账户隔离', async () => {
+  const app = await loadBackground();
+  await Promise.all([
+    app.run(`recordQuotaSnapshot({ usage: { limit: 100, used: 10 } }, 'acc-a')`),
+    app.run(`recordQuotaSnapshot({ usage: { limit: 100, used: 90 } }, 'acc-b')`)
+  ]);
+  const day = Object.keys(app.local.quotaSnapshots['acc-a'])[0];
+  assert.equal(app.local.quotaSnapshots['acc-a'][day].week, 10);
+  assert.equal(app.local.quotaSnapshots['acc-b'][day].week, 90);
+});

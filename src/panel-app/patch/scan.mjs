@@ -31,24 +31,26 @@ import {
 import { isSessionDirName, isSubagentAgentName, wirePathOf } from '../../session-files.js';
 
 const READ_CHUNK_BYTES = 4 * 1024 * 1024;
+const MAX_LINE_CHARS = 1024 * 1024;
+const MAX_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
+const MAX_SCAN_MS = 60_000;
 
 /** 枚举 sessions 下的 wire.jsonl（命名规则见 session-files.js，与扩展侧同一份）。
  *  返回 path（文件系统路径，读取用）与 key（跨会话汇总键，与扩展侧索引同形）。 */
-export function listWireFiles(sessionsDir) {
+export function listWireFiles(sessionsDir, failures = []) {
   const files = [];
-  let workspaces;
-  try {
-    workspaces = fs.readdirSync(sessionsDir, { withFileTypes: true });
-  } catch (error) {
-    return files;
-  }
+  if (!fs.existsSync(sessionsDir)) return files;
+  const root = fs.realpathSync(sessionsDir);
+  const workspaces = fs.readdirSync(root, { withFileTypes: true });
   for (const workspace of workspaces) {
     if (!workspace.isDirectory()) continue;
-    const workspaceDir = path.join(sessionsDir, workspace.name);
+    const workspaceDir = path.join(root, workspace.name);
     let sessions;
     try {
       sessions = fs.readdirSync(workspaceDir, { withFileTypes: true });
     } catch (error) {
+      if (error?.code !== 'ENOENT') failures.push(`${workspaceDir}: ${error?.message || error}`);
       continue;
     }
     for (const session of sessions) {
@@ -58,18 +60,26 @@ export function listWireFiles(sessionsDir) {
       try {
         agents = fs.readdirSync(agentsDir, { withFileTypes: true });
       } catch (error) {
+        if (error?.code !== 'ENOENT') failures.push(`${agentsDir}: ${error?.message || error}`);
         continue;
       }
       for (const agent of agents) {
         if (!agent.isDirectory()) continue;
         const wire = path.join(agentsDir, agent.name, 'wire.jsonl');
         if (!fs.existsSync(wire)) continue;
-        files.push({
-          path: wire,
-          key: wirePathOf(workspace.name, session.name, agent.name),
-          // agents/main 为主代理，其余（agent-N 等）按子代理分桶
-          isSubagent: isSubagentAgentName(agent.name)
-        });
+        try {
+          const stat = fs.lstatSync(wire);
+          if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('不是普通文件');
+          const real = fs.realpathSync(wire);
+          if (!real.startsWith(root + path.sep)) throw new Error('文件指向 sessions 目录之外');
+          files.push({
+            path: real,
+            key: wirePathOf(workspace.name, session.name, agent.name),
+            isSubagent: isSubagentAgentName(agent.name)
+          });
+        } catch (error) {
+          failures.push(`${wire}: ${error?.message || error}`);
+        }
       }
     }
   }
@@ -78,28 +88,38 @@ export function listWireFiles(sessionsDir) {
 
 /** 流式读单个文件：按完整行喂给 parseUsageLines，跨块的多字节字符由
  *  StringDecoder 兜住；末尾未写完的行（无换行符）跳过，下次重扫补齐 */
-function scanFileStream(filePath, daily, hourly, isSubagent, meta) {
+function scanFileStream(filePath, daily, hourly, isSubagent, meta, limits) {
   const decoder = new StringDecoder('utf8');
   let carry = '';
   let records = 0;
+  let fileBytes = 0;
   const buffer = Buffer.alloc(READ_CHUNK_BYTES);
   const fd = fs.openSync(filePath, 'r');
   try {
     let read;
     while ((read = fs.readSync(fd, buffer, 0, READ_CHUNK_BYTES, null)) > 0) {
+      fileBytes += read;
+      limits.totalBytes += read;
+      if (fileBytes > MAX_FILE_BYTES) throw new Error('单文件超过 64 MiB 上限');
+      if (limits.totalBytes > MAX_TOTAL_BYTES) throw new Error('总扫描量超过 512 MiB 上限');
+      if (Date.now() - limits.startedAt > MAX_SCAN_MS) throw new Error('扫描超过 60 秒上限');
       const text = carry + decoder.write(buffer.subarray(0, read));
       const lastNewline = text.lastIndexOf('\n');
       if (lastNewline < 0) {
         carry = text;
+        if (carry.length > MAX_LINE_CHARS) throw new Error('单行超过 1 MiB 上限');
         continue;
       }
+      const complete = text.slice(0, lastNewline + 1);
+      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 1 MiB 上限');
       carry = text.slice(lastNewline + 1);
-      records += parseUsageLines(text.slice(0, lastNewline + 1), daily, hourly, isSubagent, meta);
+      records += parseUsageLines(complete, daily, hourly, isSubagent, meta);
     }
     const tail = carry + decoder.end();
     if (tail.includes('\n')) {
-      // 末块解码尾巴恰好凑出完整行时也计入（罕见但零成本）
-      records += parseUsageLines(tail.slice(0, tail.lastIndexOf('\n') + 1), daily, hourly, isSubagent, meta);
+      const complete = tail.slice(0, tail.lastIndexOf('\n') + 1);
+      if (complete.split('\n').some((line) => line.length > MAX_LINE_CHARS)) throw new Error('单行超过 1 MiB 上限');
+      records += parseUsageLines(complete, daily, hourly, isSubagent, meta);
     }
   } finally {
     fs.closeSync(fd);
@@ -126,14 +146,14 @@ function readSecondaryModel(kimiHome) {
 export function scanSessions(sessionsDir) {
   const files = {};
   const failures = [];
+  const limits = { totalBytes: 0, startedAt: Date.now() };
   let recordCount = 0;
-  for (const entry of listWireFiles(sessionsDir)) {
-    // 单文件损坏/权限抖动跳过，不中断整次扫描（与扩展扫描同策略）
+  for (const entry of listWireFiles(sessionsDir, failures)) {
     const meta = emptyScanMeta();
     const fileDaily = {};
     const fileHourly = {};
     try {
-      recordCount += scanFileStream(entry.path, fileDaily, fileHourly, entry.isSubagent, meta);
+      recordCount += scanFileStream(entry.path, fileDaily, fileHourly, entry.isSubagent, meta, limits);
       files[entry.key] = { daily: fileDaily, hourly: fileHourly, meta };
     } catch (error) {
       failures.push(`${entry.path}: ${error?.message || error}`);
@@ -188,12 +208,24 @@ function main() {
   }
   const startedAt = Date.now();
   const result = scanSessions(args.sessions);
+  if (result.failures.length) {
+    for (const failure of result.failures.slice(0, 5)) console.error(`[scan]   ${failure}`);
+    console.error('[scan] 存在读取失败，已保留旧统计文件');
+    process.exit(1);
+  }
   const js = renderUsageDailyJs(result);
   if (args.stdout) {
     process.stdout.write(js);
   } else {
     fs.mkdirSync(path.dirname(args.out), { recursive: true });
-    fs.writeFileSync(args.out, js);
+    const staged = `${args.out}.tmp-${process.pid}`;
+    try {
+      fs.writeFileSync(staged, js, { mode: 0o600 });
+      fs.renameSync(staged, args.out);
+    } catch (error) {
+      fs.rmSync(staged, { force: true });
+      throw error;
+    }
   }
   const days = Object.keys(result.daily).sort();
   console.error(

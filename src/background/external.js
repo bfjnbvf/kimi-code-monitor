@@ -40,7 +40,6 @@ export async function readExternalAccounts() {
         dirty = true;
       }
     }
-    if (dirty) await chrome.storage.local.remove(EXTERNAL_LEGACY_KEYS_STORAGE_KEY);
     // 明文 key 一律加密改写为密文（含旧版迁移过来的）
     for (const account of accounts) {
       if (account.key && !account.keyEnc) {
@@ -54,6 +53,7 @@ export async function readExternalAccounts() {
     if (dirty) {
       await chrome.storage.local.set({ [EXTERNAL_ACCOUNTS_STORAGE_KEY]: accounts });
     }
+    if (Object.keys(legacy).length) await chrome.storage.local.remove(EXTERNAL_LEGACY_KEYS_STORAGE_KEY);
     return accounts;
   });
 }
