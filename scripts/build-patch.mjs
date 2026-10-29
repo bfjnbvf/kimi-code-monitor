@@ -74,5 +74,5 @@ const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'ut
 fs.writeFileSync(path.join(STAGE, 'kcm', 'VERSION'), `${version}\n`);
 const out = path.join(ROOT, 'kcm-desktop-patch.zip');
 fs.rmSync(out, { force: true });
-execFileSync('zip', ['-r', '-X', out, 'install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'kcm', '-x', '*.DS_Store'], { cwd: STAGE });
+execFileSync('zip', ['-r', '-X', out, 'install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'html.js', 'payload.js', 'kcm', '-x', '*.DS_Store'], { cwd: STAGE });
 console.log('已生成 kcm-desktop-patch.zip');
