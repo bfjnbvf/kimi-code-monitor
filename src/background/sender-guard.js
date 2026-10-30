@@ -14,6 +14,7 @@
  */
 
 import { isAuthorizedContentUrl } from './dynamic-hosts.js';
+import { DEFAULT_WEB_PORT } from '../host-patterns.js';
 
 // 内容脚本会发送的全部消息类型（与 src/content.js、src/content/ 的
 // chrome.runtime.sendMessage 调用点一一对应）。
@@ -26,7 +27,8 @@ const CONTENT_MESSAGE_TYPES = new Set([
   'cli.usage.refresh',
   'cli.usage.open_settings',
   'external.status',
-  'pet.asset.active'
+  'pet.asset.active',
+  'bookmarks.mutate'
 ]);
 
 export async function authorizeMessage(type, sender) {
@@ -38,5 +40,15 @@ export async function authorizeMessage(type, sender) {
   if (!sender?.tab) return true;
   // 内容脚本：来源必须是静态或动态授权站点，且消息类型在白名单内
   if (!CONTENT_MESSAGE_TYPES.has(type)) return false;
+  // 收藏写入比一般查询更敏感，只允许默认 Kimi 本地页面，动态授权站点也不能写。
+  if (type === 'bookmarks.mutate') {
+    try {
+      const source = new URL(sender.url);
+      if (source.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(source.hostname) ||
+          source.port !== String(DEFAULT_WEB_PORT)) return false;
+    } catch {
+      return false;
+    }
+  }
   return isAuthorizedContentUrl(sender.url);
 }

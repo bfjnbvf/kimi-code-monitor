@@ -140,7 +140,7 @@ test('收藏页：列表/卡片双视图 + 分组排序 + 批量管理', () => {
   assert.match(contentCss, /\.kbm-cards \.kbm-empty \{[\s\S]*?grid-column: 1 \/ -1/);
   // 批量管理：管理模式、全选、删除所选；管理条没有「完成」，工具条按钮切换为「完成」
   assert.match(source, /kbm-check-all/);
-  assert.match(source, /function deleteSelected\(\)/);
+  assert.match(source, /function deleteSelected\(anchor\)/);
   assert.match(source, /t\('删除所选（\{n\}）', \{ n: selected\.size \}\)/);
   assert.match(source, /\$\{managing \? t\('完成'\) : t\('批量管理'\)\}/);
   assert.doesNotMatch(source, /kbm-manage-done/);
@@ -196,7 +196,7 @@ test('详情弹层 markdown 还原：收藏时存渲染后 HTML（消毒），�
   assert.match(contentCss, /\.kbm-detail-text\.kbm-md,[\s\S]*?white-space: normal/);
 });
 
-test('消毒行为：页面级载体与动态 on* 被剔除，markdown 原样保留', () => {
+test('消毒行为：真实 DOM 全局下保留安全链接，剔除远程资源与动态载体', () => {
   const dom = new JSDOM(`<div class="msg" id="src">
     <h1 class="md-h1">标题</h1>
     <p>正文 <strong>加粗</strong> <code>code</code></p>
@@ -210,39 +210,35 @@ test('消毒行为：页面级载体与动态 on* 被剔除，markdown 原样保
     <a xlink:href="javascript:alert(1)">SVG 链接</a>
     <object data="javascript:alert(1)"></object>
     <form action="javascript:alert(1)"><input type="password"></form>
-    <svg><set attributeName="onbegin" to="alert(1)"/><circle r="5"/></svg>
+    <svg><image href="https://tracker.invalid/pixel.png"/><set attributeName="onbegin" to="alert(1)"/><circle r="5"/></svg>
     <!-- 注释节点 -->
   </div>`);
-  const out = sanitizeHtml(dom.window.document.getElementById('src'));
-  // markdown 结构与 data:image 保留（class 带入收藏页让 app 样式生效）
-  assert.match(out, /<h1 class="md-h1">标题<\/h1>/);
-  assert.match(out, /<strong>加粗<\/strong>/);
-  assert.match(out, /<code>code<\/code>/);
-  assert.match(out, /src="data:image\/png;base64,iVBORw0KGgo="/);
-  assert.match(out, /href="https:\/\/example\.com\/doc"/);
-  // 页面级载体：base/style
-  assert.doesNotMatch(out, /<base/i);
-  assert.doesNotMatch(out, /<style/i);
-  // 执行/框架
-  assert.doesNotMatch(out, /<script/i);
-  assert.doesNotMatch(out, /<iframe/i);
-  assert.doesNotMatch(out, /<object/i);
-  // on* 事件与 javascript:（含非枚举的 xlink:href）
-  assert.doesNotMatch(out, /onclick/);
-  assert.doesNotMatch(out, /onbegin/);
-  assert.doesNotMatch(out, /javascript:/i);
-  // SMIL 动画元素整体剔除，同棵 svg 里的静态图形保留
-  assert.doesNotMatch(out, /<set/i);
-  assert.match(out, /<circle r="5"/);
-  // data:text/html 拦、注释剥掉
-  assert.doesNotMatch(out, /<!--/);
+  const previousDocument = globalThis.document;
+  globalThis.document = dom.window.document;
+  try {
+    const out = sanitizeHtml(dom.window.document.getElementById('src'));
+    assert.match(out, /<h1 class="md-h1">标题<\/h1>/);
+    assert.match(out, /<strong>加粗<\/strong>/);
+    assert.match(out, /<code>code<\/code>/);
+    assert.match(out, /src="data:image\/png;base64,iVBORw0KGgo="/);
+    assert.match(out, /href="https:\/\/example\.com\/doc"/);
+    assert.doesNotMatch(out, /<base|<style|<script|<iframe|<object/i);
+    assert.doesNotMatch(out, /onclick|onbegin|javascript:|tracker\.invalid/i);
+    assert.doesNotMatch(out, /<set/i);
+    assert.match(out, /<circle r="5"/);
+    assert.doesNotMatch(out, /<!--/);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test('生命周期：装配进 content.js，storage 变化联动，销毁清理全部注入物', () => {
   assert.match(contentJs, /import \{[\s\S]*?initBookmarks,[\s\S]*?disposeBookmarks,[\s\S]*?handleBookmarksStorageChanged[\s\S]*?\} from '\.\/content\/bookmarks\.js'/);
   assert.match(contentJs, /handleBookmarksStorageChanged\(changes\)/);
   assert.match(contentJs, /disposeBookmarks\(\)/);
-  assert.match(source, /chrome\.storage\.local\.set\(\{ \[BOOKMARKS_STORAGE_KEY\]: store \}\)/);
+  assert.match(source, /type: 'bookmarks\.mutate'/);
+  assert.doesNotMatch(source, /chrome\.storage\.local\.set\(\{ \[BOOKMARKS_STORAGE_KEY\]: store \}\)/);
   assert.equal(BOOKMARKS_STORAGE_KEY, 'kimi-statusbar.bookmarks');
   // 销毁时移除页面、侧栏按钮、星标、目录行
   assert.match(source, /getElementById\('kbm-page'\)\?\.remove\(\)/);
@@ -351,7 +347,8 @@ test('列表与卡片按 HTML 还原 markdown（无 HTML 回退纯文本），�
   assert.match(source, /kbm-md\$\{text\.length > CARD_CLAMP_CHARS \? ' kbm-clamped'/);
   // 回填：当前会话的旧收藏从 DOM 补采 HTML 并持久化
   assert.match(source, /function backfillHtml\(rows\)/);
-  assert.match(source, /if \(dirty\) persist\(\);/);
+  assert.match(source, /operations\.push\(\{ type: 'patch'/);
+  assert.match(source, /commitBookmarks\(operations\)/);
   // markdown 容器交还块级排版
   assert.match(contentCss, /\.kbm-item-text\.kbm-md,[\s\S]*?white-space: normal/);
 });

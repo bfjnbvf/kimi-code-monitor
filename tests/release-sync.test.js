@@ -66,6 +66,11 @@ test('发版守卫：说明书顶条同时对应 skill 与 patch 版本', () => 
   assert.equal(topPatchEntry(), maintenanceField('patch-version'));
 });
 
+test('发版守卫：面板独立升级时顶部条目仍包含面板变更说明', () => {
+  const topEntry = maintenance.split(/^## /m)[1] || '';
+  assert.ok(topEntry.includes(`配套面板 ${manifest.version}`));
+});
+
 test('发版守卫：CHANGELOG 顶部条目版本与 manifest 一致', () => {
   assert.equal(topChangelogVersion(), `v${manifest.version}`);
 });

@@ -21,7 +21,12 @@ export async function getCliUsageStatus() {
   const state = stored[KimiCliUsage.STATE_STORAGE_KEY] || {};
   return {
     ok: true,
-    connected: Boolean(handle) && permission === 'granted',
+    // prompt 表示浏览器要求再次点击恢复权限，不等于从未连接。
+    // 已有扫描数据仍应展示；真正刷新时 refreshCliUsage 仍会强制要求 granted。
+    connected: Boolean(handle) && (
+      permission === 'granted' || (permission === 'prompt' && state.connected === true)
+    ),
+    canRefresh: Boolean(handle) && permission === 'granted',
     permission,
     directoryName: handle?.name || state.directoryName || '',
     // MV3：以 chrome.storage 中的 scanning 为准，SW 回收后也能正确反映状态。

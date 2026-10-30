@@ -153,12 +153,19 @@ async function loadStore() {
   }
 }
 
-async function persist() {
-  try {
-    await chrome.storage.local.set({ [BOOKMARKS_STORAGE_KEY]: store });
-  } catch (error) {
-    // 扩展上下文失效等场景：静默失败，下次操作重试
-  }
+async function commitBookmarks(operations) {
+  const response = await chrome.runtime.sendMessage({
+    type: 'bookmarks.mutate',
+    payload: { operations }
+  });
+  if (!response?.ok) throw new Error(response?.error || t('收藏保存失败'));
+  store = normalizeBookmarkStore(response.store);
+  syncAll();
+}
+
+function reportStorageFailure(error, anchor) {
+  console.warn('[Kimi Status] 收藏保存失败', error);
+  if (anchor) showTip(anchor, t('收藏保存失败，请重试'));
 }
 
 /* ---------- DOM 工具 ---------- */
@@ -245,22 +252,26 @@ async function toggleBookmark(anchor) {
   const sessionId = deps.getSessionId();
   const turnId = anchor?.dataset?.turnId;
   if (!sessionId || !turnId) return;
-  const entry = store.sessions[sessionId] || { title: '', items: {} };
-  if (entry.items[turnId]) {
-    delete entry.items[turnId];
-  } else {
-    entry.items[turnId] = {
-      title: turnTitle(anchor),
-      question: turnQuestion(anchor),
-      html: turnHtml(anchor),
-      createdAt: Date.now()
-    };
-    if (!entry.title) entry.title = currentSessionTitle(sessionId);
+  const existing = store.sessions[sessionId]?.items?.[turnId];
+  const operation = existing
+    ? { type: 'remove', sessionId, turnId }
+    : {
+        type: 'upsert',
+        sessionId,
+        turnId,
+        sessionTitle: currentSessionTitle(sessionId),
+        item: {
+          title: turnTitle(anchor),
+          question: turnQuestion(anchor),
+          html: turnHtml(anchor),
+          createdAt: Date.now()
+        }
+      };
+  try {
+    await commitBookmarks([operation]);
+  } catch (error) {
+    reportStorageFailure(error, anchor);
   }
-  if (Object.keys(entry.items).length === 0 && !entry.title) delete store.sessions[sessionId];
-  else store.sessions[sessionId] = entry;
-  await persist();
-  syncAll();
 }
 
 /* ---------- 注入：AI 回复星标按钮 ---------- */
@@ -551,20 +562,16 @@ function syncPageTocActive() {
 // 旧收藏（html 为空）在当前会话 DOM 里能找到时，补采渲染后 HTML 并持久化，
 // 让列表/卡片/详情都能按 markdown 还原
 function backfillHtml(rows) {
-  let dirty = false;
+  const operations = [];
   for (const row of rows) {
     if (row.html || row.sessionId !== deps.getSessionId()) continue;
     const anchor = turnAnchor(row.turnId);
     if (!anchor) continue;
     const html = turnHtml(anchor);
-    if (!html) continue;
-    const entry = store.sessions[row.sessionId]?.items?.[row.turnId];
-    if (!entry) continue;
-    entry.html = html;
-    row.html = html;
-    dirty = true;
+    if (!html || !store.sessions[row.sessionId]?.items?.[row.turnId]) continue;
+    operations.push({ type: 'patch', sessionId: row.sessionId, turnId: row.turnId, html });
   }
-  if (dirty) persist();
+  if (operations.length) commitBookmarks(operations).catch((error) => reportStorageFailure(error));
 }
 
 function renderPage() {
@@ -676,8 +683,9 @@ function onPageClick(event) {
     exportBookmarks();
     return;
   }
-  if (event.target.closest('.kbm-delete')) {
-    deleteSelected();
+  const deleteBtn = event.target.closest('.kbm-delete');
+  if (deleteBtn) {
+    deleteSelected(deleteBtn);
     return;
   }
   const check = event.target.closest('.kbm-check');
@@ -691,7 +699,7 @@ function onPageClick(event) {
   const removeBtn = event.target.closest('.kbm-item-remove');
   if (removeBtn) {
     event.stopPropagation();
-    removeBookmark(removeBtn.dataset.sessionId, removeBtn.dataset.turnId);
+    removeBookmark(removeBtn.dataset.sessionId, removeBtn.dataset.turnId, removeBtn);
     return;
   }
   if (managing) return;
@@ -776,13 +784,13 @@ function closeDetail() {
   document.getElementById('kbm-detail')?.classList.remove('open');
 }
 
-async function removeBookmark(sessionId, turnId) {
-  const entry = store.sessions[sessionId];
-  if (!entry?.items?.[turnId]) return;
-  delete entry.items[turnId];
-  if (Object.keys(entry.items).length === 0) delete store.sessions[sessionId];
-  await persist();
-  syncAll();
+async function removeBookmark(sessionId, turnId, anchor) {
+  if (!store.sessions[sessionId]?.items?.[turnId]) return;
+  try {
+    await commitBookmarks([{ type: 'remove', sessionId, turnId }]);
+  } catch (error) {
+    reportStorageFailure(error, anchor);
+  }
 }
 
 // 导出收藏为 Markdown：按会话分组，每条 = 日期 + 用户提问 + 回复全文
@@ -827,19 +835,23 @@ function exportBookmarks() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function deleteSelected() {
+async function deleteSelected(anchor) {
   if (selected.size === 0) return;
-  for (const key of selected) {
+  const operations = [...selected].map((key) => {
     const sep = key.indexOf('/');
-    const sessionId = key.slice(0, sep);
-    const turnId = key.slice(sep + 1);
-    const entry = store.sessions[sessionId];
-    if (entry?.items) delete entry.items[turnId];
-    if (entry && Object.keys(entry.items).length === 0) delete store.sessions[sessionId];
+    return {
+      type: 'remove',
+      sessionId: key.slice(0, sep),
+      turnId: key.slice(sep + 1)
+    };
+  });
+  try {
+    await commitBookmarks(operations);
+    selected.clear();
+    syncAll();
+  } catch (error) {
+    reportStorageFailure(error, anchor);
   }
-  selected.clear();
-  await persist();
-  syncAll();
 }
 
 /* ---------- 跳转 ---------- */

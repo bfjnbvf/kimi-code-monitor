@@ -137,7 +137,7 @@ initWidgetStructure({
   fetchQuota,
   fetchExternalProviders,
   // 余额口径的刷新小图标：立刻重新拉一次额度/余额（真请求，不是重绘）
-  refreshBalance: () => fetchQuota()
+  refreshBalance: () => fetchQuota(true)
 });
 
 initPet({
@@ -151,7 +151,7 @@ initRender({
   roamPetSetStatus,
   onQuotaReset: () => fetchQuota(),
   // 余额口径的刷新小图标：走同一条通路，立刻重新拉一次（真请求，不是重绘）
-  refreshBalance: () => fetchQuota()
+  refreshBalance: () => fetchQuota(true)
 });
 
 initQuota({

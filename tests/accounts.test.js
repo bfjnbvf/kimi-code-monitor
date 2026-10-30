@@ -501,3 +501,47 @@ test('额度历史快照按账户隔离', async () => {
   assert.equal(app.local.quotaSnapshots['acc-a'][day].week, 10);
   assert.equal(app.local.quotaSnapshots['acc-b'][day].week, 90);
 });
+
+test('切换账户后丢弃旧账户的迟到额度响应', async () => {
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+  const aResponse = deferred();
+  const bResponse = deferred();
+  const aStarted = deferred();
+  const bStarted = deferred();
+  const app = await loadBackground({
+    local: seedStore(
+      [makeAccount('acc-a', '账户 1', makeToken('a')), makeAccount('acc-b', '账户 2', makeToken('b'))],
+      'acc-a'
+    ),
+    fetchImpl: async (url, options) => {
+      if (!String(url).includes('/usages')) throw new Error('unexpected fetch');
+      if ((options?.headers?.Authorization || '').includes('b-access')) {
+        bStarted.resolve();
+        return bResponse.promise;
+      }
+      aStarted.resolve();
+      return aResponse.promise;
+    }
+  });
+
+  const aRequest = app.run('fetchQuota({ force: true })');
+  await aStarted.promise;
+  await app.run(`switchAccount({ id: 'acc-b' })`);
+  const bRequest = app.run('fetchQuota({ force: true })');
+  await bStarted.promise;
+  bResponse.resolve(okJson({ limits: [], usage: { limit: 100, used: 50 } }));
+  const bResult = await bRequest;
+  aResponse.resolve(okJson({ limits: [], usage: { limit: 100, used: 10 } }));
+  const aResult = await aRequest;
+
+  assert.equal(bResult.ok, true);
+  assert.equal(bResult.accountId, 'acc-b');
+  assert.equal(bResult.data.usage.used, 50);
+  assert.equal(aResult.ok, false);
+  assert.equal(aResult.code, 'STALE_QUOTA');
+  assert.equal((await app.run('readAccountStore()')).activeId, 'acc-b');
+});

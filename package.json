@@ -1,6 +1,6 @@
 {
   "name": "kimi-code-monitor",
-  "version": "3.6.0",
+  "version": "3.6.1",
   "private": true,
   "type": "module",
   "description": "Kimi Code 的 Web 扩展、桌面客户端补丁与 CLI HUD",

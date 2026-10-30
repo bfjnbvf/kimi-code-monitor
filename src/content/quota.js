@@ -41,6 +41,8 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
       payload: { force, allowStale }
     });
     if (!response?.ok) {
+      // 切换账户后，旧账户的迟到响应不能覆盖新账户面板或触发重新授权。
+      if (response?.code === 'STALE_QUOTA') return;
       if (response?.code === 'AUTH_REQUIRED') {
         setQuotaAuthRequired(true);
         return;

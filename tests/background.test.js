@@ -248,6 +248,25 @@ test('withStorageLock 同一 key 串行，不同 key 并行', async () => {
   assert.ok(!overlaps.some((set) => set.includes('a') && set.includes('b')));
 });
 
+test('withStorageLock 失败向调用方传播但不产生额外未处理拒绝，后续同 key 可继续', async () => {
+  const app = await loadBackground();
+  let unhandled = 0;
+  const onUnhandled = () => { unhandled += 1; };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    await assert.rejects(
+      app.run(`withStorageLock('failing', async () => { throw new Error('expected'); })`),
+      /expected/
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(unhandled, 0);
+    assert.equal(await app.run(`withStorageLock('failing', async () => 'recovered')`), 'recovered');
+  } finally {
+    process.removeListener('unhandledRejection', onUnhandled);
+  }
+});
+
 test('OAuth token 明文迁移为加密存储，重复读取不再重写', async () => {
   const app = await loadBackground({
     local: {

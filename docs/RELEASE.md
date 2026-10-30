@@ -4,9 +4,9 @@
 
 | 资产 | 版本 | 构建命令 | 内容 |
 |---|---|---|---|
-| **Web 扩展** `kimi-code-monitor-web-v3.6.0.zip` | 3.6.0 | `npm run pack:web` | `manifest.json`、`dist/`（content/background/popup）、`content.css`、`popup.*`、`rive/`、`rules/`、`icons/` |
-| **桌面客户端补丁** `kcm-desktop-patch.zip` | 3.6.0 | `npm run pack:desktop`（等价 `pack:patch`） | `install.sh` / `install.cmd` / `install.mjs`、`scan.mjs`、`fetch-wallet.mjs`、`kcm/`（loader、panel-app、样式、Rive、VERSION） |
-| **CLI HUD** `kimi-code-monitor-cli-v3.6.0.zip` | 3.6.0 | `npm run pack:cli` | `dist/hud.cjs`、`dist/quota-worker.cjs`、`scripts/install-cli-hud.mjs`、`scripts/verify-cli-hud.mjs`、`docs/CLI-HUD.md`、`LICENSE` |
+| **Web 扩展** `kimi-code-monitor-web-v3.6.1.zip` | 3.6.1 | `npm run pack:web` | `manifest.json`、`dist/`（content/background/popup）、`content.css`、`popup.*`、`rive/`、`rules/`、`icons/` |
+| **桌面客户端补丁** `kcm-desktop-patch.zip` | 3.6.1 | `npm run pack:desktop`（等价 `pack:patch`） | `install.sh` / `install.cmd` / `install.mjs`、`scan.mjs`、`fetch-wallet.mjs`、`kcm/`（loader、panel-app、样式、Rive、VERSION） |
+| **CLI HUD** `kimi-code-monitor-cli-v3.6.1.zip` | 3.6.1 | `npm run pack:cli` | `dist/hud.cjs`、`dist/quota-worker.cjs`、`scripts/install-cli-hud.mjs`、`scripts/verify-cli-hud.mjs`、`docs/CLI-HUD.md`、`LICENSE` |
 | 运维技能 `kimi-code-monitor-skill.zip` | 技能版本见包内 `MAINTENANCE.md` | `npm run pack` | `skill/` 打成 `kimi-code-monitor/` 目录，解压到 `~/.kimi-code/skills/` |
 
 ## 一条命令全部构建
@@ -26,7 +26,7 @@ npm run pack
 
 ## 发布检查
 
-- `manifest.json`、`package.json`、`package-lock.json`、`CHANGELOG.md` 顶部、`skill/MAINTENANCE.md` 的版本号一致；过渡期旧 `skill/MAINTENANCE` 必须与主说明书逐字节一致（`tests/release-sync.test.js` 会守）
+- `manifest.json`、`package.json`、`package-lock.json`、`CHANGELOG.md` 顶部与 `skill/MAINTENANCE.md` 的 `patch-version` 一致；说明书顶条分别对应当前 `skill-version` 与 `patch-version`，两者无需相等。过渡期旧 `skill/MAINTENANCE` 必须与主说明书逐字节一致（`tests/release-sync.test.js` 会守）
 - 三个主资产都存在且 `unzip -t` 通过；CLI zip 里能看到 `dist/hud.cjs` 与 `dist/quota-worker.cjs`
 - `npm run pack` 同时生成 `SHA256SUMS`，发布时随四个 zip 上传。逐个计算已下载文件的 SHA-256 并与清单对应行比较即可，不要求用户下载全部资产；载荷里的短哈希只用于缓存失效，不替代该校验
 - CLI HUD 的安装、布局自定义与卸载说明见 `docs/CLI-HUD.md`

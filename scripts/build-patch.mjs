@@ -75,4 +75,5 @@ fs.writeFileSync(path.join(STAGE, 'kcm', 'VERSION'), `${version}\n`);
 const out = path.join(ROOT, 'kcm-desktop-patch.zip');
 fs.rmSync(out, { force: true });
 execFileSync('zip', ['-r', '-X', out, 'install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'html.js', 'payload.js', 'kcm', '-x', '*.DS_Store'], { cwd: STAGE });
+execFileSync(process.execPath, [path.join(ROOT, 'scripts/update-sha256sums.mjs'), 'kcm-desktop-patch.zip'], { cwd: ROOT });
 console.log('已生成 kcm-desktop-patch.zip');

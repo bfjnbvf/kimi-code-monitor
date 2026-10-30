@@ -52,6 +52,7 @@ export async function loadUsageDaily({ refreshIfStale = false } = {}) {
     if (
       refreshIfStale &&
       panel.cliUsageConnected &&
+      status.canRefresh === true &&
       !status.scanning &&
       (!Number.isFinite(lastScannedAt) || Date.now() - lastScannedAt >= CLI_REFRESH_STALE_MS)
     ) {
@@ -71,7 +72,12 @@ export function scheduleCliUsageRefresh() {
   cliRefreshTimer = setTimeout(() => {
     cliRefreshTimer = null;
     if (deps.isDisposed()) return;
-    chrome.runtime.sendMessage({ type: 'cli.usage.refresh' }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'cli.usage.status' })
+      .then((status) => {
+        if (!status?.canRefresh || deps.isDisposed()) return null;
+        return chrome.runtime.sendMessage({ type: 'cli.usage.refresh' });
+      })
+      .catch(() => {});
   }, CLI_REFRESH_AFTER_TURN_MS);
 }
 

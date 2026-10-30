@@ -3,7 +3,7 @@
 使用 Kimi 官方 `status_line.command`，显示在原生终端输入框下方。支持 Kimi 2.2.0 起沿用此接口的版本；本机已验证 2.2.0 和 2.3.0。
 
 ```text
-● DeepSeek V4.1 Flash 思考 high 按需询问    5h/7d ▉░░░ 21% ██▋░ 67%    缓存 83% 上轮8.4s    gabriel
+● DeepSeek V4.1 Flash 思考 high 按需询问    5h 21% ▉░░░ 7d 67% ██▋░    45.2tok/s 缓存 83%    输入 1.2k 输出 856    gabriel
 ```
 
 ## 安装（Release zip）
@@ -42,7 +42,7 @@ node scripts/install-cli-hud.mjs --uninstall
 ## 显示与数据
 
 - 模型和状态点位于最前，状态语义与网页面板一致：空闲与等待为灰色，主代理思考、回复与工具执行为蓝色，子代理为绿色，限流为琥珀色，离线与未授权为红色；任何轮次结束都回到灰色空闲，不再单独显示“已完成”绿色。加粗的模型名与状态点同色联动，辅助信息为灰色，分支为紫色。安装命令强制开启颜色，避免 `NO_COLOR` 环境变量吞掉颜色。
-- `5h/7d` 后依次显示 5 小时与本周额度彩条和百分比，正常宽度下各 4 格，使用色块与八分格显示低占用，随占用从绿色变为琥珀色、红色。两个额度始终保留，避免右侧截断遮住额度；空间不足时先收起其他模块。组内统一 1 空格、组间 4 空格。自定义行不重复显示 Context Window，原生第二行继续显示上下文数值。
+- `5h` 与 `7d` 分别按「标签、百分比、彩条」显示，百分比后保留 1 空格，正常宽度下彩条各 4 格，使用色块与八分格显示低占用。百分比与彩条共用状态色，随占用从绿色变为琥珀色、红色；未知数据保持灰色。两个额度始终保留，避免右侧截断遮住额度；空间不足时先收起其他模块。额度组内两个窗口间隔 1 空格，缓存与速度、输入与输出之间也各间隔 1 空格，其他组间 4 空格。速度与其他辅助信息使用同一种灰色。自定义行不重复显示 Context Window，原生第二行继续显示上下文数值。
 - 模型、目录、分支和权限模式来自官方 stdin JSON。状态来自当前 `sessionId` 的主代理日志末尾，最多读取 512 KiB；不会选择其他终端的最新会话。
 - 思考强度显示在模型旁。官方输入若提供 `thinkingEffort` 则优先使用，否则读取当前会话的 `profile.bind`、`config.update`、`llm.request`。未建会话或未知时显示 `思考 --`，不把全局默认值当成当前会话的选择。
 - 缓存率来自末次用量，输入包括非缓存输入、缓存读取和缓存写入；上轮耗时直接读取 `turn.ended.durationMs`；生成速度只计算生成阶段，不包含等待、工具和重试。
@@ -53,7 +53,7 @@ node scripts/install-cli-hud.mjs --uninstall
 
 ## 模块与顺序
 
-默认模块依次为 `status,model,thinking,permission,quotaPair,cache,duration,project`：
+默认模块依次为 `status,model,thinking,permission,quotaPair,speed,cache,input,output,project`：
 
 | ID | 内容 | 默认 |
 |---|---|---|
@@ -61,21 +61,21 @@ node scripts/install-cli-hud.mjs --uninstall
 | `model` | 模型名称 | 显示 |
 | `thinking` | 思考强度 | 显示 |
 | `permission` | 权限模式 | 显示 |
-| `quotaPair` | `5h/7d` + 5 小时彩条与百分比 + 本周彩条与百分比 | 显示 |
+| `quotaPair` | `5h 百分比彩条` + `7d 百分比彩条` | 显示 |
 | `cache` | 缓存率 | 显示 |
-| `duration` | `上轮{耗时}` | 显示 |
+| `speed` | 生成速度（`xxtok/s`） | 显示 |
+| `input` / `output` | 末次输入 / 输出 token（不是整轮合计） | 显示 |
 | `project` | 当前目录名 | 显示 |
 | `quota5h` / `quotaWeek` | 独立 5 小时 / 本周额度，替代合并显示时使用 | 可选 |
-| `input` / `output` | 末次输入 / 输出 token（不是整轮合计） | 可选 |
-| `speed` | 生成速度 | 可选 |
+| `duration` | `上轮{耗时}` | 可选 |
 | `branch` | Git 分支 | 可选 |
 | `quotaStatus` | 暂无、需登录、旧数据标记 | 可选 |
 
 `--modules` 选择启用的模块，`--order` 只调整顺序；`--order` 未列出的启用模块会自动接在后面。安装时传入即可，例如：
 
 ```bash
-# 默认模块 + 输入输出和生成速度
-node scripts/install-cli-hud.mjs --modules status,model,thinking,permission,quotaPair,cache,duration,project,input,output,speed
+# 默认模块 + 上轮耗时
+node scripts/install-cli-hud.mjs --modules status,model,thinking,permission,quotaPair,cache,speed,input,output,project,duration
 
 # 只要状态、合并额度和缓存率，并调整顺序
 node scripts/install-cli-hud.mjs --modules status,model,quotaPair,cache --order status,model,quotaPair,cache

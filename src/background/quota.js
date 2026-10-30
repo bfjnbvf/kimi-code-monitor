@@ -206,8 +206,9 @@ export async function fetchQuotaFresh(accountId) {
   // 月额度暂时下线：web token 寿命仅约 18 分钟，中转/轮询方案体验不佳，
   // 找到更干净的通路前不再拉取（resolveMonthlyStats/requestMonthlyStats 保留备用）
   data.monthly = null;
-  if (requestRevision !== getAuthRevision()) {
-    return failure(new Error('授权状态已改变'), 'AUTH_REQUIRED');
+  const currentStore = await readAccountStore();
+  if (requestRevision !== getAuthRevision() || currentStore.activeId !== account.id) {
+    return failure(new Error('账户已切换，丢弃旧额度响应'), 'STALE_QUOTA');
   }
   // MV3 service worker 在消息响应结束后可能立即休眠；必须把预警状态与每日快照
   // 纳入当前消息任务生命周期，否则这两次 storage 写入会偶发丢失。
@@ -215,7 +216,7 @@ export async function fetchQuotaFresh(accountId) {
     evaluateQuotaAlerts(data, account.id),
     recordQuotaSnapshot(data, account.id)
   ]);
-  const result = { ok: true, data };
+  const result = { ok: true, accountId: account.id, data };
   quotaCacheByAccount.set(account.id, { fetchedAt: Date.now(), response: result });
   return result;
 }

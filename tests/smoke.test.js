@@ -119,7 +119,7 @@ test('smoke：RC 页面不暴露本地收藏内容', async () => {
 });
 
 test('smoke：页内收藏覆盖层与详情按原 UI 逐层打开和关闭', async () => {
-  const { dom, window } = createPage();
+  const { dom, window } = createPage('http://localhost:58627/sessions/smoke-session');
   try {
     window.document.body.insertAdjacentHTML('beforeend', '<div class="sidebar-actions"></div>');
     window.chrome.storage.local.get = async () => ({
@@ -156,7 +156,7 @@ test('smoke：页内收藏覆盖层与详情按原 UI 逐层打开和关闭', as
 });
 
 test('smoke：CLI 已连接时面板解锁并显示消耗量（回归：panel.panel 双前缀曾导致永远显示连接提示）', async () => {
-  const { dom, window } = createPage();
+  const { dom, window } = createPage('http://localhost:58627/sessions/smoke-session');
   const todayKey = usageDayKey(new Date());
   const daily = { [todayKey]: { input: 1234, output: 567 } };
   window.chrome.runtime.sendMessage = async (msg) => {

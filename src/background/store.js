@@ -8,12 +8,12 @@ const storageLocks = new Map();
 export async function withStorageLock(key, fn) {
   const prev = storageLocks.get(key) || Promise.resolve();
   const next = prev.catch(() => {}).then(fn);
-  storageLocks.set(
-    key,
-    next.finally(() => {
-      if (storageLocks.get(key) === next) storageLocks.delete(key);
-    })
-  );
+  const guarded = next.finally(() => {
+    if (storageLocks.get(key) === guarded) storageLocks.delete(key);
+  });
+  storageLocks.set(key, guarded);
+  // 调用方仍通过 next 收到原始拒绝；内部锁尾链不能额外制造 unhandledRejection。
+  guarded.catch(() => {});
   return next;
 }
 

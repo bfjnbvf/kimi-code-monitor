@@ -50,6 +50,7 @@ import {
 } from './background/dynamic-hosts.js';
 import { runTidyAutoIfDue, syncTidyAutoAlarm, TIDY_AUTO_ALARM } from './background/tidy.js';
 import { authorizeMessage } from './background/sender-guard.js';
+import { mutateBookmarks } from './background/bookmarks.js';
 
 // 授权域不反向依赖额度域：账户变更时的额度缓存/预警清理由回调完成
 initOAuth({
@@ -88,6 +89,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     'external.remove': removeExternalAccount,
     'external.rename': renameExternalAccount,
     'pet.asset.active': getActivePetAsset,
+    'bookmarks.mutate': mutateBookmarks,
     'hosts.list': listExtraWebHosts,
     'hosts.grant': (payload) => grantExtraWebHost(payload?.origin),
     'hosts.revoke': (payload) => revokeExtraWebHost(payload?.origin),

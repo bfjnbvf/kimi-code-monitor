@@ -492,7 +492,10 @@ export async function switchAccount(payload) {
     store.activeId = id;
     return { ok: true, activeId: id };
   });
-  if (result.ok && changed) broadcastAuthState('auth.switched');
+  if (result.ok && changed) {
+    authRevision += 1;
+    broadcastAuthState('auth.switched');
+  }
   return result;
 }
 
@@ -514,7 +517,10 @@ export async function removeAccount(payload) {
   refreshPromises.delete(id);
   hooks.invalidateQuotaCache(id);
   await hooks.clearQuotaAlertState(id);
-  if (wasActive) broadcastAuthState(remaining ? 'auth.switched' : 'auth.cleared');
+  if (wasActive) {
+    authRevision += 1;
+    broadcastAuthState(remaining ? 'auth.switched' : 'auth.cleared');
+  }
   return result;
 }
 

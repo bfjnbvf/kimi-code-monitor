@@ -13,17 +13,26 @@ const jsonl = rows => rows.map(r => JSON.stringify(r)).join('\n') + '\n';
 test('context payload is not rendered and status, model, thinking and permission precede the quota pair', () => {
   const activity = { quota: { fiveHour: { percent: 25 }, week: { percent: 75 } } };
   const line = callHud('render', payload, activity, 120, false);
-  assert.match(line, /5h\/7d.*25%.*75%/);
-  assert.match(line, /^● DeepSeek V4\.1 Flash 思考 -- 询问    5h\/7d/);
-  assert.match(line, /缓存 --% 上轮--    中文项目/);
+  assert.match(line, /5h 25%.*7d 75%/);
+  assert.match(line, /^● DeepSeek V4\.1 Flash 思考 -- 询问    5h 25%/);
+  assert.match(line, /--tok\/s 缓存 --%    输入 -- 输出 --    中文项目/);
   assert.ok(line.indexOf('●') < line.indexOf('DeepSeek'));
   assert.ok(line.indexOf('DeepSeek') < line.indexOf('思考'));
   assert.ok(line.indexOf('思考') < line.indexOf('询问'));
-  assert.ok(line.indexOf('询问') < line.indexOf('5h/7d'));
+  assert.ok(line.indexOf('询问') < line.indexOf('5h'));
   assert.doesNotMatch(line, /Ctx/);
   assert.equal(callHud('render', { ...payload, future: true }, activity, 120, false), line);
   const empty = callHud('render', {}, {}, 120, false);
-  assert.match(empty, /5h\/7d.*--%.*--%/);
+  assert.match(empty, /5h --%.*7d --%/);
+});
+
+test('quota percentages lead their bars and share the same green, yellow and red state colors', () => {
+  const line = callHud('render', {}, { quota: { fiveHour: { percent: 25 }, week: { percent: 75 } } }, 120, true, ['quotaPair']);
+  assert.match(line, /5h .*25%.*7d .*75%/);
+  assert.match(line, /\x1b\[38;2;113;210;166m25%\x1b\[0m/);
+  assert.match(line, /\x1b\[38;2;239;194;111m75%\x1b\[0m/);
+  const red = callHud('render', {}, { quota: { fiveHour: { percent: 95 }, week: { percent: 95 } } }, 120, true, ['quotaPair']);
+  assert.ok((red.match(/\x1b\[38;2;255;126;145m95%\x1b\[0m/g) || []).length === 2);
 });
 
 test('model name and status light share the web panel appearance in every state', () => {
@@ -84,7 +93,7 @@ test('windowed layouts keep the quota pair and model/status order within the ava
     assert.ok(line.indexOf('●') < line.indexOf('D'));
     assert.doesNotMatch(line, /Ctx|Kimi /);
     assert.ok((line.match(/--%/g) || []).length >= 2, '两个额度始终保留未知占位');
-    if (width >= 40) assert.match(line, /5h\/7d/);
+    if (width >= 40) assert.match(line, /5h .*7d /);
     if (width >= 78) assert.match(line, /思考 high/);
   }
 });
@@ -99,13 +108,15 @@ test('module selection, ordering, duration, cache rate and optional metrics', ()
   assert.equal(activity.durationMs, 8400);
   assert.equal(activity.speed, 25);
   const normal = callHud('render', payload, activity, 120, false);
-  assert.match(normal, /缓存 50%/);
-  assert.match(normal, /上轮8\.4s/);
+  assert.match(normal, /25\.0tok\/s 缓存 50%    输入 100 输出 50/);
+  assert.doesNotMatch(normal, /上轮/);
+  const coloredSpeed = callHud('render', payload, activity, 120, true, ['speed']);
+  assert.match(coloredSpeed, /^\x1b\[38;2;139;153;173m25\.0tok\/s/);
   const custom = callHud('render', payload, activity, 120, false, ['branch', 'output', 'input', 'speed', 'cache', 'duration']);
   assert.match(custom, /^hud-demo/);
   assert.match(custom, /输出 50/);
   assert.match(custom, /输入 100/);
-  assert.match(custom, /25\.0 tok\/s/);
+  assert.match(custom, /25\.0tok\/s/);
   assert.doesNotMatch(custom, /5h|周 /);
   assert.deepEqual(callHud('module_options', ['--modules', 'model,input', '--order', 'input,model']), ['input', 'model']);
   assert.match(callHud('render', payload, { quota: { authRequired: true } }, 120, false, ['quotaStatus']), /需登录/);
@@ -197,9 +208,10 @@ test('recorded compatibility fixtures preserve layout, Unicode width and numeric
   const unicodePayload = { model: '\x1b[31mKimi😀é中文-long-model-name\x1b[0m', cwd: '/tmp/a b/目录😀', gitBranch: 'feature/中文/分支', permissionMode: 'auto', thinkingEffort: 'max', planMode: true };
   const activity = { status: 'thinking', thinkingEffort: 'high', usage: { input: 1050, output: 1250000, cacheRead: 900 }, durationMs: 8450, speed: 12.35,
     quota: { fiveHour: { percent: 25 }, week: { percent: 75 }, stale: true } };
-  assert.equal(callHud('render', unicodePayload, activity, 58, false), '● Kimi😀é中… 思考 max 计划·从不询问    5h/7d ▌░ 25% █▌ 75%');
-  assert.equal(callHud('render', unicodePayload, activity, 120, false), '● Kimi😀é中文-long-model-… 思考 max 计划·从不询问    5h/7d █░░░ 25% ███░ 75%    缓存 85% 上轮8.4s    目录😀');
-  assert.equal(callHud('render', unicodePayload, activity, 58, false, ['branch', 'output', 'input', 'speed']), '分支    输出 1.2m    输入 1.1k    12.3 tok/s');
+  // 宽度不足时按既有优先级收起次要模块，始终保留两个额度。
+  assert.equal(callHud('render', unicodePayload, activity, 58, false), '● Kimi😀é中… 思考 max 计划·从不询问    5h 25% ▌░ 7d 75% █▌');
+  assert.equal(callHud('render', unicodePayload, activity, 120, false), '● Kimi😀é中文-long-model-… 思考 max 计划·从不询问    5h 25% █░░░ 7d 75% ███░    12.3tok/s 缓存 85%    输入 1.1k');
+  assert.equal(callHud('render', unicodePayload, activity, 58, false, ['branch', 'output', 'input', 'speed']), '分支    输出 1.2m 输入 1.1k    12.3tok/s');
   assert.equal(callHud('cell_width', '\x1b[31m中文\x1b[0m'), 4);
   assert.equal(callHud('cell_width', '\x1b]0;abc\x07xy'), 2);
   assert.equal(callHud('cell_width', '中文😀é'), 7);

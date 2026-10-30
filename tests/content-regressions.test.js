@@ -324,11 +324,13 @@ test('本地汇总 seed 恢复期间切换会话时丢弃旧会话结果', () =>
   assert.match(sessionSource, /const sid = currentSessionId;[\s\S]*?await readSessionSeed\(sid\)[\s\S]*?if \(!seed \|\| sid !== currentSessionId\) return;/);
 });
 
-test('切换账户后面板先显示该账户缓存额度，再强制刷新', () => {
+test('切换账户后面板先显示该账户缓存额度，再强制刷新并丢弃旧响应', () => {
   assert.match(source, /message\?\.type === 'auth\.switched'/);
   assert.match(source, /fetchQuota\(false, \{ allowStale: true \}\)/);
   assert.match(source, /fetchQuota\(true\)/);
+  assert.equal((source.match(/refreshBalance: \(\) => fetchQuota\(true\)/g) || []).length, 2);
   assert.match(quotaSource, /payload: \{ force, allowStale \}/);
+  assert.match(quotaSource, /response\?\.code === 'STALE_QUOTA'/);
 });
 
 test('侧栏改造开启时隐藏新建对话/搜索右端的快捷键提示（与收起按钮重叠）', () => {

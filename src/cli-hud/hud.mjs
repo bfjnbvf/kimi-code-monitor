@@ -7,8 +7,8 @@ import { spawn } from 'node:child_process';
 const MAX_TAIL_BYTES = 512 * 1024;
 const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]/g;
 const CONTROLS = /[\x00-\x1f\x7f-\x9f\u2028\u2029]/g;
-const DEFAULT_MODULES = ['status', 'model', 'thinking', 'permission', 'quotaPair', 'cache', 'duration', 'project'];
-const OPTIONAL_MODULES = new Set([...DEFAULT_MODULES, 'quota5h', 'quotaWeek', 'input', 'output', 'speed', 'branch', 'quotaStatus']);
+const DEFAULT_MODULES = ['status', 'model', 'thinking', 'permission', 'quotaPair', 'speed', 'cache', 'input', 'output', 'project'];
+const OPTIONAL_MODULES = new Set([...DEFAULT_MODULES, 'quota5h', 'quotaWeek', 'duration', 'branch', 'quotaStatus']);
 const PINNED_MODULES = new Set(['model', 'status', 'quota5h', 'quotaWeek']);
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const finite = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -109,7 +109,7 @@ export function render(payload, activity = null, width = 120, color = true, modu
   const mode = ({ manual: '询问', yolo: '按需询问', auto: '从不询问' })[p.permissionMode] ?? fallbackMode;
   const modeText = `${p.planMode === true ? '计划·' : ''}${mode}`;
 
-  const meter = (value, size) => {
+  const meter = (value, size, percentFirst = false) => {
     const n = finite(value) ? Math.max(0, Math.min(100, value)) : null;
     const units = n === null ? 0 : jsRound(n / 100 * size * 8);
     const filled = Math.floor(units / 8);
@@ -117,7 +117,9 @@ export function render(payload, activity = null, width = 120, color = true, modu
     const tone = n !== null && n >= 90 ? '38;2;255;126;145' : n !== null && n >= 75 ? '38;2;239;194;111' : '38;2;113;210;166';
     const label = n === null ? '--' : String(jsRound(n));
     const bar = '█'.repeat(filled) + (fraction ? '▏▎▍▌▋▊▉'[fraction - 1] : '');
-    return paint(tone, bar) + paint('38;2;100;117;139', '░'.repeat(size - filled - Number(Boolean(fraction)))) + ` ${paint(muted, `${label}%`)}`;
+    const barText = paint(tone, bar) + paint('38;2;100;117;139', '░'.repeat(size - filled - Number(Boolean(fraction))));
+    const percentText = paint(n === null ? muted : tone, `${label}%`);
+    return percentFirst ? `${percentText} ${barText}` : `${barText} ${percentText}`;
   };
 
   const quota = a.quota || {};
@@ -138,7 +140,7 @@ export function render(payload, activity = null, width = 120, color = true, modu
   for (const [name, key, label] of [['quota5h', 'fiveHour', '5h'], ['quotaWeek', 'week', '周']]) {
     groups[name] = paint(muted, `${label} `) + meter(quota[key]?.percent, quotaSize);
   }
-  groups.quotaPair = `${width >= 40 ? paint(muted, '5h/7d ') : ''}${meter(quota.fiveHour?.percent, quotaSize)} ${meter(quota.week?.percent, quotaSize)}`;
+  groups.quotaPair = `${width >= 40 ? paint(muted, '5h ') : ''}${meter(quota.fiveHour?.percent, quotaSize, true)} ${width >= 40 ? paint(muted, '7d ') : ''}${meter(quota.week?.percent, quotaSize, true)}`;
   const cachePercent = (get(usage, 'input', 0) > 0) ? Math.floor(usage.cacheRead / usage.input * 100) : null;
   groups.cache = paint(muted, `缓存 ${cachePercent === null ? '--' : cachePercent}%`);
   groups.duration = paint(muted, `上轮${formatDuration(a.durationMs)}`);
@@ -150,7 +152,7 @@ export function render(payload, activity = null, width = 120, color = true, modu
   groups.project = project ? paint(muted, shorten(project, 22)) : '';
   groups.input = paint(muted, `输入 ${tokens(usage.input)}`);
   groups.output = paint(muted, `输出 ${tokens(usage.output)}`);
-  groups.speed = paint('38;2;132;210;255', finite(a.speed) ? `${pythonFixed1(a.speed)} tok/s` : '-- tok/s');
+  groups.speed = paint(muted, finite(a.speed) ? `${pythonFixed1(a.speed)}tok/s` : '--tok/s');
   const branch = clean(p.gitBranch).split('/').at(-1);
   groups.branch = branch ? paint('38;2;178;155;218', shorten(branch, 20)) : '';
   const hasQuota = ['fiveHour', 'week'].some(key => finite(quota[key]?.percent));
@@ -162,7 +164,8 @@ export function render(payload, activity = null, width = 120, color = true, modu
     let previousGroup = '';
     for (const [name, value] of parts) {
       const group = ['status', 'model', 'thinking', 'permission'].includes(name) ? 'identity'
-        : ['cache', 'duration'].includes(name) ? 'activity' : name;
+        : ['cache', 'duration', 'speed'].includes(name) ? 'activity'
+        : ['input', 'output'].includes(name) ? 'tokens' : name;
       text += text ? `${group === previousGroup ? ' ' : '    '}${value}` : value;
       previousGroup = group;
     }

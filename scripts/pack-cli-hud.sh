@@ -67,6 +67,7 @@ rm -f "$OUT"
 (cd "$STAGE" && zip -rq "$OUT" . -x "*.DS_Store" "__MACOSX/*")
 rm -rf "$STAGE"
 unzip -t "$OUT" >/dev/null
+node scripts/update-sha256sums.mjs "$OUT"
 
 echo "已生成 $OUT"
 unzip -l "$OUT"

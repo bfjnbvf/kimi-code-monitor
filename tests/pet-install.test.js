@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { unzip, parseInput, parsePetdexScript } from '../src/pet/install.js';
+import { unzip, parseInput, parsePetdexScript, fetchBytes } from '../src/pet/install.js';
 
 function u16(v) {
   const b = Buffer.alloc(2);
@@ -273,4 +273,34 @@ test('parsePetdexScript：从安装脚本提取素材地址', () => {
 test('parsePetdexScript：缺少素材地址时报错', () => {
   assert.throws(() => parsePetdexScript('#!/bin/sh\necho hello\n'), /素材地址/);
   assert.throws(() => parsePetdexScript(''), /素材地址/);
+});
+
+test('fetchBytes：流式读取超限立即取消，不等待完整响应物化', async () => {
+  const originalFetch = globalThis.fetch;
+  let cancelled = false;
+  let pulls = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      // 保持流打开，模拟尚未下载完的响应；超限时应由读取方主动取消。
+      if (pulls <= 2) controller.enqueue(new Uint8Array([1, 2, 3]));
+    },
+    cancel() { cancelled = true; }
+  });
+  globalThis.fetch = async () => ({ ok: true, headers: new Headers(), body });
+  try {
+    await assert.rejects(fetchBytes('https://example.com/large', 5), /文件过大/);
+    assert.equal(cancelled, true);
+    // WHATWG Stream 可预取一个块；未关闭的响应能在第二块超限后返回即满足限量契约。
+    assert.ok(pulls <= 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('unzip：header 谎报小尺寸时，deflate 实际输出仍受流式上限约束', async () => {
+  const raw = Buffer.alloc(17 * 1024 * 1024, 0);
+  const compressed = Buffer.from(await deflateRaw(raw));
+  const zip = localFileHeader('bomb.txt', 8, compressed.length, 5, compressed);
+  await assert.rejects(async () => unzip(toArrayBuffer(zip)), /文件过大/);
 });

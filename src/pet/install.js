@@ -69,24 +69,56 @@ function parsePetdexScript(scriptText) {
   return { petJsonUrl, spriteUrl };
 }
 
+async function readStreamWithLimit(stream, maxBytes) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel(new Error('文件过大，已中止')).catch(() => {});
+        throw new Error('文件过大，已中止');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
+
 async function fetchBytes(url, maxBytes = 16 * 1024 * 1024) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`下载失败（${resp.status}）：${url}`);
-  // Content-Length 预检：超限直接中止，避免整个响应先进入内存
-  //（分块/压缩传输时头可能缺失或失真，下载后仍复核）
+  // Content-Length 只做预检；实际字节必须在流式读取过程中限量。
   const declared = Number(resp.headers?.get('content-length'));
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error('文件过大，已中止');
-  const buf = await resp.arrayBuffer();
-  if (buf.byteLength > maxBytes) throw new Error('文件过大，已中止');
-  return buf;
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await resp.body?.cancel().catch(() => {});
+    throw new Error('文件过大，已中止');
+  }
+  if (!resp.body) {
+    const buf = await resp.arrayBuffer();
+    if (buf.byteLength > maxBytes) throw new Error('文件过大，已中止');
+    return buf;
+  }
+  return (await readStreamWithLimit(resp.body, maxBytes)).buffer;
 }
 
 /* ---------- 最小 ZIP 读取器（local file header 顺序读取，支持 store/deflate） ---------- */
 
-async function inflateRaw(bytes) {
+async function inflateRaw(bytes, maxBytes) {
   const ds = new DecompressionStream('deflate-raw');
   const stream = new Blob([bytes]).stream().pipeThrough(ds);
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  return readStreamWithLimit(stream, maxBytes);
 }
 
 function basename(name) {
@@ -186,24 +218,28 @@ async function unzip(buf) {
       throw new Error(`zip store 方式大小不一致：${name}`);
     }
 
+    const remainingTotal = ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES - totalUncompressed;
+    const maxOutput = Math.min(ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES, remainingTotal);
+    // header 只做提前拒绝；deflate 实际输出仍由 inflateRaw 流式限量。
+    if (uncompressedSize > ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES) {
+      throw new Error('zip 单文件解压后大小超出安全限制');
+    }
+    if (uncompressedSize > remainingTotal) {
+      throw new Error('zip 总解压大小超出安全限制');
+    }
+
     const data = bytes.subarray(dataStart, dataStart + compressedSize);
     let output;
     if (method === 0) {
       output = data.slice();
     } else {
-      output = await inflateRaw(data);
+      output = await inflateRaw(data, maxOutput);
       if (output.length !== uncompressedSize) {
         throw new Error(`zip 解压长度与 header 声明不一致：${name}`);
       }
     }
 
-    if (output.length > ZIP_MAX_ENTRY_UNCOMPRESSED_BYTES) {
-      throw new Error('zip 单文件解压后大小超出安全限制');
-    }
     totalUncompressed += output.length;
-    if (totalUncompressed > ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES) {
-      throw new Error('zip 总解压大小超出安全限制');
-    }
 
     if (name && !name.endsWith('/')) {
       files.set(name, output);
@@ -296,4 +332,4 @@ async function fetchPet(plan) {
 
 const CodexPetInstall = { parseInput, parsePetdexScript, fetchPet, unzip };
 
-export { parseInput, parsePetdexScript, fetchPet, unzip, CodexPetInstall };
+export { parseInput, parsePetdexScript, fetchPet, fetchBytes, unzip, CodexPetInstall };

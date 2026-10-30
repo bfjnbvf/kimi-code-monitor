@@ -67,6 +67,7 @@ test('默认端口的内容脚本：白名单消息放行，特权消息拒绝',
   assert.equal(await authorizeMessage('oauth.start', sender), true);
   assert.equal(await authorizeMessage('cli.usage.refresh', sender), true);
   assert.equal(await authorizeMessage('pet.asset.active', sender), true);
+  assert.equal(await authorizeMessage('bookmarks.mutate', sender), true);
   // 月额度通路休眠，内容侧没有发送点，白名单已收掉
   assert.equal(await authorizeMessage('webtoken.report', sender), false);
   // v2 起命名走系统「生成标题」，rename.model 已移出白名单
@@ -91,6 +92,7 @@ test('已动态授权 origin 的内容脚本放行白名单消息', async () => 
   storage.set('kimiExtraWebHosts', ['http://192.168.1.5:3000/*']);
   const sender = contentSender('http://192.168.1.5:3000/sessions/s1');
   assert.equal(await authorizeMessage('quota.fetch', sender), true);
+  assert.equal(await authorizeMessage('bookmarks.mutate', sender), false);
   assert.equal(await authorizeMessage('accounts.remove', sender), false);
 });
 

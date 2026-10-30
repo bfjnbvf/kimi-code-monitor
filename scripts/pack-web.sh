@@ -23,5 +23,6 @@ zip -r "$OUT" \
   -x "*.DS_Store" "__MACOSX/*" "*~" "dist/panel-app.js" "dist/quota-worker.cjs"
 
 unzip -t "$OUT" >/dev/null
+node scripts/update-sha256sums.mjs "$OUT"
 echo "已生成 $OUT"
 unzip -l "$OUT"

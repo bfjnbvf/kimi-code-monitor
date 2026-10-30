@@ -98,7 +98,7 @@ test('eval entry preserves CLI options and finds the quota worker beside the bun
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Eval Node …/);
-    assert.match(result.stdout, /5h\/7d/);
+    assert.match(result.stdout, /5h .*7d /);
     assert.doesNotMatch(result.stdout, /缓存/);
     let started = false;
     for (let i = 0; i < 100; i++) {
