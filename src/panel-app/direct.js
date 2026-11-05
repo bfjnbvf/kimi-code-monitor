@@ -16,6 +16,7 @@
 
 import { createKapContext } from './kap.js';
 import { refreshDailyChart } from './bridge.js';
+import { serverProtocolVersion, transcriptEvents } from '../transcript.js';
 
 export { normalizeKapOrigin } from './kap.js';
 import { panel } from '../content/panel-state.js';
@@ -184,6 +185,7 @@ export function startDirectMode() {
   // 同步执行时读到尚未初始化的 ws）抛错，把 startDirectMode 后半段全部炸死
   let ws = null;
   let retry = 0;
+  let protocolVersion = 0;
 
   function currentSidFromLocation() {
     return location.pathname.match(/\/sessions\/([^/?#]+)/)?.[1] || '';
@@ -261,13 +263,20 @@ export function startDirectMode() {
   }, STATUS_TICK_MS);
 
   /* ---------- WS：事件流（协议与 KapClient/参考项目一致） ---------- */
-  // （ws/retry 已在焦点段声明，先于 pollFocus 首次调用——TDZ 防回归见上）
-
+  // （ws/retry/protocolVersion 已在焦点段声明，先于 pollFocus 首次调用——TDZ 防回归见上）
   function wsSubscribe(ids) {
-    if (!ids.length || !ws || ws.readyState !== 1) return;
-    // 订阅应答（ack）之前到达的事件都算重放——边界由 handleServer 复位
+    if (!protocolVersion || !ids.length || !ws || ws.readyState !== 1) return;
     awaitingAck = true;
-    ws.send(JSON.stringify({ type: 'subscribe', id: `s${Date.now()}`, payload: { session_ids: ids } }));
+    const id = `s${Date.now()}`;
+    if (protocolVersion >= 2) {
+      ws.send(JSON.stringify({
+        type: 'subscribe_v2',
+        id,
+        payload: { session_id: ids[0], transcript: { '*': 'block' } }
+      }));
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'subscribe', id, payload: { session_ids: ids } }));
   }
 
   function connect() {
@@ -303,11 +312,43 @@ export function startDirectMode() {
     setTimeout(connect, delay);
   }
 
+  function forwardEvent(m, replayingHistory = false) {
+    if (!awaitingAck && !replayingHistory
+      && (EVIDENCE_TYPES.has(m.type)
+        || (m.type === 'agent.status.updated' && m.payload?.phase))) {
+      noteActivity();
+    }
+    const seq = Number(m.seq);
+    if (!m.kcmTranscript && Number.isFinite(seq) && m.volatile !== true) {
+      focusedSeq = Math.max(focusedSeq, seq);
+    }
+    const replay = replayingHistory || awaitingAck;
+    push({
+      v: 1,
+      type: 'event',
+      event: replay
+        ? { ...m, kcmReplay: true, kcmReplayHistory: replayingHistory || focusedSeq === 0 }
+        : m
+    });
+  }
+
   function handleServer(m) {
     const eventSid = m.session_id || m.payload?.session_id;
     if (eventSid && eventSid !== focusedSid) return;
     if (m.type === 'server_hello') {
       retry = 0;
+      protocolVersion = serverProtocolVersion(m);
+      debug({ wsProtocol: protocolVersion });
+      if (protocolVersion >= 2) {
+        awaitingAck = false;
+        ws?.send(JSON.stringify({
+          type: 'client_hello',
+          id: 'h1',
+          payload: { client_id: 'kcm-injected' }
+        }));
+        if (focusedSid) wsSubscribe([focusedSid]);
+        return;
+      }
       awaitingAck = true;
       ws?.send(JSON.stringify({
         type: 'client_hello',
@@ -315,8 +356,6 @@ export function startDirectMode() {
         payload: {
           client_id: 'kcm-injected',
           subscriptions: focusedSid ? [focusedSid] : [],
-          // 带上本页对该会话的水位：服务端只补发漏掉的那段；0 表示还没订阅过，
-          // 服务端会把整段历史重放一遍（那批事件由 bridge 按「历史重放」丢弃）
           cursors: focusedSid ? { [focusedSid]: { seq: focusedSeq } } : {}
         }
       }));
@@ -326,36 +365,25 @@ export function startDirectMode() {
       ws?.send(JSON.stringify({ type: 'pong', payload: { nonce: m.payload?.nonce } }));
       return;
     }
-    // 订阅应答 = 重放边界：它之后到达的才是实时事件
+    if (protocolVersion >= 2 && m.type === 'ack' && m.id === 'h1') return;
     if (m.type === 'ack' || m.type === 'resync_required') {
       awaitingAck = false;
+      if (protocolVersion >= 2) {
+        debug({ wsSubscription: m.code === 0 ? 'ok' : `error(${m.code})` });
+        return;
+      }
       cursorBySid.set(focusedSid, focusedSeq);
       const resync = m.payload?.resync_required || m.payload?.session_ids || [];
       if (resync.length) wsSubscribe(resync);
       return;
     }
-    // 工作证据：phase 携带的 agent.status.updated 也算。
-    // 订阅应答（ack）之前到达的是重放：重启客户端后的整段历史重放会把空闲会话
-    // 抬成「思考中」，与 bridge.js 丢弃重放状态、work_changed 的 petTurnActive
-    // 守卫同一口径——活跃度只认应答边界之后的实时事件
-    if (!awaitingAck
-      && (EVIDENCE_TYPES.has(m.type)
-        || (m.type === 'agent.status.updated' && m.payload?.phase))) {
-      noteActivity();
+    if (protocolVersion >= 2) {
+      const events = transcriptEvents(m);
+      if (events.length) debug({ lastEventType: m.type, lastEventCount: events.length });
+      for (const event of events) forwardEvent(event, m.type === 'transcript.reset');
+      return;
     }
-    // 水位与重放标记：durable 事件才推进水位（volatile 帧复用 durable 序号）；
-    // 「是否历史重放」要在推进水位之前判定——游标为 0 的订阅，应答前的整段重放
-    // 就是历史，不能计进面板（数字已由本地汇总做底）
-    const seq = Number(m.seq);
-    const replayingHistory = awaitingAck && focusedSeq === 0;
-    if (Number.isFinite(seq) && m.volatile !== true) focusedSeq = Math.max(focusedSeq, seq);
-    push({
-      v: 1,
-      type: 'event',
-      event: awaitingAck
-        ? { ...m, kcmReplay: true, kcmReplayHistory: replayingHistory }
-        : m
-    });
+    forwardEvent(m);
   }
 
   connect();

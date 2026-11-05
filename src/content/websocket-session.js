@@ -8,6 +8,7 @@
  */
 
 import { normalizeUsage } from '../metrics.js';
+import { serverProtocolVersion, transcriptEvents, stepEventKey } from '../transcript.js';
 import { setAgentStatus, renderAll } from './render.js';
 import { petBeginTurn, petCompleteTurn } from './pet-panel.js';
 import { toNumber, rcApiPrefix, isRemoteControl } from './utils.js';
@@ -35,6 +36,9 @@ export function createWebSocketSession(deps) {
   let reconnectAttempts = 0;
   let reconnectTimer = null;
   let helloWatchdog = null;
+  let protocolVersion = 0;
+  let clientHelloId = '';
+  let subscriptionFrameId = '';
 
   // 订阅重放闸门
   let awaitingAck = false;
@@ -52,6 +56,9 @@ export function createWebSocketSession(deps) {
   // 因此会话数据恢复完全依赖「快照 + 本地按会话汇总」，WS 只接实时事件。
   let lastUsageSeq = -1;
   let lastTurnSeq = -1;
+  const completedStepIds = new Set();
+  const completedTurnIds = new Set();
+  const COMPLETED_EVENT_ID_LIMIT = 500;
 
   // 工具调用可能与 step / agent 状态事件交错；在结果返回前保持「执行中」，
   // 避免刚显示就被紧随其后的 running / thinking 覆盖。
@@ -73,7 +80,22 @@ export function createWebSocketSession(deps) {
   } = deps;
   const { metrics, sessionSamples, activeSubagents } = panel;
 
+  function rememberEvent(set, key) {
+    if (!key) return;
+    set.delete(key);
+    set.add(key);
+    if (set.size > COMPLETED_EVENT_ID_LIMIT) set.delete(set.values().next().value);
+  }
+
+  function hasCompletedStep(key) {
+    return Boolean(key) && (completedStepIds.has(key) || sessionSamples.some((sample) => (
+      stepEventKey(sample, sample.agentId || 'main') === key
+    )));
+  }
+
   function handleStepCompleted(payload, agentId = 'main') {
+    const key = stepEventKey(payload, agentId);
+    if (hasCompletedStep(key)) return;
     const usage = normalizeUsage(payload.usage || payload.token_usage);
 
     metrics.inputTokens += usage.inputTokens;
@@ -85,7 +107,8 @@ export function createWebSocketSession(deps) {
     // （从本地汇总种进来）。代理合计同步累加，两者不会各记一份、也不会对不上。
     noteAgentUsage(agentId, payload.model || payload.modelAlias, usage);
 
-    pushStepSample(payload);
+    pushStepSample(payload, agentId);
+    rememberEvent(completedStepIds, key);
     renderAll();
   }
 
@@ -204,9 +227,25 @@ export function createWebSocketSession(deps) {
       ackWatchdog = null;
       awaitingAck = false;
     }, 3_000);
+    clientHelloId = `ksb-h-${Date.now()}`;
+    if (protocolVersion >= 2) {
+      subscriptionFrameId = `ksb-s-${Date.now()}`;
+      sendFrame({
+        type: 'client_hello',
+        id: clientHelloId,
+        payload: { client_id: 'kimi-statusbar' }
+      });
+      sendFrame({
+        type: 'subscribe_v2',
+        id: subscriptionFrameId,
+        payload: { session_id: sessionId, transcript: { '*': 'block' } }
+      });
+      return;
+    }
+    subscriptionFrameId = '';
     sendFrame({
       type: 'client_hello',
-      id: `ksb-${Date.now()}`,
+      id: clientHelloId,
       payload: {
         client_id: 'kimi-statusbar',
         subscriptions: [sessionId],
@@ -293,6 +332,7 @@ export function createWebSocketSession(deps) {
       if (metrics.agentStatus === 'offline') {
         setAgentStatus('idle');
       }
+      protocolVersion = serverProtocolVersion(message);
       sendClientHello();
       return;
     }
@@ -302,6 +342,9 @@ export function createWebSocketSession(deps) {
       return;
     }
 
+    if (protocolVersion >= 2 && message.type === 'ack' && message.id === clientHelloId) return;
+    if (protocolVersion >= 2 && message.type === 'ack' && subscriptionFrameId
+      && message.id !== subscriptionFrameId) return;
     // 订阅应答：重放边界。ack / resync_required 之后到达的才是实时事件
     if (message.type === 'ack' || message.type === 'resync_required') {
       clearAckWatchdog();
@@ -311,14 +354,21 @@ export function createWebSocketSession(deps) {
       return;
     }
 
+    if (protocolVersion >= 2 && (message.type === 'transcript.reset' || message.type === 'transcript.ops')) {
+      for (const event of transcriptEvents(message)) {
+        handleWsMessage(message.type === 'transcript.reset'
+          ? { ...event, kcmForceReplay: true, kcmReplayHistory: true }
+          : event);
+      }
+      return;
+    }
+
     // 重放事件（ack 之前到达）：不改状态、不播 Stars。
     // 历史重放（订阅游标为 0）只进折线样本，面板计数已由快照/本地汇总恢复；
     // 断线补发（游标非 0）是页面加载后的新事件，汇总未含，照常计数。
-    if (awaitingAck) {
+    if (awaitingAck || message.kcmForceReplay) {
       const replaySeq = Number(message.seq);
-      // 重连重放去重：ack 之后 subscriptionCursor 不随实时事件推进，重连时服务端
-      // 会按陈旧游标重放已被实时处理过的事件。先捕获推进前的游标用于判定
-      // （下面 Math.max 才推进水位），重放过的 step/turn 不再计入。
+      const replayHistory = message.kcmReplayHistory === true || replayIsHistory;
       const prevUsageSeq = lastUsageSeq;
       const prevTurnSeq = lastTurnSeq;
       if (Number.isFinite(replaySeq)) {
@@ -329,22 +379,32 @@ export function createWebSocketSession(deps) {
       const replayPayload = message.payload || {};
       if (message.type === 'turn.step.completed') {
         const replayAgent = eventAgentId(message, replayPayload);
-        if (replayIsHistory) {
-          // 历史重放：只进折线样本并登记代理顺序，不进任何计数器
+        if (replayHistory) {
           registerSessionAgent(replayAgent);
-          if (replaySamplesExpected) pushStepSample(replayPayload);
-        } else if (!Number.isFinite(replaySeq) || replaySeq > prevUsageSeq) {
-          // 断线补发只累计游标之后的新 step，重放已实时处理的 step 会双算 token
+          const key = stepEventKey(replayPayload, replayAgent);
+          if (key && !hasCompletedStep(key)) {
+            pushStepSample(replayPayload, replayAgent);
+            rememberEvent(completedStepIds, key);
+          } else if (!key && replaySamplesExpected) {
+            pushStepSample(replayPayload, replayAgent);
+            replaySamplesExpected = false;
+          }
+        } else if ((!Number.isFinite(replaySeq) || replaySeq > prevUsageSeq)
+          && !hasCompletedStep(stepEventKey(replayPayload, replayAgent))) {
           handleStepCompleted(replayPayload, replayAgent);
         }
       } else if (message.type === 'turn.ended' || message.type === 'turn.completed') {
-        // 轮次结束同理按 lastTurnSeq 去重：重放已处理的轮次不重复记耗时样本、
-        // 不再触发用量重扫
-        if (!Number.isFinite(replaySeq) || replaySeq > prevTurnSeq) {
+        const turnKey = replayPayload.turnId || '';
+        const alreadyRecorded = turnKey
+          ? completedTurnIds.has(turnKey)
+          : Number.isFinite(replaySeq) && replaySeq <= prevTurnSeq;
+        if (!alreadyRecorded) {
           pushReplayedTurnDuration(replayPayload);
-          if (!replayIsHistory) scheduleCliUsageRefresh();
+          rememberEvent(completedTurnIds, turnKey);
+          if (!replayHistory) scheduleCliUsageRefresh();
         }
       }
+      renderAll();
       return;
     }
 
@@ -419,21 +479,25 @@ export function createWebSocketSession(deps) {
       case 'turn.ended':
       case 'turn.completed': {
         const turnSequence = seq;
-        const alreadyRecorded = turnSequence != null && turnSequence <= lastTurnSeq;
+        const turnKey = payload.turnId || '';
+        const alreadyRecorded = turnKey
+          ? completedTurnIds.has(turnKey)
+          : turnSequence != null && turnSequence <= lastTurnSeq;
         const duration = toNumber(payload.durationMs ?? payload.duration_ms ?? payload.duration);
         if (!alreadyRecorded && duration > 0) {
           recordTurnDuration(duration);
         }
         if (turnSequence != null) lastTurnSeq = Math.max(lastTurnSeq, turnSequence);
         if (!alreadyRecorded) {
+          rememberEvent(completedTurnIds, turnKey);
           clearToolStatus();
           setAgentStatus('idle');
           // 折线图：本轮最后一个 step 样本加常驻大节点，区分轮内调用与整轮结束
           markLastSampleTurnEnd();
           petCompleteTurn();
+          scheduleCliUsageRefresh();
         }
         renderAll();
-        scheduleCliUsageRefresh();
         break;
       }
       case 'event.session.work_changed': {
@@ -503,6 +567,11 @@ export function createWebSocketSession(deps) {
       lastUsageSeq = -1;
       lastTurnSeq = -1;
       subscriptionCursor = 0;
+      completedStepIds.clear();
+      completedTurnIds.clear();
+      protocolVersion = 0;
+      clientHelloId = '';
+      subscriptionFrameId = '';
     },
     /** 清除工具调用锁定状态 */
     clearToolStatus,

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import tty from 'node:tty';
 import { spawn } from 'node:child_process';
+import { STATUS_TEXT } from '../content/utils.js';
 
 const MAX_TAIL_BYTES = 512 * 1024;
 const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]/g;
@@ -127,7 +128,9 @@ export function render(payload, activity = null, width = 120, color = true, modu
   const quotaSize = width >= 80 ? 4 : width >= 60 ? 3 : width >= 40 ? 2 : 0;
   const groups = {};
   const status = a.status || 'idle';
-  const appearance = ['offline', 'unauthorized'].includes(status) || quota.authRequired ? 'off'
+  const hasBackground = finite(a.backgroundTasks) && a.backgroundTasks > 0;
+  const showBackground = hasBackground && ['idle', 'ratelimit'].includes(status) && !quota.authRequired;
+  const appearance = showBackground ? 'work' : ['offline', 'unauthorized'].includes(status) || quota.authRequired ? 'off'
     : status === 'ratelimit' ? 'warn' : status === 'subagent' ? 'sub' : status === 'idle' ? 'idle' : 'work';
   const statusColor = {
     idle: muted,
@@ -136,7 +139,9 @@ export function render(payload, activity = null, width = 120, color = true, modu
     warn: '38;2;239;194;111',
     sub: '38;2;113;210;166',
   }[appearance];
-  groups.status = paint(statusColor, '●');
+  const displayStatus = quota.authRequired ? 'unauthorized' : status;
+  const statusText = showBackground ? `后台 ${Math.floor(a.backgroundTasks)}` : STATUS_TEXT[displayStatus] || clean(displayStatus, 12);
+  groups.status = paint(statusColor, `●${width >= 60 ? ` ${statusText}` : ''}`);
   for (const [name, key, label] of [['quota5h', 'fiveHour', '5h'], ['quotaWeek', 'week', '周']]) {
     groups[name] = paint(muted, `${label} `) + meter(quota[key]?.percent, quotaSize);
   }
@@ -201,12 +206,13 @@ export function usageBucket(raw) {
   return { input: other + cache + creation, output, cacheRead: cache };
 }
 
-const ACTIVITY_RECORD = /"(?:turn\.(?:prompt|started|ended|completed)|usage\.record|profile\.bind|config\.update|llm\.request|context\.append_loop_event|interaction\.(?:request|resolved)|subagent\.(?:spawned|started|suspended|completed|failed)|error|event\.session\.work_changed|agent\.status\.updated)"/;
+const ACTIVITY_RECORD = /"(?:turn\.(?:prompt|started|ended|completed)|assistant\.delta|usage\.record|profile\.bind|config\.update|llm\.request|context\.append_loop_event|interaction\.(?:request|resolved)|subagent\.(?:spawned|started|suspended|completed|failed)|task\.(?:started|terminated)|error|event\.session\.work_changed|agent\.status\.updated)"/;
 
 export function parseActivity(text) {
   const result = {};
   const active = new Map();
   const interactions = new Set();
+  const backgroundTasks = new Map();
   let turnActive = false;
   const workStatus = status => active.size ? 'executing' : status;
 
@@ -230,6 +236,17 @@ export function parseActivity(text) {
       continue;
     }
     if (get(r, 'agentId', 'main') !== 'main') continue;
+    if (kind === 'task.started' || kind === 'task.terminated') {
+      const taskId = clean(r.info?.taskId, 80);
+      if (taskId && kind === 'task.terminated') backgroundTasks.delete(taskId);
+      else if (taskId && r.info?.detached === true) backgroundTasks.set(taskId, true);
+      continue;
+    }
+    if (kind === 'assistant.delta') {
+      turnActive = true;
+      result.status = workStatus(interactions.size ? 'idle' : 'replying');
+      continue;
+    }
     if (['profile.bind', 'config.update', 'llm.request'].includes(kind)) {
       if (typeof r.thinkingEffort === 'string') result.thinkingEffort = r.thinkingEffort;
     } else if (['turn.prompt', 'turn.started'].includes(kind)) {
@@ -283,6 +300,7 @@ export function parseActivity(text) {
       if (interactions.size) result.status = workStatus('idle');
     }
   }
+  result.backgroundTasks = backgroundTasks.size;
   return result;
 }
 

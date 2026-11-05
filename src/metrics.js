@@ -301,10 +301,13 @@ function boosterBalanceYuan(wallet) {
   if (Number.isFinite(Number(wallet.balanceCents))) {
     return Math.max(0, Number(wallet.balanceCents) / 100);
   }
-  // web API 形状：{ status, balance: { amountLeft } }，amountLeft 单位 1e-8 元
+  // web API 当前形状：{ status, balance: { amount } }，单位为 1e-8 元。
+  // amountLeft 仅为旧版返回的临时兼容，后续删除。
   const status = String(wallet?.status || '').toUpperCase();
   if (status !== 'STATUS_ACTIVE' && status !== 'STATUS_ENABLED') return 0;
-  const amountLeft = Number(wallet?.balance?.amountLeft);
+  const rawAmount = wallet?.balance?.amountLeft ?? wallet?.balance?.amount;
+  if (rawAmount == null || rawAmount === '') return null;
+  const amountLeft = Number(rawAmount);
   return Number.isFinite(amountLeft) ? Math.max(0, amountLeft / 100_000_000) : null;
 }
 

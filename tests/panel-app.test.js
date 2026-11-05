@@ -1005,3 +1005,92 @@ test('panel-app：缓存提醒只显示一分钟黄色提示，随后恢复常�
     dom.window.close();
   }
 });
+
+
+test('panel-app：协议 2 转录帧恢复速度与历史样本，实时步骤按代理和 stepId 去重', async () => {
+  const dom = new JSDOM(PAGE_HTML, {
+    url: 'http://localhost:3000/sessions/session_v2-speed',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  setVisibleConfig(window);
+  window.sessionStorage.setItem('kimi-desktop-server-origin', 'http://127.0.0.1:56189');
+  const sockets = [];
+  window.WebSocket = class {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      this.sent = [];
+      sockets.push(this);
+    }
+    send(data) { this.sent.push(JSON.parse(data)); }
+    close() {}
+  };
+  const usage = { inputOther: 120, inputCacheRead: 80, inputCacheCreation: 0, output: 200 };
+  const step = (stepId, extra = {}) => ({
+    kind: 'step', stepId, turnId: 't1', ordinal: 1, state: 'completed',
+    usage, llmTiming: { llmStreamDurationMs: 2_000 }, ...extra
+  });
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 100);
+    const ws = sockets[0];
+    assert.ok(ws);
+    ws.onopen();
+    ws.onmessage({ data: JSON.stringify({ type: 'server_hello', payload: { protocol_version: 2 } }) });
+    await tick(window, 50);
+
+    const hello = ws.sent.find((frame) => frame.type === 'client_hello');
+    const subscription = ws.sent.find((frame) => frame.type === 'subscribe_v2');
+    assert.deepEqual(hello.payload, { client_id: 'kcm-injected' });
+    assert.deepEqual(subscription.payload, {
+      session_id: 'session_v2-speed', transcript: { '*': 'block' }
+    });
+    assert.equal(window.document.getElementById('ksb-speed-val').title, '等待有效耗时样本');
+
+    ws.onmessage({ data: JSON.stringify({
+      type: 'transcript.reset', session_id: 'session_v2-speed',
+      payload: {
+        agent_id: 'main', seq: 20,
+        snapshot: { items: [{ kind: 'turn', turnId: 't1', steps: [step('t1.1'), step('t1.2')] }] }
+      }
+    }) });
+    const text = (id) => window.document.getElementById(id).textContent;
+    assert.equal(text('ksb-input-tokens'), '0', '历史快照不重复累计输入');
+    assert.equal(text('ksb-output-tokens'), '0', '历史快照不重复累计输出');
+    assert.equal(text('ksb-speed-val'), '100tok/s', '历史样本能恢复速度');
+    assert.ok(window.document.getElementById('ksb-speed-spark').innerHTML.includes('<polyline'));
+
+    ws.onmessage({ data: JSON.stringify({ type: 'ack', id: subscription.id, code: 0, msg: 'success', payload: { accepted: ['session_v2-speed'] } }) });
+    const liveOps = (agentId, stepValue) => ({
+      type: 'transcript.ops', session_id: 'session_v2-speed',
+      payload: { agent_id: agentId, seq: 21, ops: [{ op: 'step.upsert', turnId: 't1', step: stepValue }] }
+    });
+    ws.onmessage({ data: JSON.stringify(liveOps('main', step('t1.2'))) });
+    assert.equal(text('ksb-output-tokens'), '0', '快照后的重复步骤不累计');
+
+    const liveStep = step('t1.3', {
+      usage: { inputOther: 500, inputCacheRead: 100, inputCacheCreation: 0, output: 300 },
+      llmTiming: { llmStreamDurationMs: 3_000 }
+    });
+    ws.onmessage({ data: JSON.stringify(liveOps('main', liveStep)) });
+    ws.onmessage({ data: JSON.stringify(liveOps('main', liveStep)) });
+    assert.equal(text('ksb-input-tokens'), '600');
+    assert.equal(text('ksb-output-tokens'), '300', '同一实时步骤只累计一次');
+
+    ws.onmessage({ data: JSON.stringify(liveOps('agent-1', step('t1.3', {
+      usage: { inputOther: 10, inputCacheRead: 0, inputCacheCreation: 0, output: 50 },
+      llmTiming: { llmStreamDurationMs: 1_000 }
+    }))) });
+    assert.equal(text('ksb-input-tokens'), '610', '不同代理的相同 stepId 不互相去重');
+    assert.equal(text('ksb-output-tokens'), '350');
+    assert.equal(window.__kcmDebug.wsProtocol, 2);
+    assert.equal(window.__kcmDebug.wsSubscription, 'ok');
+  } finally {
+    window.close();
+  }
+});

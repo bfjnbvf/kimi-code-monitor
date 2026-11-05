@@ -120,7 +120,14 @@ export function updatePerfDisplay() {
   if (!panel.els) return;
   if (panel.els.speedVal) {
     const speed = currentSpeed();
+    const hint = speed > 0
+      ? t('最近有效步骤的加权输出速度')
+      : sessionSamples.length
+        ? t('当前会话暂无可用于计算速度的耗时样本')
+        : t('等待有效耗时样本');
     panel.els.speedVal.textContent = speed > 0 ? `${speed}tok/s` : '--';
+    panel.els.speedVal.title = hint;
+    panel.els.speedVal.setAttribute('aria-label', `${panel.els.speedVal.textContent}，${hint}`);
   }
   if (panel.els.durationSub && panel.els.durationVal) {
     if (metrics.lastDuration > 0) {

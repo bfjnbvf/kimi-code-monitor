@@ -167,8 +167,8 @@ test('滞留的 agent/work 状态在轮次活动外不升级为忙碌', () => {
 
 test('订阅重放（ack 之前的事件）不改状态不播 Stars，历史重放只进折线样本', () => {
   assert.match(wsSource, /message\.type === 'ack' \|\| message\.type === 'resync_required'/);
-  assert.match(wsSource, /if \(awaitingAck\) \{/);
-  assert.match(wsSource, /if \(replayIsHistory\) \{[\s\S]*?pushStepSample\(replayPayload\)/);
+  assert.match(wsSource, /if \(awaitingAck \|\| message\.kcmForceReplay\) \{/);
+  assert.match(wsSource, /if \(replayHistory\) \{[\s\S]*?pushStepSample\(replayPayload, replayAgent\)/);
   assert.match(wsSource, /replaySamplesExpected = sessionSamples\.length === 0;/);
   assert.match(wsSource, /ackWatchdog = setTimeout/);
 });
@@ -313,11 +313,11 @@ test('销毁内容脚本时通过 walkthrough cleanup 移除引导及监听', ()
 test('WS 重连重放：ack 后已实时处理的 step/turn 重放不再双算', () => {
   // 先捕获推进前的水位，再做 Math.max 推进
   assert.match(wsSource, /const prevUsageSeq = lastUsageSeq;[\s\S]*?const prevTurnSeq = lastTurnSeq;[\s\S]*?lastUsageSeq = Math\.max\(lastUsageSeq, replaySeq\)/);
-  // 重放的 step/turn 只在游标大于旧水位时才累计
+  // 旧协议按游标、新协议按事件 ID，重复 step/turn 都不累计
   assert.match(wsSource, /replaySeq > prevUsageSeq\)[\s\S]*?handleStepCompleted\(replayPayload, replayAgent\)/);
-  assert.match(wsSource, /replaySeq > prevTurnSeq\)[\s\S]*?pushReplayedTurnDuration\(replayPayload\)/);
+  assert.match(wsSource, /completedTurnIds\.has\(turnKey\)[\s\S]*?pushReplayedTurnDuration\(replayPayload\)/);
   // 重复的 turn.ended 不清工具状态、不复位工作状态
-  assert.match(wsSource, /if \(!alreadyRecorded\) \{\s*clearToolStatus\(\);\s*setAgentStatus\('idle'\);/);
+  assert.match(wsSource, /if \(!alreadyRecorded\) \{\s*rememberEvent\(completedTurnIds, turnKey\);\s*clearToolStatus\(\);\s*setAgentStatus\('idle'\);/);
 });
 
 test('本地汇总 seed 恢复期间切换会话时丢弃旧会话结果', () => {

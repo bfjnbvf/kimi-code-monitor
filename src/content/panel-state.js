@@ -235,12 +235,16 @@ export function quotaPollingWanted() {
 }
 
 // 记录本步样本（折线图数据源，实时与重放共用）；速度/命中率无法计算时为 null，渲染跳过
-export function pushStepSample(payload) {
+export function pushStepSample(payload, agentId = 'main') {
   const usage = normalizeUsage(payload.usage || payload.token_usage);
-  const streamDuration = payload.llmStreamDurationMs ?? payload.llmServerDecodeMs;
+  const timing = payload.llmTiming && typeof payload.llmTiming === 'object' ? payload.llmTiming : payload;
+  const streamDuration = payload.llmStreamDurationMs ?? payload.llmServerDecodeMs
+    ?? timing.llmStreamDurationMs ?? timing.llmServerDecodeMs;
   const speed = decodeSpeed(usage.outputTokens, streamDuration);
   const stepInput = totalInputTokens(usage);
   panel.sessionSamples.push({
+    agentId,
+    stepId: payload.stepId || payload.uuid || '',
     input: stepInput,
     output: usage.outputTokens,
     cachePct: stepInput > 0 ? (usage.cacheReadTokens / stepInput) * 100 : null,

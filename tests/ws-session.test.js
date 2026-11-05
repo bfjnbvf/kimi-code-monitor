@@ -326,3 +326,76 @@ test('重连上限：连续失败达到上限后停止新建连接，转入低�
     dom.window.close();
   }
 });
+
+
+test('协议 2：网页与桌面共用转录适配，握手应答不提前放行实时计数', async () => {
+  const { dom, window, ws } = await createSessionPage();
+  const step = (stepId, extra = {}) => ({
+    kind: 'step', stepId, turnId: 't1', ordinal: 1, state: 'completed',
+    usage: { inputOther: 120, inputCacheRead: 80, inputCacheCreation: 0, output: 200 },
+    llmTiming: { llmStreamDurationMs: 2_000 },
+    ...extra
+  });
+  const ops = (agentId, value) => ({
+    type: 'transcript.ops', session_id: SESSION_ID,
+    payload: { agent_id: agentId, seq: 30, ops: [{ op: 'step.upsert', turnId: 't1', step: value }] }
+  });
+  const text = (id) => window.document.getElementById(id).textContent;
+  try {
+    ws.open();
+    ws.message({ type: 'server_hello', payload: { protocol_version: 2 } });
+    const hello = ws.sent.find((frame) => frame.type === 'client_hello');
+    const subscription = ws.sent.find((frame) => frame.type === 'subscribe_v2');
+    assert.deepEqual(hello.payload, { client_id: 'kimi-statusbar' });
+    assert.deepEqual(subscription.payload, {
+      session_id: SESSION_ID, transcript: { '*': 'block' }
+    });
+
+    ws.message({ type: 'ack', id: hello.id, code: 0, payload: {} });
+    ws.message({
+      type: 'transcript.reset', session_id: SESSION_ID,
+      payload: {
+        agent_id: 'main', seq: 20,
+        snapshot: { items: [{ kind: 'turn', turnId: 't1', steps: [step('t1.1'), step('t1.2')] }] }
+      }
+    });
+    assert.equal(inputText(window), '2k', '历史快照不覆盖快照汇总');
+    assert.equal(text('ksb-output-tokens'), '1k');
+    assert.equal(text('ksb-speed-val'), '100tok/s', '网页端复用 llmTiming 速度样本');
+
+    ws.message(ops('main', step('t1.3', {
+      usage: { inputOther: 500, inputCacheRead: 100, inputCacheCreation: 0, output: 300 },
+      llmTiming: { llmStreamDurationMs: 3_000 }
+    })));
+    assert.equal(inputText(window), '2k', '订阅应答前仍按重放处理');
+
+    ws.message({ type: 'ack', id: subscription.id, code: 0, payload: { accepted: [SESSION_ID] } });
+    const liveStep = step('t1.4', {
+      usage: { inputOther: 500, inputCacheRead: 100, inputCacheCreation: 0, output: 300 },
+      llmTiming: { llmStreamDurationMs: 3_000 }
+    });
+    ws.message(ops('main', liveStep));
+    ws.message(ops('main', liveStep));
+    assert.equal(inputText(window), '2.6k', '订阅应答后的实时步骤只累计一次');
+    assert.equal(text('ksb-output-tokens'), '1.3k');
+
+    ws.message(ops('agent-1', step('t1.4', {
+      usage: { inputOther: 1000, inputCacheRead: 0, inputCacheCreation: 0, output: 50 },
+      llmTiming: { llmStreamDurationMs: 1_000 }
+    })));
+    assert.equal(inputText(window), '3.6k', '不同代理的相同 stepId 独立计数');
+    assert.equal(text('ksb-output-tokens'), '1.4k');
+
+    ws.message({
+      type: 'transcript.reset', session_id: SESSION_ID,
+      payload: {
+        agent_id: 'main', seq: 31,
+        snapshot: { items: [{ kind: 'turn', turnId: 't1', steps: [step('t1.1'), step('t1.2'), liveStep] }] }
+      }
+    });
+    assert.equal(inputText(window), '3.6k', '订阅后的重置快照仍不重复计数');
+    assert.equal(text('ksb-output-tokens'), '1.4k');
+  } finally {
+    dom.window.close();
+  }
+});

@@ -1,10 +1,19 @@
-skill-version: 13.1
-patch-version: 3.6.1
+skill-version: 13.2
+patch-version: 3.7.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
-skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.1/kimi-code-monitor-skill.zip
-patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.1/kcm-desktop-patch.zip
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.0/kimi-code-monitor-skill.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.0/kcm-desktop-patch.zip
 
 # 更新记录
+
+## 13.2（2026-11-05）
+
+配套补丁 3.7.0：
+
+- **配套面板 3.7.0：桌面与网页共享协议 2 适配**：按服务端版本自动选择新旧协议，恢复实时输入、输出、缓存命中和速度；历史快照只恢复曲线，按代理与步骤 ID 去重，避免重放和重连双算（#18、#19）
+- **CLI HUD 状态增强**：显示状态文字、主代理回复中状态和 detached 后台任务数（#16）
+- **钱包字段兼容**：支持当前 `balance.amount` 与旧版 `balance.amountLeft`，异常金额不落零
+- **测试与发行守卫**：CLI 测试改用动态近期时间，补充新旧协议、后台任务和钱包字段回归测试；完整测试 388 通过、0 失败、1 跳过
 
 ## 13.1（2026-10-29）
 

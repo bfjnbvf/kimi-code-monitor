@@ -27,6 +27,7 @@
  */
 
 import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metrics.js';
+import { stepEventKey } from '../transcript.js';
 import { noteStepUsage, mergeDaily, hasAccumulated } from './accumulate.js';
 import { summarizeStatus, STATUS_LONG } from './status-copy.js';
 import { t } from '../i18n.js';
@@ -75,6 +76,8 @@ const STATUS_MAP = {
 let currentSessionId = DEFAULT_SESSION_ID;
 // 已消费到的事件序号（断线补发/重放去重用，切会话归零）
 let lastUsageSeq = 0;
+const completedStepIds = new Set();
+const COMPLETED_STEP_ID_LIMIT = 500;
 
 // 面板状态的常用引用（身份在页面生命周期内稳定，见 panel-state.js）
 const { metrics, sessionSamples, turnDurations, agentTotals, sessionAgentOrder } = panel;
@@ -153,7 +156,18 @@ function eventAgentId(message, payload) {
   return message.agent_id ?? payload.agent_id ?? payload.agentId ?? payload.subagentId ?? 'main';
 }
 
+function rememberStep(key) {
+  if (!key) return;
+  completedStepIds.delete(key);
+  completedStepIds.add(key);
+  if (completedStepIds.size > COMPLETED_STEP_ID_LIMIT) {
+    completedStepIds.delete(completedStepIds.values().next().value);
+  }
+}
+
 function handleStepCompleted(payload, agentId) {
+  const key = stepEventKey(payload, agentId);
+  if (key && completedStepIds.has(key)) return;
   const usage = normalizeUsage(payload.usage || payload.token_usage);
   panel.metrics.inputTokens += usage.inputTokens;
   panel.metrics.outputTokens += usage.outputTokens;
@@ -167,7 +181,8 @@ function handleStepCompleted(payload, agentId) {
   // 不带就记到该代理的当前模型；代理合计同步累加，两者不会各记一份
   noteAgentUsage(agentId, payload.model || payload.modelAlias, usage);
 
-  pushStepSample(payload);
+  pushStepSample(payload, agentId);
+  rememberStep(key);
   renderAll();
 }
 
@@ -213,8 +228,14 @@ function handleEvent(message) {
       const replayAgent = eventAgentId(message, payload);
       if (message.kcmReplayHistory === true) {
         noteReplayedStep(payload, replayAgent);
-        if (sessionSamples.length === 0) pushStepSample(payload);
-      } else if (!hasSeq || seq > lastUsageSeq) {
+        const key = stepEventKey(payload, replayAgent);
+        if (key && !completedStepIds.has(key)) {
+          pushStepSample(payload, replayAgent);
+          rememberStep(key);
+        } else if (!key && sessionSamples.length === 0) {
+          pushStepSample(payload, replayAgent);
+        }
+      } else if ((!hasSeq || seq > lastUsageSeq) && !completedStepIds.has(stepEventKey(payload, replayAgent))) {
         handleStepCompleted(payload, replayAgent);
       }
       if (hasSeq) lastUsageSeq = Math.max(lastUsageSeq, seq);
@@ -476,6 +497,9 @@ function restorePanelState(sid) {
   // 复制再挂到 live 数组：后续 push/shift 不能回写缓存条目
   sessionSamples.length = 0;
   sessionSamples.push(...cached.sessionSamples);
+  for (const sample of sessionSamples) {
+    if (sample.stepId) rememberStep(`${sample.agentId || 'main'}:${sample.stepId}`);
+  }
   turnDurations.length = 0;
   turnDurations.push(...cached.turnDurations);
   Object.keys(agentTotals).forEach((key) => delete agentTotals[key]);
@@ -517,6 +541,7 @@ function handleSessionSwitch(msg) {
   cachePanelState(currentSessionId);
   currentSessionId = sid;
   lastUsageSeq = 0;
+  completedStepIds.clear();
   // 缓存计时跟着会话走：快照的 updated_at 是切进来时唯一可用的历史时间
   cacheHintSeed(Date.parse(msg.snapshot?.updatedAt || '') || 0);
   clearToolStatus();

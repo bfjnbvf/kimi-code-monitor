@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import * as KimiCliUsage from '../src/cli-usage.js';
 import * as KimiMetrics from '../src/metrics.js';
 
-const DAY_KEY = KimiMetrics.usageDayKey(new Date(1785686400000));
+const BASE_TIME = Date.now() - 24 * 60 * 60 * 1000;
+const DAY_KEY = KimiMetrics.usageDayKey(new Date(BASE_TIME));
 
 function usageLine({ inputOther = 0, cacheRead = 0, cacheCreation = 0, output = 0, time = 0 }) {
   return JSON.stringify({
@@ -25,7 +26,7 @@ test('只累计 usage.record，不解析包含同名文本的对话记录', () =
   const daily = {};
   const text = [
     JSON.stringify({ type: 'turn.prompt', input: '请解释 usage.record' }),
-    usageLine({ inputOther: 10, cacheRead: 20, cacheCreation: 5, output: 3, time: 1785686400000 })
+    usageLine({ inputOther: 10, cacheRead: 20, cacheCreation: 5, output: 3, time: BASE_TIME })
   ].join('\n');
 
   assert.equal(KimiCliUsage.parseUsageLines(text, daily), 1);
@@ -33,8 +34,8 @@ test('只累计 usage.record，不解析包含同名文本的对话记录', () =
 });
 
 test('文件末尾半行不推进偏移，下次写完整后只补记一次', async () => {
-  const first = usageLine({ inputOther: 10, time: 1785686400000 });
-  const second = usageLine({ cacheRead: 20, output: 4, time: 1785686401000 });
+  const first = usageLine({ inputOther: 10, time: BASE_TIME });
+  const second = usageLine({ cacheRead: 20, output: 4, time: BASE_TIME + 1000 });
   const initialText = `${first}\n${second}`;
   const initialFile = new File([initialText], 'wire.jsonl', { lastModified: 1000 });
 
@@ -50,12 +51,12 @@ test('文件末尾半行不推进偏移，下次写完整后只补记一次', as
 
 test('同大小文件被改写时重建该文件统计，不与旧结果叠加', async () => {
   const beforeFile = new File([
-    `${usageLine({ inputOther: 1, time: 1785686400000 })}\n`
+    `${usageLine({ inputOther: 1, time: BASE_TIME })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const before = await KimiCliUsage.scanFile(beforeFile, null);
 
   const afterFile = new File([
-    `${usageLine({ inputOther: 9, time: 1785686400000 })}\n`
+    `${usageLine({ inputOther: 9, time: BASE_TIME })}\n`
   ], 'wire.jsonl', { lastModified: 2000 });
   assert.equal(afterFile.size, beforeFile.size);
   const after = await KimiCliUsage.scanFile(afterFile, before);
@@ -66,7 +67,7 @@ test('同大小文件被改写时重建该文件统计，不与旧结果叠加',
 
 test('子代理文件同额累加进 sub 子桶，合流后保留主/子拆分', async () => {
   const daily = {};
-  const line = usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 });
+  const line = usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: BASE_TIME });
   assert.equal(KimiCliUsage.parseUsageLines(line, daily, null, true), 1);
   assert.deepEqual(daily[DAY_KEY], {
     input: 30, output: 3, cacheRead: 20,
@@ -91,7 +92,7 @@ test('按会话汇总：一个代理一个模型一行，Σ 行 == 会话总计'
   const mainMeta = KimiCliUsage.emptyScanMeta();
   const subMeta = KimiCliUsage.emptyScanMeta();
   KimiCliUsage.parseUsageLines(
-    usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: 1785686400000 }),
+    usageLine({ inputOther: 10, cacheRead: 20, output: 3, time: BASE_TIME }),
     main, null, false, mainMeta
   );
   KimiCliUsage.parseUsageLines(
@@ -100,7 +101,7 @@ test('按会话汇总：一个代理一个模型一行，Σ 行 == 会话总计'
       model: 'kimi-code/k3',
       usage: { inputOther: 5, inputCacheRead: 7, inputCacheCreation: 0, output: 2 },
       usageScope: 'turn',
-      time: 1785686500000
+      time: BASE_TIME + 100000
     }),
     sub, null, true, subMeta
   );
@@ -120,8 +121,8 @@ test('按会话汇总：一个代理一个模型一行，Σ 行 == 会话总计'
   assert.deepEqual(entry.agents['agent-0'].models['kimi-code/k3'], {
     input: 12, output: 2, cacheRead: 7, records: 1
   });
-  assert.equal(entry.agents['agent-0'].firstAt, 1785686500000);
-  assert.equal(entry.agents.main.lastAt, 1785686400000);
+  assert.equal(entry.agents['agent-0'].firstAt, BASE_TIME + 100000);
+  assert.equal(entry.agents.main.lastAt, BASE_TIME);
   // 不变式：Σ(代理 × 模型) == 会话总计 —— 面板「各行之和 == 合计」靠它成立
   const sum = { input: 0, output: 0, cacheRead: 0 };
   for (const agent of Object.values(entry.agents)) {
@@ -145,14 +146,14 @@ test('同一代理换过模型各占一行；子代理占位符用 config.update
     usageScope: 'turn',
     time
   });
-  KimiCliUsage.parseUsageLines(record('kimi-code/k3-256k', 1785686400000), {}, null, false, mainMeta);
+  KimiCliUsage.parseUsageLines(record('kimi-code/k3-256k', BASE_TIME), {}, null, false, mainMeta);
   KimiCliUsage.parseUsageLines(
-    record('kimi-code/k3', 1785686500000, { inputOther: 2, inputCacheRead: 4, output: 2 }),
+    record('kimi-code/k3', BASE_TIME + 100000, { inputOther: 2, inputCacheRead: 4, output: 2 }),
     {}, null, false, mainMeta
   );
   // 子代理：记录里只有占位符，真名在 config.update
   const subText = [
-    record('__secondary__', 1785686600000),
+    record('__secondary__', BASE_TIME + 200000),
     JSON.stringify({ type: 'config.update', modelAlias: 'StepFun Step Plan/step-5-preview' })
   ].join('\n');
   KimiCliUsage.parseUsageLines(subText, {}, null, true, subMeta);
@@ -179,7 +180,7 @@ test('同一代理换过模型各占一行；子代理占位符用 config.update
 
 test('目录扫描按实际读取量报告百分比，并以 100 结束', async () => {
   const wire = new File([
-    `${usageLine({ inputOther: 10, cacheRead: 30, time: 1785686400000 })}\n`
+    `${usageLine({ inputOther: 10, cacheRead: 30, time: BASE_TIME })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const wireHandle = { async getFile() { return wire; } };
   const agentHandle = { kind: 'directory', async getFileHandle() { return wireHandle; } };
@@ -216,7 +217,7 @@ test('目录扫描按实际读取量报告百分比，并以 100 结束', async 
 
 test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）', async () => {
   const good = new File([
-    `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
+    `${usageLine({ inputOther: 10, time: BASE_TIME })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const goodWire = { async getFile() { return good; } };
   const badWire = { async getFile() { throw new Error('NotReadableError'); } };
@@ -249,13 +250,13 @@ test('单个 wire.jsonl 读取失败不中断整次扫描（网络盘容错）',
 });
 
 test('纯追加（上次已扫到旧文件尾且文件变大）从旧偏移续扫并沿用旧统计', async () => {
-  const first = `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`;
+  const first = `${usageLine({ inputOther: 10, time: BASE_TIME })}\n`;
   const initialFile = new File([first], 'wire.jsonl', { lastModified: 1000 });
   const initial = await KimiCliUsage.scanFile(initialFile, null);
   assert.equal(initial.offset, initialFile.size);
 
   const appendedFile = new File([
-    first + `${usageLine({ cacheRead: 20, output: 4, time: 1785686401000 })}\n`
+    first + `${usageLine({ cacheRead: 20, output: 4, time: BASE_TIME + 1000 })}\n`
   ], 'wire.jsonl', { lastModified: 2000 });
   const appended = await KimiCliUsage.scanFile(appendedFile, initial);
   assert.equal(appended.usageRecords, 2);
@@ -264,7 +265,7 @@ test('纯追加（上次已扫到旧文件尾且文件变大）从旧偏移续�
 
 test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，daily 从空重建', async () => {
   // 首次扫描末尾留有半行：offset 停在完整行之后，小于文件 size
-  const first = usageLine({ inputOther: 1, time: 1785686400000 });
+  const first = usageLine({ inputOther: 1, time: BASE_TIME });
   const initialFile = new File([`${first}\npartial`], 'wire.jsonl', { lastModified: 1000 });
   const initial = await KimiCliUsage.scanFile(initialFile, null);
   assert.equal(initial.usageRecords, 1);
@@ -273,8 +274,8 @@ test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，da
   // 文件随后被截断重写为更大的新内容（原子替换）：若沿用旧偏移续扫，
   // 新文件头部会永久漏计。offset !== size 不满足纯追加特征，必须全量重扫
   const replacedText = [
-    `${usageLine({ inputOther: 5, time: 1785686401000 })}\n`,
-    `${usageLine({ inputOther: 7, cacheRead: 2, time: 1785686402000 })}\n`
+    `${usageLine({ inputOther: 5, time: BASE_TIME + 1000 })}\n`,
+    `${usageLine({ inputOther: 7, cacheRead: 2, time: BASE_TIME + 2000 })}\n`
   ].join('');
   const replacedFile = new File([replacedText], 'wire.jsonl', { lastModified: 2000 });
   assert.ok(replacedFile.size > initial.offset);
@@ -288,7 +289,7 @@ test('上次未扫到旧文件尾（offset !== size）时回退全量重扫，da
 
 test('单个 wire getFile 失败保留旧索引并打标 failed，下次不再 unchanged 短路', async () => {
   const good = new File([
-    `${usageLine({ inputOther: 10, time: 1785686400000 })}\n`
+    `${usageLine({ inputOther: 10, time: BASE_TIME })}\n`
   ], 'wire.jsonl', { lastModified: 1000 });
   const previousIndex = {
     version: KimiCliUsage.INDEX_VERSION,

@@ -27,12 +27,29 @@ function parseArgs(argv) {
   return args;
 }
 
+// 当前字段为 amount；amountLeft 仅为旧版返回的临时兼容，后续删除。两者单位均为 1e-8 元
+function walletAmountLeft(wallet) {
+  const rawAmount = wallet?.balance?.amountLeft ?? wallet?.balance?.amount;
+  if (rawAmount == null || rawAmount === '') return null;
+  const amountLeft = Number(rawAmount);
+  return Number.isFinite(amountLeft) ? amountLeft : null;
+}
+
+function walletSnapshot(wallet) {
+  const amountLeft = walletAmountLeft(wallet);
+  if (amountLeft == null) return null;
+  return {
+    status: typeof wallet.status === 'string' ? wallet.status : '',
+    balance: { amountLeft }
+  };
+}
+
 // 与扩展 boosterBalanceYuan（metrics.js）同口径：单位 → 元
 function balanceYuan(wallet) {
   const status = String(wallet?.status || '').toUpperCase();
   if (status !== 'STATUS_ACTIVE' && status !== 'STATUS_ENABLED') return 0;
-  const amountLeft = Number(wallet?.balance?.amountLeft);
-  return Number.isFinite(amountLeft) ? Math.max(0, amountLeft / 100_000_000) : null;
+  const amountLeft = walletAmountLeft(wallet);
+  return amountLeft == null ? null : Math.max(0, amountLeft / 100_000_000);
 }
 
 async function main() {
@@ -84,16 +101,11 @@ async function main() {
     process.exit(3);
   }
 
-  const rawAmount = wallet.balance?.amountLeft;
-  const amountLeft = Number(rawAmount);
-  if (rawAmount == null || rawAmount === '' || !Number.isFinite(amountLeft)) {
+  const safeWallet = walletSnapshot(wallet);
+  if (!safeWallet) {
     console.error('[wallet] 余额字段格式异常，未写入快照');
     process.exit(4);
   }
-  const safeWallet = {
-    status: typeof wallet.status === 'string' ? wallet.status : '',
-    balance: { amountLeft }
-  };
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
   const staged = `${args.out}.tmp-${process.pid}`;
   try {
@@ -111,3 +123,5 @@ async function main() {
 if (process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href) {
   await main();
 }
+
+export { balanceYuan, walletSnapshot };

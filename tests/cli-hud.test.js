@@ -14,7 +14,7 @@ test('context payload is not rendered and status, model, thinking and permission
   const activity = { quota: { fiveHour: { percent: 25 }, week: { percent: 75 } } };
   const line = callHud('render', payload, activity, 120, false);
   assert.match(line, /5h 25%.*7d 75%/);
-  assert.match(line, /^● DeepSeek V4\.1 Flash 思考 -- 询问    5h 25%/);
+  assert.match(line, /^● 空闲 DeepSeek V4\.1 Flash 思考 -- 询问    5h 25%/);
   assert.match(line, /--tok\/s 缓存 --%    输入 -- 输出 --    中文项目/);
   assert.ok(line.indexOf('●') < line.indexOf('DeepSeek'));
   assert.ok(line.indexOf('DeepSeek') < line.indexOf('思考'));
@@ -37,22 +37,22 @@ test('quota percentages lead their bars and share the same green, yellow and red
 
 test('model name and status light share the web panel appearance in every state', () => {
   const cases = [
-    ['idle', '38;2;139;153;173'],
-    ['thinking', '38;2;132;210;255'],
-    ['executing', '38;2;132;210;255'],
-    ['replying', '38;2;132;210;255'],
-    ['subagent', '38;2;113;210;166'],
-    ['ratelimit', '38;2;239;194;111'],
-    ['offline', '38;2;255;126;145'],
+    ['idle', '38;2;139;153;173', '空闲'],
+    ['thinking', '38;2;132;210;255', '思考中'],
+    ['executing', '38;2;132;210;255', '调用中'],
+    ['replying', '38;2;132;210;255', '回复中'],
+    ['subagent', '38;2;113;210;166', '子代理'],
+    ['ratelimit', '38;2;239;194;111', '限流中'],
+    ['offline', '38;2;255;126;145', '未连接'],
   ];
-  for (const [status, color] of cases) {
+  for (const [status, color, label] of cases) {
     const line = callHud('render', payload, { status }, 120, true);
-    assert.ok(line.startsWith(`\x1b[${color}m●\x1b[0m \x1b[1;${color}mDeepSeek`), status);
+    assert.ok(line.startsWith(`\x1b[${color}m● ${label}\x1b[0m \x1b[1;${color}mDeepSeek`), status);
   }
   const empty = callHud('render', payload, {}, 120, true);
-  assert.ok(empty.startsWith('\x1b[38;2;139;153;173m●\x1b[0m \x1b[1;38;2;139;153;173mDeepSeek'));
+  assert.ok(empty.startsWith('\x1b[38;2;139;153;173m● 空闲\x1b[0m \x1b[1;38;2;139;153;173mDeepSeek'));
   const unauthorized = callHud('render', payload, { status: 'thinking', quota: { authRequired: true } }, 120, true);
-  assert.ok(unauthorized.startsWith('\x1b[38;2;255;126;145m●\x1b[0m \x1b[1;38;2;255;126;145mDeepSeek'));
+  assert.ok(unauthorized.startsWith('\x1b[38;2;255;126;145m● 未授权\x1b[0m \x1b[1;38;2;255;126;145mDeepSeek'));
 });
 
 test('latest usage includes both cache types exactly once', () => {
@@ -140,6 +140,38 @@ test('tail-only tool and step events still infer an active turn', () => {
   assert.equal(callHud('parse_activity', jsonl(stepRows)).status, 'thinking');
 });
 
+test('background tasks take over status only while foreground is idle or rate limited', () => {
+  const started = (taskId, detached = true) => ({ type: 'task.started', info: { taskId, detached, status: 'running' } });
+  const terminated = taskId => ({ type: 'task.terminated', info: { taskId, detached: true, status: 'completed' } });
+  const rows = [started('bash-1'), started('bash-2'), started('bash-1'), { type: 'turn.ended', reason: 'completed' }];
+  let activity = callHud('parse_activity', jsonl(rows));
+  assert.equal(activity.status, 'idle');
+  assert.equal(activity.backgroundTasks, 2);
+  assert.match(callHud('render', payload, activity, 120, false), /^● 后台 2/);
+  assert.match(callHud('render', payload, { ...activity, status: 'thinking' }, 120, false), /^● 思考中/);
+  assert.doesNotMatch(callHud('render', payload, { ...activity, status: 'thinking' }, 120, false), /后台/);
+  assert.match(callHud('render', payload, { ...activity, status: 'ratelimit' }, 120, false), /^● 后台 2/);
+  assert.doesNotMatch(callHud('render', payload, { ...activity, status: 'ratelimit' }, 120, false), /限流中/);
+  assert.match(callHud('render', payload, activity, 120, true, ['status']), /^\x1b\[38;2;132;210;255m● 后台 2/);
+
+  rows.push(terminated('bash-1'), terminated('unknown'));
+  activity = callHud('parse_activity', jsonl(rows));
+  assert.equal(activity.backgroundTasks, 1);
+  rows.push(terminated('bash-2'), started('foreground', false), { ...started('child'), agentId: 'child' });
+  activity = callHud('parse_activity', jsonl(rows));
+  assert.equal(activity.backgroundTasks, 0);
+  assert.doesNotMatch(callHud('render', payload, activity, 120, false), /后台/);
+});
+
+test('main assistant deltas enter replying while subagent deltas stay isolated', () => {
+  const rows = [{ type: 'turn.prompt' }, { type: 'assistant.delta' }];
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'replying');
+  rows.push({ type: 'assistant.delta', agentId: 'child' });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'replying');
+  rows.push({ type: 'context.append_loop_event', event: { type: 'tool.call', name: 'Read', toolCallId: 'a' } });
+  assert.equal(callHud('parse_activity', jsonl(rows)).status, 'executing');
+});
+
 test('subagent, rate limit and work status events follow the web state machine', () => {
   const rows = [
     { type: 'turn.prompt' },
@@ -210,7 +242,7 @@ test('recorded compatibility fixtures preserve layout, Unicode width and numeric
     quota: { fiveHour: { percent: 25 }, week: { percent: 75 }, stale: true } };
   // 宽度不足时按既有优先级收起次要模块，始终保留两个额度。
   assert.equal(callHud('render', unicodePayload, activity, 58, false), '● Kimi😀é中… 思考 max 计划·从不询问    5h 25% ▌░ 7d 75% █▌');
-  assert.equal(callHud('render', unicodePayload, activity, 120, false), '● Kimi😀é中文-long-model-… 思考 max 计划·从不询问    5h 25% █░░░ 7d 75% ███░    12.3tok/s 缓存 85%    输入 1.1k');
+  assert.equal(callHud('render', unicodePayload, activity, 120, false), '● 思考中 Kimi😀é中文-long-model-… 思考 max 计划·从不询问    5h 25% █░░░ 7d 75% ███░    12.3tok/s 缓存 85%    输入 1.1k');
   assert.equal(callHud('render', unicodePayload, activity, 58, false, ['branch', 'output', 'input', 'speed']), '分支    输出 1.2m 输入 1.1k    12.3tok/s');
   assert.equal(callHud('cell_width', '\x1b[31m中文\x1b[0m'), 4);
   assert.equal(callHud('cell_width', '\x1b]0;abc\x07xy'), 2);

@@ -50,7 +50,7 @@ function injectScript(window, file, { allowSyntheticGestures = false } = {}) {
   const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
   // jsdom 的事件实例把 isTrusted 写成不可配置属性；仅在 UI 交互测试中放行合成手势
   script.textContent = allowSyntheticGestures
-    ? source.replace('event?.isTrusted === true', 'true').replace('event?.isTrusted !== true', 'false')
+    ? source.replace(/event\w*\?\.isTrusted === true/g, 'true').replace(/event\w*\?\.isTrusted !== true/g, 'false')
     : source;
   window.document.body.appendChild(script);
 }
