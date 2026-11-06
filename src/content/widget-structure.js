@@ -69,7 +69,7 @@ function quotaModuleHTML(prefix, label) {
   return `
     <div class="ksb-quota-group">
       <div class="ksb-quota-head">
-        <span class="ksb-quota-label">${label}</span>
+        <span class="ksb-quota-label" id="ksb-${prefix}-label">${label}</span>
         <span class="ksb-reset" id="ksb-${prefix}-reset"><span class="ksb-reset-full"></span><span class="ksb-reset-short"></span></span>
         <span class="ksb-quota-pct" id="ksb-${prefix}-pct">--</span>
       </div>
@@ -432,7 +432,7 @@ function cacheElements() {
     },
     quota: {
       '5h': { fill: byId('ksb-5h-fill'), pace: byId('ksb-5h-pace'), pct: byId('ksb-5h-pct'), reset: byId('ksb-5h-reset') },
-      week: { fill: byId('ksb-week-fill'), pace: byId('ksb-week-pace'), pct: byId('ksb-week-pct'), reset: byId('ksb-week-reset') },
+      week: { label: byId('ksb-week-label'), fill: byId('ksb-week-fill'), pace: byId('ksb-week-pace'), pct: byId('ksb-week-pct'), reset: byId('ksb-week-reset') },
       month: { fill: byId('ksb-month-fill'), pace: byId('ksb-month-pace'), pct: byId('ksb-month-pct'), reset: byId('ksb-month-reset') }
     }
   };
@@ -624,10 +624,11 @@ function moduleMenuHTML(id) {
     `;
   }
   const mod = panel.widgetConfig.modules[id];
+  const moduleLabel = id === 'quotaWeek' && panel.quotaPeriod === 'month' ? '本月额度' : MODULE_LABELS[id];
   // 子代理列表模块内容是多行列表，不提供半宽；外部账户提供（半宽显示首个选中账户）
   const widthRow = id === 'agents'
     ? ''
-    : `<div class="ksb-menu-label">${t(MODULE_LABELS[id])} · ${t('宽度')}</div>
+    : `<div class="ksb-menu-label">${t(moduleLabel)} · ${t('宽度')}</div>
     ${menuOpts('span', [[1, t('半宽')], [2, t('整宽')]], mod.span)}`;
   const agentsRow = id === 'agents'
     ? `<div class="ksb-menu-label">${t('显示代理')}</div>${agentVisibilityOpts()}`

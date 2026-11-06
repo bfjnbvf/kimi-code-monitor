@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { kapAuthHeaders } from '../kap-auth.mjs';
 import { quotaPercentage } from '../metrics.js';
+import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
 
 export function normalizeQuota(body) {
   // 兼容三种接口结构；空值不算 0%。 / Accept three response shapes; missing data is not zero usage.
@@ -28,7 +29,12 @@ export function normalizeQuota(body) {
     || legacy(body?.limits?.find?.(item => Number(item?.window?.duration) === 300)?.detail);
   const week = entry(managed?.limit7d, 'usedRatio', 'resetAt')
     || entry(modern?.limit_7d, 'used_ratio', 'reset_time') || legacy(body?.usage);
-  return fiveHour || week ? { fiveHour, week } : null;
+  const rawMonth = monthlyQuota(managed) || monthlyQuota(modern);
+  const month = rawMonth ? {
+    percent: Math.min(100, rawMonth.usedRatio * 100), resetAt: rawMonth.resetAt
+  } : null;
+  const period = isMonthlyPlan(managed) || isMonthlyPlan(modern) ? 'month' : 'week';
+  return fiveHour || week || month ? { fiveHour, week, month, period } : null;
 }
 
 export async function fetchQuota(home, fetchFn = fetch) {

@@ -8,6 +8,7 @@
  */
 
 import { quotaPercentage } from '../metrics.js';
+import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
 import { panel, quotaPollingWanted } from './panel-state.js';
 import { toNumber, parseResetTime } from './utils.js';
 import {
@@ -54,9 +55,19 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
     // API 字段名经历过 boosterWallet → booster_wallet 的变更，双读兼容
     updateBalance(response.data?.boosterWallet ?? response.data?.booster_wallet);
 
-    const weeklyPercentage = quotaPercentage(response.data?.usage);
-    if (weeklyPercentage != null) updateProgress('week', weeklyPercentage);
-    updateResetText('week', parseResetTime(response.data?.usage?.resetTime));
+    const usages = response.data?.data?.quota?.usages || response.data?.quota?.usages
+      || response.data?.usages || response.data;
+    if (isMonthlyPlan(usages)) {
+      const month = monthlyQuota(usages);
+      panel.quotaPeriod = 'month';
+      updateProgress('week', month.usedRatio * 100);
+      updateResetText('week', parseResetTime(month.resetAt));
+    } else {
+      if (response.data?.usage) panel.quotaPeriod = 'week';
+      const weeklyPercentage = quotaPercentage(response.data?.usage);
+      if (weeklyPercentage != null) updateProgress('week', weeklyPercentage);
+      updateResetText('week', parseResetTime(response.data?.usage?.resetTime));
+    }
 
     const fiveHour = response.data?.limits?.find(
       (item) => toNumber(item?.window?.duration) === 300
@@ -64,8 +75,6 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
     const fiveHourPercentage = quotaPercentage(fiveHour?.detail);
     if (fiveHourPercentage != null) updateProgress('5h', fiveHourPercentage);
     updateResetText('5h', parseResetTime(fiveHour?.detail?.resetTime));
-
-    // 月额度暂时下线（background 返回 monthly=null）；模块与拉取逻辑保留备用
   } catch (error) {
     if (String(error?.message || error).includes('Extension context invalidated')) {
       // 扩展已重载，这个残留脚本立即停止所有活动，不再刷错误

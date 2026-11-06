@@ -1,12 +1,19 @@
 skill-version: 13.2
-patch-version: 3.7.0
+patch-version: 3.7.1
 repo: https://github.com/bfjnbvf/kimi-code-monitor
-skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.0/kimi-code-monitor-skill.zip
-patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.0/kcm-desktop-patch.zip
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.1/kimi-code-monitor-skill-v3.7.1.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.1/kimi-code-monitor-desktop-v3.7.1.zip
 
 # 更新记录
 
-## 13.2（2026-11-05）
+## 13.2（2026-11-05 至 2026-11-06）
+
+配套补丁 3.7.1：
+
+- **配套面板 3.7.1：新 KFC 套餐月额度**：优先读取主接口 `monthTotal`（缺失时回退 `monthCode`），确认没有周字段后把本周替换为本月；旧套餐保持本周，CLI 同步切换（#17）
+- **CLI HUD 后台任务快照**（#16、PR #20）：优先读取各代理任务快照并去重，排除前台与已结束任务；无快照时回退日志事件，主回复结束不清零，异常时显示 `后台 N+` 或 `后台 ?`
+- **统一发行资产命名**：四类资产改为 `kimi-code-monitor-<形态>-vX.Y.Z.zip`，本版保留旧桌面与技能文件名作为兼容别名
+- **移除失效候选接口**：删除 `GetSubscriptionStats` 及其网页 token、缓存与失效月度快照，不再保留废代码
 
 配套补丁 3.7.0：
 

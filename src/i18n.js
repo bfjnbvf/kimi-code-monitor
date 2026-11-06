@@ -39,6 +39,7 @@ const EN = {
   '上轮耗时': 'Last turn',
   '5h 额度': '5h quota',
   '本周额度': 'Weekly quota',
+  '本月额度': 'Monthly quota',
   '消耗量': 'Usage',
   '宠物': 'Pet',
   '外部账户': 'External accounts',

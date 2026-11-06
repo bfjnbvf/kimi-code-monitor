@@ -9,9 +9,11 @@ bash scripts/pack-web.sh
 node scripts/build-patch.mjs
 bash scripts/pack-cli-hud.sh
 
-# 技能包使用固定兼容文件名；版本号见包内 MAINTENANCE.md。
+# 技能包使用统一版本化文件名；版本号见包内 MAINTENANCE.md。
 # 顶层带 kimi-code-monitor/ 目录：解压到 ~/.kimi-code/skills/ 即就位。
-SKILL_OUT="kimi-code-monitor-skill.zip"
+VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)")
+SKILL_OUT="kimi-code-monitor-skill-v${VERSION}.zip"
+LEGACY_SKILL_OUT="kimi-code-monitor-skill.zip"
 SKILL_STAGE="$(mktemp -d)"
 cp -R skill "$SKILL_STAGE/kimi-code-monitor"
 # run.cmd 强制 CRLF：批处理在 LF 下解析有坑，不信任工作区行尾状态
@@ -30,9 +32,15 @@ rm -f "$SKILL_OUT"
 (cd "$SKILL_STAGE" && zip -rq "$OLDPWD/$SKILL_OUT" kimi-code-monitor -x "*.DS_Store")
 rm -rf "$SKILL_STAGE"
 unzip -t "$SKILL_OUT" >/dev/null
+cp "$SKILL_OUT" "$LEGACY_SKILL_OUT"
 
-VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('manifest.json','utf8')).version)")
-shasum -a 256 "kimi-code-monitor-web-v${VERSION}.zip" kcm-desktop-patch.zip "kimi-code-monitor-cli-v${VERSION}.zip" "$SKILL_OUT" > SHA256SUMS
+shasum -a 256 \
+  "kimi-code-monitor-web-v${VERSION}.zip" \
+  "kimi-code-monitor-desktop-v${VERSION}.zip" \
+  "kimi-code-monitor-cli-v${VERSION}.zip" \
+  "$SKILL_OUT" \
+  kcm-desktop-patch.zip \
+  "$LEGACY_SKILL_OUT" > SHA256SUMS
 
 echo "已生成 $SKILL_OUT"
 unzip -l "$SKILL_OUT"

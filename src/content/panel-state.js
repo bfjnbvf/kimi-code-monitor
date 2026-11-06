@@ -64,6 +64,7 @@ export const panel = {
   // 额度与余额的最近渲染值（结构重建后用于重绘）
   lastQuotaPct: { '5h': null, week: null, month: null },
   quotaResetAt: { '5h': null, week: null, month: null },
+  quotaPeriod: 'week',
   lastWallet: null,
   // 余额快照的写入时间（桌面端余额是快照制，悬停提示要标出它有多旧）
   lastWalletFetchedAt: '',

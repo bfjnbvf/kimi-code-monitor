@@ -299,15 +299,13 @@ import { t } from '../i18n.js';
     try {
       const stored = await chrome.storage.local.get([
         KimiCliUsage.DAILY_STORAGE_KEY,
-        'quotaSnapshots',
-        'quotaMonthlyLast'
+        'quotaSnapshots'
       ]);
       const payload = {
         exportedAt: new Date().toISOString(),
         note: 'Kimi Code Monitor 统计导出。usageDaily 为 CLI 按天数字汇总。导出不包含 CLI 对话原文。input 为总输入（含缓存读写）。',
         usageDaily: stored[KimiCliUsage.DAILY_STORAGE_KEY] || {},
-        quotaSnapshots: stored.quotaSnapshots || {},
-        quotaMonthly: stored.quotaMonthlyLast || null
+        quotaSnapshots: stored.quotaSnapshots || {}
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

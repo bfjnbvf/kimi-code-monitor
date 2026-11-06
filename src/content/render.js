@@ -39,7 +39,7 @@ const CHART_RANGE_LABELS = { day: '24h消耗', week: '7d消耗', month: '30d消�
 const QUOTA_WINDOW_MS = { '5h': 300 * 60_000, week: 7 * 24 * 3_600_000 };
 // 月度周期按 expireTime 回退一个日历月动态计算（28~31 天随月份变化，不写死 30 天）
 function paceWindowMs(prefix, resetMs) {
-  if (prefix === 'month' && Number.isFinite(resetMs)) {
+  if ((prefix === 'month' || (prefix === 'week' && panel.quotaPeriod === 'month')) && Number.isFinite(resetMs)) {
     const start = new Date(resetMs);
     start.setMonth(start.getMonth() - 1);
     return resetMs - start.getTime();
@@ -82,6 +82,9 @@ export function updateProgress(prefix, percentage) {
   panel.lastQuotaPct[prefix] = clamped;
   const target = panel.els?.quota[prefix];
   if (!target) return;
+  if (prefix === 'week' && target.label) {
+    target.label.textContent = t(panel.quotaPeriod === 'month' ? '本月' : '本周');
+  }
   const color = progressClass(clamped);
   if (target.fill) {
     target.fill.style.width = `${clamped}%`;

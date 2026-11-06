@@ -1094,3 +1094,34 @@ test('panel-app：协议 2 转录帧恢复速度与历史样本，实时步骤�
     window.close();
   }
 });
+
+
+test('panel-app：新套餐把本周模块替换为本月，旧套餐响应恢复本周', async () => {
+  const { window } = createPage();
+  try {
+    setVisibleConfig(window);
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window);
+    const push = (msg) => window.__kcm.push(msg);
+    const resetAt = new Date(Date.now() + 20 * 86400e3).toISOString();
+    push({ v: 1, type: 'quota', quota: {
+      limit5h: { usedRatio: 0.128, resetAt },
+      monthTotal: { usedRatio: 0.4988, resetAt },
+      monthCode: { usedRatio: 0.4046, resetAt }
+    } });
+    assert.equal(window.document.getElementById('ksb-week-label').textContent, '本月');
+    assert.equal(window.document.getElementById('ksb-week-pct').textContent, '49%');
+    assert.ok(window.document.getElementById('ksb-week-reset').textContent.length > 0);
+
+    push({ v: 1, type: 'quota', quota: {
+      limit5h: { usedRatio: 0.128, resetAt },
+      limit7d: { usedRatio: 0.392, resetAt }
+    } });
+    assert.equal(window.document.getElementById('ksb-week-label').textContent, '本周');
+    assert.equal(window.document.getElementById('ksb-week-pct').textContent, '39%');
+  } finally {
+    window.close();
+  }
+});

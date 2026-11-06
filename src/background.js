@@ -25,7 +25,7 @@ import {
   authStatus,
   clearAuth
 } from './background/oauth.js';
-import { fetchQuota, reportWebToken, invalidateQuotaCache, clearAccountAlertState } from './background/quota.js';
+import { fetchQuota, invalidateQuotaCache, clearAccountAlertState } from './background/quota.js';
 import {
   getExternalProvidersStatus,
   addExternalAccount,
@@ -83,7 +83,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     'cli.usage.refresh': refreshCliUsage,
     'cli.usage.disconnect': disconnectCliUsage,
     'cli.usage.open_settings': openCliUsageSettings,
-    'webtoken.report': reportWebToken,
     'external.status': getExternalProvidersStatus,
     'external.add': addExternalAccount,
     'external.remove': removeExternalAccount,

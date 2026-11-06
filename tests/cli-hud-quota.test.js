@@ -8,7 +8,7 @@ import { normalizeQuota, fetchQuota } from '../src/cli-hud/quota-worker.mjs';
 import { callHud, node } from './helpers/hud-node.js';
 
 test('quota adapters accept native, modern official and repository legacy shapes', () => {
-  const expected = { fiveHour: { percent: 25, resetAt: null }, week: { percent: 80, resetAt: null } };
+  const expected = { fiveHour: { percent: 25, resetAt: null }, week: { percent: 80, resetAt: null }, month: null, period: 'week' };
   assert.deepEqual(normalizeQuota({ data: { quota: { usages: { limit5h: { usedRatio: .25 }, limit7d: { usedRatio: .8 } } } } }), expected);
   assert.deepEqual(normalizeQuota({ usages: { limit_5h: { used_ratio: '.25' }, limit_7d: { used_ratio: .8 } } }), expected);
   assert.deepEqual(normalizeQuota({ limits: [{ window: { duration: '300' }, detail: { limit: 100, used: 25 } }], usage: { limit: 100, remaining: 20 } }), expected);
@@ -107,4 +107,23 @@ test('eval entry preserves CLI options and finds the quota worker beside the bun
     }
     assert.ok(started, 'quota worker should start from the eval-loaded bundle path');
   } finally { fs.rmSync(temp, { recursive: true }); }
+});
+
+
+test('monthTotal plan replaces the CLI week label with month using the real response shape', () => {
+  const quota = normalizeQuota({ data: { quota: { usages: {
+    limit5h: { usedRatio: 0.128, resetAt: '2026-11-06T01:57:26Z' },
+    monthTotal: { usedRatio: 0.4988, resetAt: '2026-11-26T00:00:00Z' },
+    monthCode: { usedRatio: 0.4046, resetAt: '2026-11-26T00:00:00Z' }
+  } } } });
+  assert.deepEqual(quota, {
+    fiveHour: { percent: 12.8, resetAt: '2026-11-06T01:57:26Z' },
+    week: null,
+    month: { percent: 49.88, resetAt: '2026-11-26T00:00:00Z' },
+    period: 'month'
+  });
+  const line = callHud('render', { model: 'Kimi', permissionMode: 'yolo' }, { quota }, 120, false, ['quota5h', 'quotaWeek']);
+  assert.match(line, /5h .*13%/);
+  assert.match(line, /月 .*50%/);
+  assert.doesNotMatch(line, /周|7d/);
 });

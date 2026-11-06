@@ -72,7 +72,7 @@ test('导出统计包含 CLI 按日汇总与额度快照，不含对话原文', 
   assert.match(html, /id="export-link">导出统计/);
   assert.match(usageSource, /KimiCliUsage\.DAILY_STORAGE_KEY/);
   assert.match(usageSource, /quotaSnapshots/);
-  assert.match(usageSource, /quotaMonthlyLast/);
+  assert.doesNotMatch(usageSource, /quotaMonthlyLast/);
   assert.match(usageSource, /导出不包含 CLI 对话原文/);
 });
 

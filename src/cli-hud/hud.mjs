@@ -127,6 +127,9 @@ export function render(payload, activity = null, width = 120, color = true, modu
   };
 
   const quota = a.quota || {};
+  const monthlyPeriod = quota.period === 'month';
+  const periodKey = monthlyPeriod ? 'month' : 'week';
+  const periodLabel = monthlyPeriod ? '月' : '周';
   const usage = a.usage || {};
   const quotaSize = width >= 80 ? 4 : width >= 60 ? 3 : width >= 40 ? 2 : 0;
   const groups = {};
@@ -147,10 +150,10 @@ export function render(payload, activity = null, width = 120, color = true, modu
     ? `${Math.floor(a.backgroundTasks)}${a.backgroundTasksIncomplete ? '+' : ''}` : '?';
   const statusText = showBackground ? `后台 ${backgroundCount}` : STATUS_TEXT[displayStatus] || clean(displayStatus, 12);
   groups.status = paint(statusColor, `●${width >= 60 ? ` ${statusText}` : ''}`);
-  for (const [name, key, label] of [['quota5h', 'fiveHour', '5h'], ['quotaWeek', 'week', '周']]) {
+  for (const [name, key, label] of [['quota5h', 'fiveHour', '5h'], ['quotaWeek', periodKey, periodLabel]]) {
     groups[name] = paint(muted, `${label} `) + meter(quota[key]?.percent, quotaSize);
   }
-  groups.quotaPair = `${width >= 40 ? paint(muted, '5h ') : ''}${meter(quota.fiveHour?.percent, quotaSize, true)} ${width >= 40 ? paint(muted, '7d ') : ''}${meter(quota.week?.percent, quotaSize, true)}`;
+  groups.quotaPair = `${width >= 40 ? paint(muted, '5h ') : ''}${meter(quota.fiveHour?.percent, quotaSize, true)} ${width >= 40 ? paint(muted, monthlyPeriod ? '月 ' : '7d ') : ''}${meter(quota[periodKey]?.percent, quotaSize, true)}`;
   const cachePercent = (get(usage, 'input', 0) > 0) ? Math.floor(usage.cacheRead / usage.input * 100) : null;
   groups.cache = paint(muted, `缓存 ${cachePercent === null ? '--' : cachePercent}%`);
   groups.duration = paint(muted, `上轮${formatDuration(a.durationMs)}`);
@@ -165,7 +168,7 @@ export function render(payload, activity = null, width = 120, color = true, modu
   groups.speed = paint(muted, finite(a.speed) ? `${pythonFixed1(a.speed)}tok/s` : '--tok/s');
   const branch = clean(p.gitBranch).split('/').at(-1);
   groups.branch = branch ? paint('38;2;178;155;218', shorten(branch, 20)) : '';
-  const hasQuota = ['fiveHour', 'week'].some(key => finite(quota[key]?.percent));
+  const hasQuota = ['fiveHour', 'week', 'month'].some(key => finite(quota[key]?.percent));
   const quotaStatus = quota.authRequired ? '需登录' : hasQuota ? '' : width < 100 ? '暂无' : '额度暂无';
   groups.quotaStatus = paint(quota.authRequired ? '38;2;239;194;111' : muted, quotaStatus + (quota.stale ? ' ~' : ''));
 

@@ -1,5 +1,17 @@
 # 更新说明
 
+## v3.7.1（2026-11-06）
+
+### 新增
+
+- **适配没有周额度的新 KFC 套餐**（[#17](https://github.com/bfjnbvf/kimi-code-monitor/issues/17)，保持开放）：优先读取主接口的 `monthTotal`（缺失时回退 `monthCode`），确认新套餐后把原「本周」模块替换为「本月」，显示月度比例与重置时间；CLI 同步把「周 / 7d」替换为「月」。旧套餐继续使用 `limit7d` 和「本周」，月周并存或字段无效时不误判。
+- **CLI HUD 从任务快照恢复后台运行计数**（[#16](https://github.com/bfjnbvf/kimi-code-monitor/issues/16)、[PR #20](https://github.com/bfjnbvf/kimi-code-monitor/pull/20)）：优先读取当前会话各代理保存的任务快照，兼容旧版任务目录并去重，排除前台与已结束任务；没有快照时保留日志事件回退。主回复结束不清零，快照更新为终态后移出计数；读取不完整时显示 `后台 N+` 或 `后台 ?`，不读取任务输出。
+
+### 变更
+
+- **统一发行资产命名**：Web、Desktop、CLI 与 Skill 均使用 `kimi-code-monitor-<形态>-vX.Y.Z.zip`。本版同时保留 `kcm-desktop-patch.zip` 与 `kimi-code-monitor-skill.zip` 旧别名，供旧技能和固定链接过渡。
+- **移除失效月额度候选通路**：删除 `GetSubscriptionStats` 及其网页 token、缓存、消息路由、月度快照与导出字段，新套餐直接走主接口。
+
 ## v3.7.0（2026-11-05）
 
 ### 新增

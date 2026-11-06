@@ -18,8 +18,7 @@ import { DEFAULT_WEB_PORT } from '../host-patterns.js';
 
 // 内容脚本会发送的全部消息类型（与 src/content.js、src/content/ 的
 // chrome.runtime.sendMessage 调用点一一对应）。
-// webtoken.report 已从白名单移除：月额度通路休眠，内容侧没有发送点，
-// 该 handler 仍留在后台备用——重新启用时须同时恢复白名单并改为加密存储。
+// webtoken.report 已随失效的月额度候选通路移除，不再注册后台 handler。
 const CONTENT_MESSAGE_TYPES = new Set([
   'quota.fetch',
   'oauth.start',

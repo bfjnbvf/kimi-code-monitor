@@ -4,7 +4,7 @@
  */
 
 import * as KimiMetrics from '../metrics.js';
-import { withStorageLock, updateStorage, failure, fetchWithTimeout } from './store.js';
+import { updateStorage, failure, fetchWithTimeout } from './store.js';
 import {
   readAccountStore,
   getValidTokenForAccount,
@@ -15,11 +15,7 @@ import {
 } from './oauth.js';
 
 const QUOTA_API = 'https://api.kimi.com/coding/v1/usages';
-// 订阅页月额度（方案 A：复用设备 OAuth token，401 时静默降级，见 requestMonthlyStats）
-const SUBSCRIPTION_STATS_API = 'https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats';
-
-const QUOTA_MONTHLY_STORAGE_KEY = 'quotaMonthlyLast';
-// 三档额度每日快照（导出用），复用额度拉取，零额外请求
+// 两档额度每日快照（导出用），复用额度拉取，零额外请求
 const QUOTA_SNAPSHOT_STORAGE_KEY = 'quotaSnapshots';
 const QUOTA_SNAPSHOT_INTERVAL_MS = 6 * 3_600_000;
 const QUOTA_SNAPSHOT_KEEP_DAYS = 90;
@@ -113,46 +109,6 @@ chrome.notifications.onClicked.addListener((notificationId) => {
   chrome.tabs.create({ url: 'https://www.kimi.com/code/console' });
 });
 
-/* ---------- kimi.com 网页端 token 中转（月额度接口方案 B） ----------
- * 网页端 access_token 由已下线的网页端中转脚本读取后上报至此缓存；
- * GetSubscriptionStats 只认这个 web token（设备 OAuth token 401）。 */
-const WEB_TOKEN_STORAGE_KEY = 'kimiWebAccessToken';
-const WEB_TOKEN_REFRESH_MARGIN_SECONDS = 120;
-void chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY).catch(() => {});
-
-export async function reportWebToken(payload) {
-  const token = typeof payload?.token === 'string' ? payload.token : '';
-  const expiresAt = Number(payload?.expiresAt);
-  if (!token || !Number.isFinite(expiresAt) || expiresAt <= 0) {
-    return { ok: false, error: 'token 无效' };
-  }
-  // 同一 token 不重复落盘，避免多标签页反复触发 storage 事件
-  return withStorageLock(WEB_TOKEN_STORAGE_KEY, async () => {
-    const stored = await chrome.storage.local.get(WEB_TOKEN_STORAGE_KEY);
-    if (stored[WEB_TOKEN_STORAGE_KEY]?.token === token) return { ok: true, reused: true };
-    await chrome.storage.local.set({
-      [WEB_TOKEN_STORAGE_KEY]: { token, expiresAt, reportedAt: Date.now() }
-    });
-    return { ok: true };
-  });
-}
-
-// 未过期才返回；过期即清除，等下次 kimi.com 页面访问补报
-async function getStoredWebToken() {
-  try {
-    const stored = await chrome.storage.local.get(WEB_TOKEN_STORAGE_KEY);
-    const entry = stored[WEB_TOKEN_STORAGE_KEY];
-    if (!entry?.token || !Number.isFinite(entry?.expiresAt)) return null;
-    const nowSeconds = Date.now() / 1_000;
-    if (entry.expiresAt > nowSeconds + WEB_TOKEN_REFRESH_MARGIN_SECONDS) return entry.token;
-    await chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY);
-    return null;
-  } catch (error) {
-    console.warn('[Kimi Status] 读取 web token 缓存失败', error);
-    return null;
-  }
-}
-
 export async function fetchQuota(payload) {
   const store = await readAccountStore();
   const accountId = store.activeId || '';
@@ -203,9 +159,6 @@ export async function fetchQuotaFresh(accountId) {
     throw await httpError('额度 API', response);
   }
   const data = await response.json();
-  // 月额度暂时下线：web token 寿命仅约 18 分钟，中转/轮询方案体验不佳，
-  // 找到更干净的通路前不再拉取（resolveMonthlyStats/requestMonthlyStats 保留备用）
-  data.monthly = null;
   const currentStore = await readAccountStore();
   if (requestRevision !== getAuthRevision() || currentStore.activeId !== account.id) {
     return failure(new Error('账户已切换，丢弃旧额度响应'), 'STALE_QUOTA');
@@ -221,31 +174,11 @@ export async function fetchQuotaFresh(accountId) {
   return result;
 }
 
-// 月额度：实时成功则落盘最后已知值；失败回退该值（stale 标记），面板不再横杠
-// 备用通路（当前 data.monthly 恒为 null，不调用）：导出为模块 API 备将来启用
-export async function resolveMonthlyStats(deviceAccessToken) {
-  const fresh = await requestMonthlyStats(deviceAccessToken);
-  if (fresh) {
-    const record = { ...fresh, fetchedAt: Date.now() };
-    await chrome.storage.local.set({ [QUOTA_MONTHLY_STORAGE_KEY]: record }).catch(() => {});
-    return record;
-  }
-  try {
-    const stored = await chrome.storage.local.get(QUOTA_MONTHLY_STORAGE_KEY);
-    const last = stored[QUOTA_MONTHLY_STORAGE_KEY];
-    if (last && Number.isFinite(Number(last.usedRatio))) return { ...last, stale: true };
-  } catch (error) {
-    console.warn('[Kimi Status] 读取月额度缓存失败', error);
-  }
-  return null;
-}
-
-// 三档额度每日快照（每 6 小时最多一条）；按账户隔离，失败静默，不影响主链路
+// 两档额度每日快照（每 6 小时最多一条）；按账户隔离，失败静默，不影响主链路
 export async function recordQuotaSnapshot(data, accountId = 'legacy') {
   try {
     const dayKey = KimiMetrics.usageDayKey(new Date());
     const percentages = extractQuotaPercentages(data);
-    const monthRatio = Number(data?.monthly?.usedRatio);
     await updateStorage(QUOTA_SNAPSHOT_STORAGE_KEY, async (raw) => {
       let snapshots = raw && typeof raw === 'object' ? { ...raw } : {};
       if (Object.values(snapshots).some((value) => value && typeof value === 'object' && '5h' in value)) {
@@ -257,7 +190,6 @@ export async function recordQuotaSnapshot(data, accountId = 'legacy') {
       accountSnapshots[dayKey] = {
         '5h': percentages['5h'],
         week: percentages.week,
-        month: Number.isFinite(monthRatio) ? Math.round(monthRatio * 1000) / 10 : null,
         at: Date.now()
       };
       const cutoff = new Date();
@@ -281,55 +213,6 @@ function requestQuota(accessToken) {
     20_000
   );
 }
-
-// 月额度 = 订阅余额的已用比例 + 月度周期结束时间；任何失败都返回 null，不影响主额度
-// 注意：重新启用此通路前，manifest 必须补 https://www.kimi.com/* 的 host_permissions
-// （以及网页端 token 中转的 content_scripts matches），否则 MV3 跨域 fetch 会被直接拒绝
-async function requestMonthlyStats(deviceAccessToken) {
-  // 优先 web 端 token（方案 B，已验证可用）；设备 token 兜底（当前 401，保留以便未来放开）
-  const webToken = await getStoredWebToken();
-  if (webToken) {
-    const result = await callSubscriptionStats(webToken);
-    if (result) return result;
-    // web token 被拒（提前失效）：清掉缓存，等 kimi.com 页面下次补报
-    await chrome.storage.local.remove(WEB_TOKEN_STORAGE_KEY).catch(() => {});
-  }
-  return callSubscriptionStats(deviceAccessToken);
-}
-
-// 返回 { usedRatio, resetTime, kimiCodeUsedRatio }；任何失败（含 401/403）返回 null
-async function callSubscriptionStats(accessToken) {
-  try {
-    const response = await fetchWithTimeout(
-      SUBSCRIPTION_STATS_API,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: '{}'
-      },
-      15_000
-    );
-    if (!response.ok) return null;
-    const stats = await response.json();
-    const balance = stats?.subscriptionBalance;
-    const usedRatio = Number(balance?.amountUsedRatio);
-    const resetMs = Date.parse(balance?.expireTime || '');
-    if (!Number.isFinite(usedRatio) || !Number.isFinite(resetMs)) return null;
-    const kimiCodeUsedRatio = Number(balance?.kimiCodeUsedRatio);
-    return {
-      usedRatio,
-      resetTime: balance.expireTime,
-      kimiCodeUsedRatio: Number.isFinite(kimiCodeUsedRatio) ? kimiCodeUsedRatio : null
-    };
-  } catch (error) {
-    console.warn('[Kimi Status] 月额度请求失败', error);
-    return null;
-  }
-}
-
 
 export async function clearAccountAlertState(accountId) {
   try {

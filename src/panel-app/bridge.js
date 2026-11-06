@@ -28,6 +28,7 @@
 
 import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metrics.js';
 import { stepEventKey } from '../transcript.js';
+import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
 import { noteStepUsage, mergeDaily, hasAccumulated } from './accumulate.js';
 import { summarizeStatus, STATUS_LONG } from './status-copy.js';
 import { t } from '../i18n.js';
@@ -344,7 +345,13 @@ function handleQuota(msg) {
     if (Number.isFinite(ratio)) updateProgress('5h', ratio * 100);
     updateResetText('5h', parseResetTime(fiveHour.resetAt));
   }
-  if (week) {
+  if (isMonthlyPlan(quota)) {
+    const month = monthlyQuota(quota);
+    panel.quotaPeriod = 'month';
+    updateProgress('week', month.usedRatio * 100);
+    updateResetText('week', parseResetTime(month.resetAt));
+  } else if (week) {
+    panel.quotaPeriod = 'week';
     const ratio = Number(week.usedRatio);
     if (Number.isFinite(ratio)) updateProgress('week', ratio * 100);
     updateResetText('week', parseResetTime(week.resetAt));
