@@ -8,6 +8,7 @@ const functions = {
   cell_width: hud.cellWidth,
   module_options: hud.moduleOptions,
   read_activity: hud.readActivity,
+  read_background_tasks: hud.readBackgroundTasks,
   read_quota: hud.readQuota,
 };
 
