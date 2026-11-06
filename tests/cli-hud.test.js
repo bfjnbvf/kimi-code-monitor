@@ -201,6 +201,102 @@ test('session lookup ignores incomplete records and never selects a different se
   } finally { fs.rmSync(home, { recursive: true }); }
 });
 
+test('background task snapshots survive turn completion, log truncation and missing wire', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-hud-tasks-'));
+  const session = path.join(home, 'sessions', 'wd_demo', 'session_demo');
+  const writeTask = (owner, id, status, extra = {}) => {
+    const dir = path.join(session, 'agents', owner, 'tasks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ taskId: id, status, detached: true, ...extra }));
+  };
+  try {
+    writeTask('main', 'bash-12345678', 'running');
+    writeTask('main', 'agent-12345678', 'running', { kind: 'agent' });
+    writeTask('main', 'bash-foreground', 'running', { detached: false });
+    for (const status of ['completed', 'failed', 'killed', 'timed_out', 'lost']) writeTask('main', `bash-${status}`, status);
+    writeTask('child', 'bash-12345678', 'running');
+    const wire = path.join(session, 'agents', 'main', 'wire.jsonl');
+    fs.writeFileSync(wire, 'x'.repeat(512 * 1024 + 32) + '\n' + jsonl([{ type: 'turn.ended', reason: 'completed' }]));
+    let activity = callHud('read_activity', home, 'session_demo');
+    assert.equal(activity.status, 'idle');
+    assert.equal(activity.backgroundTasks, 3);
+    assert.equal(activity.backgroundTasksIncomplete, false);
+    assert.match(callHud('render', payload, activity, 120, false), /后台 3/);
+    const entry = spawnSync(node, ['dist/hud.cjs', '--no-quota', '--plain'], {
+      input: JSON.stringify({ ...payload, sessionId: 'session_demo' }), encoding: 'utf8', env: { ...process.env, KIMI_CODE_HOME: home },
+    });
+    assert.equal(entry.status, 0, entry.stderr);
+    assert.match(entry.stdout, /后台 3/);
+    writeTask('main', 'bash-12345678', 'completed');
+    writeTask('main', 'agent-12345678', 'failed');
+    writeTask('child', 'bash-12345678', 'killed');
+    activity = callHud('read_activity', home, 'session_demo');
+    assert.equal(activity.backgroundTasks, 0);
+    assert.equal(activity.backgroundTasksIncomplete, false);
+    assert.doesNotMatch(callHud('render', payload, activity, 120, false), /后台/);
+    assert.deepEqual(callHud('read_activity', home, 'session_other'), {});
+    const otherTasks = path.join(home, 'sessions', 'wd_other', 'session_other', 'agents', 'main', 'tasks');
+    fs.mkdirSync(otherTasks, { recursive: true });
+    fs.writeFileSync(path.join(otherTasks, 'bash-other.json'), JSON.stringify({ taskId: 'bash-other', status: 'running' }));
+    assert.equal(callHud('read_activity', home, 'session_other').backgroundTasks, 1);
+    assert.equal(callHud('read_activity', home, 'session_demo').backgroundTasks, 0);
+    assert.deepEqual(callHud('read_activity', home, '../session_other'), {});
+  } finally { fs.rmSync(home, { recursive: true }); }
+});
+
+test('legacy tasks are deduplicated and unreadable snapshots report an incomplete count', () => {
+  const session = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-hud-legacy-tasks-'));
+  const primary = path.join(session, 'agents', 'main', 'tasks');
+  const legacy = path.join(session, 'tasks');
+  try {
+    fs.mkdirSync(primary, { recursive: true });
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(path.join(primary, 'bash-12345678.json'), JSON.stringify({ taskId: 'bash-12345678', status: 'completed' }));
+    fs.writeFileSync(path.join(legacy, 'bash-12345678.json'), JSON.stringify({ task_id: 'bash-12345678', status: 'running' }));
+    fs.writeFileSync(path.join(legacy, 'agent-12345678.json'), JSON.stringify({ task_id: 'agent-12345678', status: 'awaiting_approval' }));
+    assert.deepEqual(callHud('read_background_tasks', session), { running: 1, incomplete: false });
+    fs.writeFileSync(path.join(primary, 'broken.json'), '{');
+    fs.writeFileSync(path.join(primary, 'invalid.json'), 'null');
+    fs.writeFileSync(path.join(primary, 'oversized.json'), ' '.repeat(64 * 1024 + 1));
+    fs.writeFileSync(path.join(primary, 'output.log'), 'not a task snapshot');
+    const tasks = callHud('read_background_tasks', session);
+    assert.deepEqual(tasks, { running: 1, incomplete: true });
+    assert.match(callHud('render', payload, { backgroundTasks: tasks.running, backgroundTasksIncomplete: tasks.incomplete }, 120, false), /后台 1\+/);
+    assert.match(callHud('render', payload, { backgroundTasks: 0, backgroundTasksIncomplete: true }, 120, false), /后台 \?/);
+  } finally { fs.rmSync(session, { recursive: true }); }
+});
+
+test('wire counts remain a fallback only when no task snapshots are available', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-hud-fallback-'));
+  const session = path.join(home, 'sessions', 'wd_demo', 'session_demo');
+  const main = path.join(session, 'agents', 'main');
+  try {
+    fs.mkdirSync(main, { recursive: true });
+    fs.writeFileSync(path.join(main, 'wire.jsonl'), jsonl([
+      { type: 'task.started', info: { taskId: 'bash-demo', detached: true, status: 'running' } },
+      { type: 'turn.ended', reason: 'completed' },
+    ]));
+    assert.equal(callHud('read_background_tasks', session), null);
+    assert.equal(callHud('read_activity', home, 'session_demo').backgroundTasks, 1);
+    fs.mkdirSync(path.join(main, 'tasks'));
+    fs.writeFileSync(path.join(main, 'tasks', 'bash-demo.json'), JSON.stringify({ taskId: 'bash-demo', status: 'completed' }));
+    assert.equal(callHud('read_activity', home, 'session_demo').backgroundTasks, 0);
+  } finally { fs.rmSync(home, { recursive: true }); }
+});
+
+test('partial task counts retain existing layout and foreground status priorities', () => {
+  for (const width of [20, 40, 58, 78, 98, 120]) {
+    for (const running of [0, 1, 128]) {
+      const activity = { status: 'idle', backgroundTasks: running, backgroundTasksIncomplete: true };
+      const line = callHud('render', payload, activity, width, false);
+      assert.ok(callHud('cell_width', line) <= width, `${width}: ${line}`);
+      if (width >= 60) assert.ok(line.startsWith(running ? `● 后台 ${running}+` : '● 后台 ?'));
+      assert.doesNotMatch(callHud('render', payload, { ...activity, status: 'replying' }, width, false), /后台/);
+      assert.doesNotMatch(callHud('render', payload, { ...activity, quota: { authRequired: true } }, width, false), /后台/);
+    }
+  }
+});
+
 test('installer accepts stable Kimi 2.2+ and preserves unrelated config on restore', () => {
   for (const v of ['2.2.0', '2.3.0', '3.0.0']) assert.ok(compatibleVersion(v));
   assert.equal(compatibleVersion('2.1.9'), false);

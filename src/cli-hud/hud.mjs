@@ -6,6 +6,9 @@ import { spawn } from 'node:child_process';
 import { STATUS_TEXT } from '../content/utils.js';
 
 const MAX_TAIL_BYTES = 512 * 1024;
+const MAX_TASK_FILES = 512;
+const MAX_TASK_BYTES = 64 * 1024;
+const TASK_SCAN_MS = 50;
 const ANSI = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]/g;
 const CONTROLS = /[\x00-\x1f\x7f-\x9f\u2028\u2029]/g;
 const DEFAULT_MODULES = ['status', 'model', 'thinking', 'permission', 'quotaPair', 'speed', 'cache', 'input', 'output', 'project'];
@@ -128,7 +131,7 @@ export function render(payload, activity = null, width = 120, color = true, modu
   const quotaSize = width >= 80 ? 4 : width >= 60 ? 3 : width >= 40 ? 2 : 0;
   const groups = {};
   const status = a.status || 'idle';
-  const hasBackground = finite(a.backgroundTasks) && a.backgroundTasks > 0;
+  const hasBackground = finite(a.backgroundTasks) && a.backgroundTasks > 0 || a.backgroundTasksIncomplete === true;
   const showBackground = hasBackground && ['idle', 'ratelimit'].includes(status) && !quota.authRequired;
   const appearance = showBackground ? 'work' : ['offline', 'unauthorized'].includes(status) || quota.authRequired ? 'off'
     : status === 'ratelimit' ? 'warn' : status === 'subagent' ? 'sub' : status === 'idle' ? 'idle' : 'work';
@@ -140,7 +143,9 @@ export function render(payload, activity = null, width = 120, color = true, modu
     sub: '38;2;113;210;166',
   }[appearance];
   const displayStatus = quota.authRequired ? 'unauthorized' : status;
-  const statusText = showBackground ? `后台 ${Math.floor(a.backgroundTasks)}` : STATUS_TEXT[displayStatus] || clean(displayStatus, 12);
+  const backgroundCount = finite(a.backgroundTasks) && a.backgroundTasks > 0
+    ? `${Math.floor(a.backgroundTasks)}${a.backgroundTasksIncomplete ? '+' : ''}` : '?';
+  const statusText = showBackground ? `后台 ${backgroundCount}` : STATUS_TEXT[displayStatus] || clean(displayStatus, 12);
   groups.status = paint(statusColor, `●${width >= 60 ? ` ${statusText}` : ''}`);
   for (const [name, key, label] of [['quota5h', 'fiveHour', '5h'], ['quotaWeek', 'week', '周']]) {
     groups[name] = paint(muted, `${label} `) + meter(quota[key]?.percent, quotaSize);
@@ -304,6 +309,67 @@ export function parseActivity(text) {
   return result;
 }
 
+export function readBackgroundTasks(sessionDir) {
+  // 任务快照不受日志截尾影响。 / Task snapshots survive wire truncation and turn completion.
+  let running = 0, incomplete = false, scanned = 0;
+  const deadline = performance.now() + TASK_SCAN_MS;
+  const seen = new Set();
+  const scan = (directory, owner) => {
+    let dir;
+    try {
+      dir = fs.opendirSync(directory);
+      for (let entry; (entry = dir.readSync()) !== null;) {
+        if (performance.now() >= deadline || scanned >= MAX_TASK_FILES) return false;
+        if (!entry.name.endsWith('.json') || !entry.isFile()) continue;
+        const key = `${owner}/${entry.name}`;
+        if (seen.has(key)) continue;
+        // 新位置优先，避免旧目录重复计数。 / Prefer current files over legacy duplicates.
+        seen.add(key);
+        scanned++;
+        let fd;
+        try {
+          fd = fs.openSync(path.join(directory, entry.name), 'r');
+          const size = fs.fstatSync(fd).size;
+          if (size > MAX_TASK_BYTES) { incomplete = true; continue; }
+          const buffer = Buffer.alloc(size);
+          const bytes = fs.readSync(fd, buffer, 0, size, 0);
+          const task = JSON.parse(buffer.subarray(0, bytes).toString('utf8'));
+          if (!isRecord(task) || typeof (task.taskId ?? task.task_id) !== 'string') {
+            incomplete = true;
+            continue;
+          }
+          if (task.detached !== false && ['running', 'awaiting_approval'].includes(task.status)) running++;
+        } catch {
+          incomplete = true;
+        } finally {
+          if (fd !== undefined) fs.closeSync(fd);
+        }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') incomplete = true;
+    } finally {
+      if (dir) dir.closeSync();
+    }
+    return true;
+  };
+  let agents;
+  try {
+    agents = fs.opendirSync(path.join(sessionDir, 'agents'));
+    for (let agent; (agent = agents.readSync()) !== null;) {
+      if (performance.now() >= deadline || agent.isDirectory() && !scan(path.join(sessionDir, 'agents', agent.name, 'tasks'), agent.name)) {
+        return { running, incomplete: true };
+      }
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') incomplete = true;
+  } finally {
+    if (agents) agents.closeSync();
+  }
+  if (!scan(path.join(sessionDir, 'tasks'), 'main')) incomplete = true;
+  // 没有快照的旧版本沿用事件计数。 / Retain event counts for versions without task snapshots.
+  return scanned || incomplete ? { running, incomplete } : null;
+}
+
 export function readActivity(home, session) {
   if (typeof session !== 'string' || !/^session_[a-zA-Z0-9_-]+$/.test(session)) return {};
   const root = path.join(home, 'sessions');
@@ -311,7 +377,10 @@ export function readActivity(home, session) {
   try { workspaces = fs.readdirSync(root, { withFileTypes: true }); } catch { return {}; }
   for (const workspace of workspaces) {
     if (!workspace.isDirectory()) continue;
-    const wire = path.join(root, workspace.name, session, 'agents', 'main', 'wire.jsonl');
+    const sessionDir = path.join(root, workspace.name, session);
+    try { if (!fs.lstatSync(sessionDir).isDirectory()) continue; } catch { continue; }
+    const wire = path.join(sessionDir, 'agents', 'main', 'wire.jsonl');
+    let activity = {};
     let fd;
     try {
       fd = fs.openSync(wire, 'r');
@@ -321,12 +390,16 @@ export function readActivity(home, session) {
       const bytes = fs.readSync(fd, buffer, 0, buffer.length, start);
       let text = buffer.subarray(0, bytes).toString('utf8');
       if (start) text = text.slice(text.indexOf('\n') + 1);
-      return parseActivity(text.slice(0, text.lastIndexOf('\n') + 1));
-    } catch {
-      continue;
-    } finally {
+      activity = parseActivity(text.slice(0, text.lastIndexOf('\n') + 1));
+    } catch {} finally {
       if (fd !== undefined) fs.closeSync(fd);
     }
+    const tasks = readBackgroundTasks(sessionDir);
+    if (tasks) {
+      activity.backgroundTasks = tasks.running;
+      activity.backgroundTasksIncomplete = tasks.incomplete;
+    }
+    return activity;
   }
   return {};
 }
