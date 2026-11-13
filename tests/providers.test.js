@@ -10,7 +10,8 @@ import {
   parseKimiApi,
   parseZhipu,
   parseMiniMax,
-  parseStepFun
+  parseStepFun,
+  parseStepFunPlan
 } from '../src/providers.js';
 
 test('DeepSeek 只取人民币余额并拆分赠送/充值', () => {
@@ -101,6 +102,37 @@ test('MiniMax model_remains：无 general 取第一条；base_resp 非零报接�
   );
 });
 
+
+test('StepFun Step Plan：控制台 Credit 窗口（含秒/毫秒重置时间）', () => {
+  const result = parseStepFunPlan({
+    plan_credit_rate_limit: {
+      credit_buckets: [
+        { type: 'SUBSCRIPTION', credit_total: 1000, credit_residual: 750, next_reset_at: 1760000000 },
+        { type: 'TOPUP', credit_total: 100, credit_residual: 50, expire_at: 1760000000000 }
+      ]
+    }
+  });
+  assert.equal(result.kind, 'plan');
+  assert.equal(result.plan, 'Step Plan');
+  assert.equal(result.windows.length, 2);
+  assert.deepEqual(result.windows[0], { label: '订阅', pct: 25, resetAt: 1760000000000 });
+  assert.deepEqual(result.windows[1], { label: '加油包', pct: 50, resetAt: 1760000000000 });
+
+  // 没有 credit_buckets 时用“剩余比例”兜底；0~1 与 0~100 都兼容
+  const fallback = parseStepFunPlan({
+    plan_credit_rate_limit: {
+      subscription_credit_left_rate: 0.8,
+      subscription_credit_reset_time: 1760000000,
+      topup_credit_left_rate: 40
+    }
+  });
+  assert.equal(fallback.windows[0].pct, 20);
+  assert.equal(fallback.windows[1].pct, 60);
+  assert.equal(fallback.windows[0].resetAt, 1760000000000);
+
+  assert.throws(() => parseStepFunPlan({}), /Step Plan/);
+});
+
 test('阶跃星辰 StepFun：balance/充值/赠送三元映射，缺字段报错', () => {
   const result = parseStepFun({
     object: 'account',
@@ -119,8 +151,8 @@ test('阶跃星辰 StepFun：balance/充值/赠送三元映射，缺字段报错
   assert.throws(() => parseStepFun({ object: 'account' }), /余额/);
 });
 
-test('五家 provider 都有国内端点与凭据提示', () => {
-  assert.deepEqual(Object.keys(PROVIDERS), ['deepseek', 'kimiapi', 'zhipu', 'minimax', 'stepfun']);
+test('六家 provider 都有国内端点与凭据提示', () => {
+  assert.deepEqual(Object.keys(PROVIDERS), ['deepseek', 'kimiapi', 'zhipu', 'minimax', 'stepfunplan', 'stepfun']);
   for (const provider of Object.values(PROVIDERS)) {
     assert.match(provider.origin, /^https:\/\//);
     assert.ok(provider.hint.length > 0);
@@ -128,6 +160,7 @@ test('五家 provider 都有国内端点与凭据提示', () => {
   assert.equal(PROVIDERS.zhipu.origin, 'https://open.bigmodel.cn');
   assert.equal(PROVIDERS.kimiapi.origin, 'https://api.moonshot.cn');
   assert.equal(PROVIDERS.stepfun.origin, 'https://api.stepfun.com');
+  assert.equal(PROVIDERS.stepfunplan.origin, 'https://platform.stepfun.com');
 });
 
 /* ---------- 客户端供应商的识别与分类 ----------
@@ -150,13 +183,60 @@ test('按域名识别适配器：子域、大小写、路径都不影响', () =>
   assert.equal(adapterForBaseUrl('https://API.MOONSHOT.CN/v1')?.adapterId, 'kimiapi');
   assert.equal(adapterForBaseUrl('https://open.bigmodel.cn/api/paas/v4')?.adapterId, 'zhipu');
   assert.equal(adapterForBaseUrl('https://www.minimaxi.com/v1')?.adapterId, 'minimax');
-  // Step Plan 的 base_url 带路径，也只认域名（用户真实配置就是这样）
-  assert.equal(adapterForBaseUrl('https://api.stepfun.com/step_plan/v1')?.adapterId, 'stepfun');
+  // StepFun 两条通道同域名，用路径区分：/step_plan 是订阅，其余是按量余额
+  assert.equal(adapterForBaseUrl('https://api.stepfun.com/step_plan/v1')?.adapterId, 'stepfunplan');
+  assert.equal(adapterForBaseUrl('https://api.stepfun.com/v1')?.adapterId, 'stepfun');
   // 未适配的域名不做猜测：各家的余额路径/鉴权/字段都不一样，猜就是误报
   // （小米 MiMo 只有平台 Cookie 用法，明确不进适配表）
   assert.equal(adapterForBaseUrl('https://api.xiaomimimo.com/v1'), null);
   assert.equal(adapterForBaseUrl('https://api.stepfun.ai/step_plan/v1'), null);
   assert.equal(adapterForBaseUrl('http://127.0.0.1:11434/v1'), null);
+});
+
+
+test('StepFun Step Plan 请求带 Oasis-Token、不带 Bearer', async () => {
+  const originalFetch = globalThis.fetch;
+  let captured = null;
+  globalThis.fetch = async (url, init) => {
+    captured = { url, init };
+    return new Response(JSON.stringify({
+      plan_credit_rate_limit: {
+        credit_buckets: [{ type: 'SUBSCRIPTION', credit_total: 1000, credit_residual: 750, next_reset_at: 1760000000 }]
+      }
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const result = await PROVIDERS.stepfunplan.fetch('Oasis-Token=abc123; foo=bar');
+    assert.equal(captured.url, 'https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit');
+    assert.equal(captured.init.headers['Oasis-Token'], 'abc123');
+    assert.equal(captured.init.headers.Authorization, undefined);
+    assert.equal(result.windows[0].pct, 25);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('火山方舟 / 百炼：给出「凭证模型接不上」的真实原因', () => {
+  const volc = classifyClientProvider({
+    id: 'volcengine', type: 'openai',
+    base_url: 'https://ark.cn-beijing.volces.com/api/v3', has_api_key: true
+  });
+  assert.equal(volc.kind, 'unsupported');
+  assert.match(volc.reason, /AK\/SK/);
+
+  const afp = classifyClientProvider({
+    id: 'volcengine-afp', type: 'openai',
+    base_url: 'https://open.volcengineapi.com', has_api_key: true
+  });
+  assert.equal(afp.kind, 'unsupported');
+  assert.match(afp.reason, /AK\/SK/);
+
+  const bailian = classifyClientProvider({
+    id: '阿里云百炼', type: 'openai',
+    base_url: 'https://coding.dashscope.aliyuncs.com/v1', has_api_key: true
+  });
+  assert.equal(bailian.kind, 'unsupported');
+  assert.match(bailian.reason, /控制台/);
 });
 
 test('三类分类：已接入 / 未适配 / 客户端托管账号', () => {
@@ -167,13 +247,20 @@ test('三类分类：已接入 / 未适配 / 客户端托管账号', () => {
   assert.equal(supported.adapterId, 'deepseek');
   assert.equal(supported.host, 'api.deepseek.com');
 
-  // 名字带空格、大小写混杂也要认出来（真实数据里就是这样）——Step Plan 已接入
+  // Step Plan 的额度接口要控制台 Oasis-Token，不能用模型 API Key 自动查
   const stepPlan = classifyClientProvider({
     id: 'StepFun Step Plan', type: 'openai', base_url: 'https://api.stepfun.com/step_plan/v1', has_api_key: true
   });
-  assert.equal(stepPlan.kind, 'supported');
-  assert.equal(stepPlan.adapterId, 'stepfun');
+  assert.equal(stepPlan.kind, 'unsupported');
+  assert.match(stepPlan.reason, /Oasis-Token/);
   assert.equal(stepPlan.host, 'api.stepfun.com');
+
+  // 同一家的按量计费通道仍可查余额
+  const stepPayg = classifyClientProvider({
+    id: 'StepFun', type: 'openai', base_url: 'https://api.stepfun.com/v1', has_api_key: true
+  });
+  assert.equal(stepPayg.kind, 'supported');
+  assert.equal(stepPayg.adapterId, 'stepfun');
 
   // 小米 MiMo：只有平台登录 Cookie 用法，无 key 可达的余额端点——明确未适配
   const xiaomi = classifyClientProvider({

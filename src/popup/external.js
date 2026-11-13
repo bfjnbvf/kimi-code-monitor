@@ -150,12 +150,21 @@ import { t } from '../i18n.js';
       const option = document.createElement('option');
       option.value = id;
       option.textContent = `${provider.name}（${provider.typeLabel}）`;
+      option.title = provider.credentialHint || provider.hint || '';
       select.append(option);
     }
     const addPanel = document.getElementById('external-add');
     const addBtn = document.getElementById('ext-add-btn');
     const keyInput = document.getElementById('ext-key-input');
     const status = document.getElementById('ext-add-status');
+    // 控制台 Token 类适配器（如 StepFun Step Plan）在选中时把凭据要求说清楚，
+    // 避免用户把模型 API Key 粘进去
+    select.addEventListener('change', () => {
+      const provider = KimiExternalProviders.PROVIDERS[select.value];
+      const hint = provider?.credentialHint || '';
+      status.textContent = hint;
+      status.classList.toggle('err', false);
+    });
     addBtn.addEventListener('click', () => {
       addPanel.classList.toggle('hidden');
       addBtn.classList.toggle('hidden', !addPanel.classList.contains('hidden'));

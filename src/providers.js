@@ -20,6 +20,22 @@ async function getJson(url, key, extraHeaders = {}) {
   return response.json();
 }
 
+// 控制台类接口：不是 Bearer API Key，而是网页登录态 token（如 StepFun 的
+// Oasis-Token）。单独一个 fetch，避免把控制台 token 误当 API Key 发出去。
+async function postJson(url, body, headers = {}) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body || {}),
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('控制台 Token 无效或已过期（401/403）');
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
 function toMoney(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -184,6 +200,98 @@ function parseStepFun(body) {
   };
 }
 
+/* StepFun Step Plan 订阅额度（控制台接口，未实测）
+ *
+ * 与按量余额是两套东西：
+ *  - 模型调用用 Step API Key，base_url 是 api.stepfun.com/step_plan/v1
+ *  - 额度查询是 platform.stepfun.com 的网页控制台 RPC，使用登录态里的
+ *    Oasis-Token（不是 API Key），端点与字段来自社区实现（codex-switcher /
+ *    cc-switch 的抓包），官方没有公开文档。
+ *
+ * 因为无法用 API Key 自动查询，本适配只在“手动添加外部账户”里可用：
+ * 用户粘贴 Oasis-Token，后台用 Oasis-* 头请求。桌面客户端自动发现的
+ * Step Plan 供应商会显示“需要控制台 Token”，不会拿 API Key 去误试。
+ */
+function consoleSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  // 有的字段是秒，有的是毫秒；2e10 秒已经是公元 2603 年，超过就是毫秒
+  return number > 20_000_000_000 ? number : number * 1000;
+}
+
+function stepFunLeftPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return null;
+  // 字段名 left_rate：0~1 或 0~100 两种口径都出现过
+  return clampPct(number <= 1 ? number * 100 : number);
+}
+
+function parseStepFunPlan(body) {
+  const rate = body?.plan_credit_rate_limit ?? body?.planCreditRateLimit ?? body;
+  const windows = [];
+
+  const buckets = rate?.credit_buckets ?? rate?.creditBuckets;
+  for (const bucket of Array.isArray(buckets) ? buckets : []) {
+    const total = Number(bucket?.credit_total ?? bucket?.creditTotal);
+    const residual = Number(bucket?.credit_residual ?? bucket?.creditResidual);
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(residual)) continue;
+    const type = String(bucket?.type ?? '');
+    const label = type.includes('TOPUP') || type === '2' ? '加油包' : '订阅';
+    const resetAt = consoleSeconds(
+      bucket?.next_reset_at ?? bucket?.nextResetAt ?? bucket?.expire_at ?? bucket?.expireAt
+    );
+    windows.push({ label, pct: clampPct((1 - residual / total) * 100), resetAt });
+  }
+
+  // 没有 credit_buckets 时用两个“剩余比例”兜底（同样是 0~1 或 0~100）
+  if (!windows.length) {
+    const subscriptionLeft = stepFunLeftPercent(
+      rate?.subscription_credit_left_rate ?? rate?.subscriptionCreditLeftRate
+    );
+    if (subscriptionLeft != null) {
+      windows.push({
+        label: '订阅',
+        pct: clampPct(100 - subscriptionLeft),
+        resetAt: consoleSeconds(
+          rate?.subscription_credit_reset_time ?? rate?.subscriptionCreditResetTime
+        )
+      });
+    }
+    const topupLeft = stepFunLeftPercent(
+      rate?.topup_credit_left_rate ?? rate?.topupCreditLeftRate
+    );
+    if (topupLeft != null) {
+      windows.push({
+        label: '加油包',
+        pct: clampPct(100 - topupLeft),
+        resetAt: consoleSeconds(rate?.topup_credit_reset_time ?? rate?.topupCreditResetTime)
+      });
+    }
+  }
+
+  if (!windows.length) throw noInfoError('响应中没有 Step Plan 额度窗口', body);
+  return { kind: 'plan', plan: 'Step Plan', windows };
+}
+
+// 用户可能直接粘 token，也可能粘整段 Cookie（Oasis-Token=...）或带前缀的文本
+function normalizeStepFunConsoleToken(raw) {
+  let text = String(raw || '').trim();
+  const lower = text.toLowerCase();
+  const cookieIndex = lower.indexOf('cookie:');
+  if (cookieIndex >= 0) text = text.slice(cookieIndex + 'cookie:'.length);
+  const tokenIndex = lower.indexOf('oasis-token:');
+  if (tokenIndex >= 0) text = text.slice(tokenIndex + 'oasis-token:'.length);
+  text = text.split(/\r?\n/)[0].trim().replace(/^['"`\\]+|['"`\\]+$/g, '');
+  for (const pair of text.split(';')) {
+    const [name, ...rest] = pair.trim().split('=');
+    if (name && name.trim().toLowerCase() === 'oasis-token') {
+      const value = rest.join('=').trim().replace(/^['"]|['"]$/g, '');
+      if (value) return value;
+    }
+  }
+  return text.includes('=') ? '' : text;
+}
+
 const PROVIDERS = {
   deepseek: {
     name: 'DeepSeek',
@@ -227,6 +335,29 @@ const PROVIDERS = {
       );
     }
   },
+  stepfunplan: {
+    name: '阶跃星辰 Step Plan',
+    typeLabel: '订阅额度（未实测）',
+    origin: 'https://platform.stepfun.com',
+    hosts: ['api.stepfun.com'],
+    paths: ['/step_plan'],
+    credential: 'console-token',
+    credentialHint: '需要 platform.stepfun.com 的 Oasis-Token（不是 API Key；未实测）',
+    hint: 'platform.stepfun.com 登录后从 Cookie 复制 Oasis-Token（未实测）',
+    async fetch(token) {
+      const consoleToken = normalizeStepFunConsoleToken(token);
+      if (!consoleToken) throw new Error('需要 platform.stepfun.com 的 Oasis-Token（不是 API Key）');
+      return parseStepFunPlan(await postJson(
+        'https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit',
+        {},
+        {
+          'Oasis-Token': consoleToken,
+          'Oasis-AppID': '10300',
+          'Oasis-Platform': 'web'
+        }
+      ));
+    }
+  },
   stepfun: {
     name: '阶跃星辰 StepFun',
     typeLabel: 'API余额',
@@ -238,6 +369,25 @@ const PROVIDERS = {
     }
   }
 };
+
+/* 已知但当前凭证模型接不上的额度接口：给出精确原因，别让用户以为是 key 填错了。
+ *  - 火山方舟：控制面 OpenAPI GetCodingPlanUsage / GetAFPUsage 要 AK/SK 签名，
+ *    推理 API Key 调用会 InvalidAuthorization；
+ *  - 阿里云百炼：Coding Plan / Token Plan 用量目前只在控制台页面可见，没有公开接口。
+ * 这两家等社区实测出稳定端点/授权方式后再补适配（欢迎提 issue / PR）。 */
+const UNSUPPORTED_CLIENT_HOSTS = [
+  {
+    test: (host) => host.endsWith('.volces.com') || host.endsWith('.volcengineapi.com'),
+    reason: '火山方舟 Coding/Agent Plan 额度需要 AK/SK 签名，推理 API Key 查不了（暂未适配）'
+  },
+  {
+    test: (host) => host === 'dashscope.aliyuncs.com'
+      || host.endsWith('.dashscope.aliyuncs.com')
+      || host === 'bailian.aliyuncs.com'
+      || host.endsWith('.bailian.aliyuncs.com'),
+    reason: '百炼 Coding/Token Plan 用量目前仅控制台可见，暂无公开额度接口（暂未适配）'
+  }
+];
 
 /* ---------- 客户端 provider 的识别与分类（面板与技能共用这一份） ---------- */
 
@@ -256,11 +406,19 @@ function hostOf(baseUrl) {
 function adapterForBaseUrl(baseUrl) {
   const host = hostOf(baseUrl);
   if (!host) return null;
+  let pathname = '';
+  try {
+    pathname = new URL(String(baseUrl)).pathname.toLowerCase();
+  } catch (error) {
+    pathname = '';
+  }
   for (const [id, provider] of Object.entries(PROVIDERS)) {
     const hosts = Array.isArray(provider.hosts) ? provider.hosts : [];
-    if (hosts.some((h) => host === h || host.endsWith(`.${h}`))) {
-      return { adapterId: id, adapter: provider, host };
-    }
+    if (!hosts.some((h) => host === h || host.endsWith(`.${h}`))) continue;
+    // 同一域名下有多条通道时用 path 区分（如 StepFun 的 /step_plan 与按量 /v1）
+    const paths = Array.isArray(provider.paths) ? provider.paths : null;
+    if (paths && !paths.some((p) => pathname.startsWith(p))) continue;
+    return { adapterId: id, adapter: provider, host };
   }
   return null;
 }
@@ -276,8 +434,22 @@ function classifyClientProvider(entry) {
   if (type === 'kimi' || host === 'api.kimi.com') {
     return { kind: 'managed', host, reason: '客户端托管账号（额度见面板顶部）' };
   }
+  // 已知但凭证模型接不上的厂商：先给出真实原因，别落到泛化的「暂无适配」
+  for (const entryInfo of UNSUPPORTED_CLIENT_HOSTS) {
+    if (entryInfo.test(host)) {
+      return { kind: 'unsupported', host, reason: entryInfo.reason };
+    }
+  }
   const match = adapterForBaseUrl(baseUrl);
   if (match) {
+    // 控制台 Token / AK-SK 类适配器不能用客户端里的模型 API Key 自动查询
+    if (match.adapter.credential && match.adapter.credential !== 'api-key') {
+      return {
+        kind: 'unsupported',
+        host,
+        reason: match.adapter.credentialHint || '该供应商需要额外的控制台凭据，不能用 API Key 查询'
+      };
+    }
     return {
       kind: 'supported',
       host,
@@ -298,7 +470,8 @@ const KimiExternalProviders = {
   parseKimiApi,
   parseZhipu,
   parseMiniMax,
-  parseStepFun
+  parseStepFun,
+  parseStepFunPlan
 };
 
 export {
@@ -311,5 +484,6 @@ export {
   parseZhipu,
   parseMiniMax,
   parseStepFun,
+  parseStepFunPlan,
   KimiExternalProviders
 };
