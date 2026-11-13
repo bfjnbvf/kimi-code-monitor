@@ -880,6 +880,34 @@ test('panel-app：外部账户结果直接生效（唯一来源是直连抓取�
   }
 });
 
+test('panel-app：外部账户整宽形态显示各额度窗口的重置时间', async () => {
+  const { window } = createPage();
+  try {
+    setVisibleConfig(window);
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window);
+    window.__kcm.push({
+      v: 1, type: 'external',
+      providers: [{
+        id: 'ext-kimicoding-abcd', provider: 'kimicoding', name: 'Kimi For Coding', keyTail: 'abcd',
+        kind: 'plan', plan: 'Kimi Code 订阅', error: '', fetchedAt: Date.now(),
+        windows: [
+          { label: '5h', pct: 12.3, resetAt: Date.now() + 3600_000 },
+          { label: '1w', pct: 45.6, resetAt: Date.now() + 7 * 86400_000 }
+        ]
+      }]
+    });
+    const reset = window.document.querySelector('#ksb-external-list .ksb-external-reset');
+    assert.ok(reset, '整宽形态应有重置时间行');
+    assert.match(reset.textContent, /5h 重置 (\d{2}-\d{2} )?\d{2}:\d{2}/);
+    assert.match(reset.textContent, /1w 重置/);
+  } finally {
+    window.close();
+  }
+});
+
 test('panel-app：接口失败沿用上次成功的数字，年龄写在类型前缀位置；从未成功过才显示「获取失败」', async () => {
   const { window } = createPage();
   try {

@@ -537,6 +537,28 @@ function externalAgeText(at) {
   return t('{count} 天前', { count: Math.floor(hours / 24) });
 }
 
+// 重置时间：今天只给时分，跨天给「月-日 时:分」。绝对时间放悬停里，
+// 面板上常驻的是短时间（窄面板里长日期会挤掉账户名）
+function formatResetTime(resetAt) {
+  const date = new Date(Number(resetAt));
+  if (!Number.isFinite(date.getTime())) return '';
+  const hhmm = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const now = new Date();
+  const sameDay = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  return sameDay ? hhmm : `${date.getMonth() + 1}-${date.getDate()} ${hhmm}`;
+}
+
+// 各额度窗口的重置时间串：「5h 重置 18:06 · 1w 重置 10-23 18:06」
+function externalResetText(provider) {
+  if (!provider.windows?.length) return '';
+  return provider.windows
+    .filter((w) => w.resetAt)
+    .map((w) => `${w.label} ${t('重置 {time}', { time: formatResetTime(w.resetAt) })}`)
+    .join(' · ');
+}
+
 export function renderExternal() {
   const hiddenAccounts = panel.widgetConfig.modules.external?.hiddenAccounts || [];
   const visible = panel.externalProviders.filter((p) => !hiddenAccounts.includes(p.id));
@@ -598,10 +620,14 @@ export function renderExternal() {
         ? `${escapeHtml(provider.name)} ·${escapeHtml(provider.keyTail)}`
         : escapeHtml(provider.name);
       const formatted = formatExternalValue(provider);
+      const resetText = externalResetText(provider);
       return `
-        <div class="ksb-external-row" title="${label}${formatted.note ? ` · ${escapeHtml(formatted.note)}` : ''}">
-          <span class="ksb-external-name">${label}</span>
-          <span class="ksb-external-value${provider.error ? ' err' : ''}">${valueHtml(provider)}</span>
+        <div class="ksb-external-item">
+          <div class="ksb-external-row" title="${label}${formatted.note ? ` · ${escapeHtml(formatted.note)}` : ''}">
+            <span class="ksb-external-name">${label}</span>
+            <span class="ksb-external-value${provider.error ? ' err' : ''}">${valueHtml(provider)}</span>
+          </div>
+          ${resetText ? `<div class="ksb-external-reset">${escapeHtml(resetText)}</div>` : ''}
         </div>`;
     })
     .join('');
