@@ -31,9 +31,9 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 | 版本 | 形态 | 安装 | Release 资产 |
 |---|---|---|---|
 | **Web 扩展** | Chrome / Edge 侧边栏面板 | 加载 zip 到 `chrome://extensions` | `kimi-code-monitor-web-v*.zip` |
-| **桌面客户端** | Kimi Code 桌面端补丁（侧边栏面板 + 缓存提醒） | 解压运行 `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.1.zip` |
+| **桌面客户端** | Kimi Code 桌面端补丁（侧边栏面板 + 缓存提醒） | 解压运行 `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.2.zip` |
 | **终端 CLI HUD**（实验） | 原生 `kimi` 的状态栏 | 解压后 `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
-| 桌面端运维技能（可选） | 给 Kimi 的技能包 | 解压到 `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.1.zip` |
+| 桌面端运维技能（可选） | 给 Kimi 的技能包 | 解压到 `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.2.zip` |
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
 
@@ -122,7 +122,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 **方式二：手动安装**
 
-1. 从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载 `kimi-code-monitor-desktop-v3.7.1.zip` 并解压
+1. 从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载 `kimi-code-monitor-desktop-v3.7.2.zip` 并解压
 2. macOS 在终端执行 `bash install.sh`；Windows 直接双击 `install.cmd`（或在 cmd 里运行）。客户端不在默认位置时追加 `--app "<客户端目录>"`
 3. 重载客户端（macOS `Cmd+R`，Windows `Ctrl+R`），面板出现在会话侧栏底部
 

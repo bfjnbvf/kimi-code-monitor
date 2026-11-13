@@ -58,7 +58,7 @@
 用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（版本化资产，版本见包内 `MAINTENANCE.md`）：
 
 1. 下载技能包：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.1.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.2.zip`
 2. 解压到用户级技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
    - macOS / Linux：`curl -fsSL -o /tmp/kcm-skill.zip "<URL>" && mkdir -p ~/.kimi-code/skills && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/`
    - Windows（PowerShell）：`Invoke-WebRequest -Uri "<URL>" -OutFile "$env:TEMP\kcm-skill.zip"; Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`

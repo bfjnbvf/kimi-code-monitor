@@ -24,8 +24,8 @@
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
 1. 下载补丁包（Release 版本化资产）：
-   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-desktop-v3.7.1.zip
-2. 下载同 Release 的 SHA256SUMS：macOS 执行 shasum -a 256 kimi-code-monitor-desktop-v3.7.1.zip，Windows 执行 Get-FileHash .\kimi-code-monitor-desktop-v3.7.1.zip -Algorithm SHA256，将结果与清单中该文件的对应行比较；再确认 zip 能列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/。页面 URL 里的短哈希只用于缓存失效，不能替代 SHA-256 校验
+   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-desktop-v3.7.2.zip
+2. 下载同 Release 的 SHA256SUMS：macOS 执行 shasum -a 256 kimi-code-monitor-desktop-v3.7.2.zip，Windows 执行 Get-FileHash .\kimi-code-monitor-desktop-v3.7.2.zip -Algorithm SHA256，将结果与清单中该文件的对应行比较；再确认 zip 能列出 install.mjs、install.sh、install.cmd、scan.mjs、fetch-wallet.mjs、kcm/。页面 URL 里的短哈希只用于缓存失效，不能替代 SHA-256 校验
 3. 解压到一个临时目录
 4. 在该目录执行：bash install.sh（Windows：install.cmd；客户端不在默认位置时追加 --app "<客户端目录>"）。不需要安装 Node——壳会优先借客户端自带的 Node，系统有 Node 也可用
 5. 完成后把这些告诉我：
@@ -42,7 +42,7 @@
 ```text
 请帮我安装 Kimi Code 桌面客户端的用量监控面板补丁：
 
-1. 补丁包在本地：/Users/gabriel/Developer/kimi-code-monitor/kimi-code-monitor-desktop-v3.7.1.zip
+1. 补丁包在本地：/Users/gabriel/Developer/kimi-code-monitor/kimi-code-monitor-desktop-v3.7.2.zip
 2. 解压到一个临时目录，在其中执行：bash install.sh（Windows：install.cmd）。不需要系统 Node（安装入口会借客户端自带的 Node）
 3. 完成后把这些告诉我：安装器的完整输出、客户端版本（macOS 读 Info.plist 的 CFBundleShortVersionString；Windows 读 Kimi Code.exe 的文件版本）、是否弹出权限确认
 4. 提醒我重载客户端（macOS Cmd+R，Windows Ctrl+R）

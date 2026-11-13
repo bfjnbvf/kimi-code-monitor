@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { serverProtocolVersion, transcriptEvents } from '../src/transcript.js';
+import { createProtocol3Transcript, serverProtocolVersion, transcriptEvents } from '../src/transcript.js';
 
 const usage = { inputOther: 120, inputCacheRead: 80, inputCacheCreation: 0, output: 200 };
 const llmTiming = { llmFirstTokenLatencyMs: 500, llmStreamDurationMs: 2_000 };
@@ -68,4 +68,89 @@ test('异常或缺少用量的步骤不会伪造完成样本', () => {
   });
   assert.deepEqual(events, []);
   assert.deepEqual(transcriptEvents({ type: 'turn.step.completed', payload: { usage } }), []);
+});
+
+const protocol3Usage = {
+  input_other: 120,
+  output: 200,
+  input_cache_read: 80,
+  input_cache_creation: 0
+};
+
+test('新协议历史快照关联步骤、模型与计时，不携带对话正文', () => {
+  const transcript = createProtocol3Transcript();
+  transcript.events({ type: 'agent', session_id: 's1', agent_id: 'main', status: 'idle', model: 'k3' });
+  const events = transcript.events({
+    type: 'turns', session_id: 's1', agent_id: 'main',
+    turns: [{
+      turn_id: 't1', status: 'ended', outcome: 'completed', duration_ms: 8_000,
+      steps: [{ index: 1, outcome: 'completed', usage: protocol3Usage }],
+      items: [{
+        item_id: 'assistant-1', type: 'assistant_message', step_index: 1, status: 'ended',
+        text: '不得透传', debug: { timing: { stream_ms: 2_000 } }
+      }]
+    }]
+  });
+  assert.deepEqual(events.map((event) => event.type), ['turn.step.completed', 'turn.ended']);
+  assert.equal(events[0].payload.stepId, 't1.1');
+  assert.equal(events[0].payload.model, 'k3');
+  assert.equal(events[0].payload.llmTiming.llmStreamDurationMs, 2_000);
+  assert.equal(events[1].payload.durationMs, 8_000);
+  assert.equal(JSON.stringify(events).includes('不得透传'), false);
+});
+
+test('新协议实时步骤使用已结束项目的计时，并发现子代理', () => {
+  const transcript = createProtocol3Transcript();
+  transcript.events({
+    type: 'task.list', session_id: 's1', agent_id: 'main',
+    tasks: [{ task_id: 'task-1', child_agent_id: 'agent-1', status: 'running' }]
+  });
+  assert.deepEqual(transcript.subscribedAgentIds(), ['main', 'agent-1']);
+  transcript.events({ type: 'agent', session_id: 's1', agent_id: 'agent-1', status: 'running', model: 'small' });
+  transcript.events({
+    type: 'item.ended', session_id: 's1', agent_id: 'agent-1', turn_id: 't2',
+    item: {
+      item_id: 'assistant-2', type: 'assistant_message', step_index: 2, status: 'ended',
+      debug: { timing: { server_decode_ms: 1_000 } }
+    }
+  });
+  const events = transcript.events({
+    type: 'turn.updated', session_id: 's1', agent_id: 'agent-1', turn_id: 't2',
+    step: { index: 2, outcome: 'completed', usage: protocol3Usage }
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].agent_id, 'agent-1');
+  assert.equal(events[0].payload.stepId, 't2.2');
+  assert.equal(events[0].payload.model, 'small');
+  assert.equal(events[0].payload.llmTiming.llmServerDecodeMs, 1_000);
+});
+
+
+test('正式模式缺少 debug 时按内容时间计算流式耗时，不计入工具执行时间', () => {
+  const transcript = createProtocol3Transcript();
+  const events = transcript.events({
+    type: 'turns', session_id: 's1', agent_id: 'main',
+    turns: [{
+      turn_id: 't3', status: 'ended', outcome: 'completed',
+      steps: [{
+        index: 1, outcome: 'completed', usage: protocol3Usage,
+        ended_at: '2026-01-01T00:00:05.000Z'
+      }],
+      items: [
+        {
+          item_id: 'reasoning-3', type: 'reasoning', step_index: 1, status: 'ended',
+          created_at: '2026-01-01T00:00:01.000Z'
+        },
+        {
+          item_id: 'assistant-3', type: 'assistant_message', step_index: 1, status: 'ended',
+          created_at: '2026-01-01T00:00:02.000Z'
+        },
+        {
+          item_id: 'tool-3', type: 'tool_call', step_index: 1, status: 'ended',
+          created_at: '2026-01-01T00:00:03.000Z', started_at: '2026-01-01T00:00:03.000Z'
+        }
+      ]
+    }]
+  });
+  assert.equal(events[0].payload.llmTiming.llmStreamDurationMs, 2_000);
 });

@@ -73,6 +73,20 @@ test('快照和 OpenAI 风格字段使用同一归一化逻辑', () => {
   });
 });
 
+test('新版 WebSocket 用量字段沿用同一归一化口径', () => {
+  assert.deepEqual(normalizeUsage({
+    input_other: 120,
+    output: 30,
+    input_cache_read: 800,
+    input_cache_creation: 80
+  }), {
+    inputTokens: 120,
+    outputTokens: 30,
+    cacheReadTokens: 800,
+    cacheCreationTokens: 80
+  });
+});
+
 test('无效或负数 token 不会污染累计值', () => {
   assert.deepEqual(normalizeUsage({
     input_tokens: -1,

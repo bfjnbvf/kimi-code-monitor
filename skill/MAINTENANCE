@@ -1,12 +1,18 @@
 skill-version: 13.2
-patch-version: 3.7.1
+patch-version: 3.7.2
 repo: https://github.com/bfjnbvf/kimi-code-monitor
-skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.1/kimi-code-monitor-skill-v3.7.1.zip
-patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.1/kimi-code-monitor-desktop-v3.7.1.zip
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.2/kimi-code-monitor-skill-v3.7.2.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.2/kimi-code-monitor-desktop-v3.7.2.zip
 
 # 更新记录
 
-## 13.2（2026-11-05 至 2026-11-06）
+## 13.2（2026-11-05 至 2026-11-13）
+
+配套补丁 3.7.2：
+
+- **配套面板 3.7.2：桌面与网页新实时协议适配**：旧握手缺席时改用 `subscribe + response`，转换新版轮次与步骤事件，恢复输入、输出、缓存命中和轮次耗时，旧协议保持兼容（#21）
+- **正式模式速度与子代理统计**：无 debug 计时时按内容时间戳恢复流式速度并排除工具执行时间；动态订阅子代理，历史快照不双算，实时步骤按代理、轮次和步骤编号去重
+- **连接与测试**：补充协议探测、握手超时、心跳和断线重订阅；桌面 1.3.5 与手动 Web 扩展实际验证，完整测试 403 通过、0 失败、1 跳过
 
 配套补丁 3.7.1：
 

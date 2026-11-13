@@ -16,7 +16,7 @@
 
 import { createKapContext } from './kap.js';
 import { refreshDailyChart } from './bridge.js';
-import { serverProtocolVersion, transcriptEvents } from '../transcript.js';
+import { createProtocol3Transcript, serverProtocolVersion, transcriptEvents } from '../transcript.js';
 
 export { normalizeKapOrigin } from './kap.js';
 import { panel } from '../content/panel-state.js';
@@ -29,6 +29,8 @@ const QUOTA_INTERVAL_MS = 60_000;
 const FOCUS_POLL_MS = 1_000;
 // 按天积累的图表重绘节奏（无看门狗文件时图表全靠页内积累）
 const DAILY_TICK_MS = 20_000;
+const PROTOCOL_PROBE_MS = 500;
+const PROTOCOL_WATCHDOG_MS = 10_000;
 
 const EVIDENCE_TYPES = new Set([
   'turn.started', 'turn.step.started', 'turn.step.completed',
@@ -186,6 +188,11 @@ export function startDirectMode() {
   let ws = null;
   let retry = 0;
   let protocolVersion = 0;
+  let protocol3Transcript = createProtocol3Transcript();
+  const protocol3Pending = new Map();
+  let protocol3RequestSeq = 0;
+  let protocolProbeTimer = null;
+  let protocolWatchdog = null;
 
   function currentSidFromLocation() {
     return location.pathname.match(/\/sessions\/([^/?#]+)/)?.[1] || '';
@@ -195,6 +202,7 @@ export function startDirectMode() {
   async function applyFocus(sid) {
     const generation = ++focusGeneration;
     focusedSid = sid;
+    protocol3Transcript = createProtocol3Transcript();
     debug({ focusedSid: sid, kapOrigin: kapOrigin() || '未知' });
     let snapshot;
     try {
@@ -264,8 +272,44 @@ export function startDirectMode() {
 
   /* ---------- WS：事件流（协议与 KapClient/参考项目一致） ---------- */
   // （ws/retry/protocolVersion 已在焦点段声明，先于 pollFocus 首次调用——TDZ 防回归见上）
+  function clearProtocolTimers() {
+    if (protocolProbeTimer) clearTimeout(protocolProbeTimer);
+    if (protocolWatchdog) clearTimeout(protocolWatchdog);
+    protocolProbeTimer = null;
+    protocolWatchdog = null;
+  }
+
+  function subscribeProtocol3() {
+    if ((protocolVersion !== 0 && protocolVersion !== 3) || !focusedSid || ws?.readyState !== 1) return;
+    const requestId = `kcm-v3-${Date.now()}-${++protocol3RequestSeq}`;
+    protocol3Pending.set(requestId, focusedSid);
+    awaitingAck = true;
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      request_id: requestId,
+      session_id: focusedSid,
+      agent_ids: protocol3Transcript.subscribedAgentIds()
+    }));
+  }
+
+  function scheduleProtocol3Probe() {
+    if (protocolVersion !== 0 || protocolProbeTimer || !focusedSid || ws?.readyState !== 1) return;
+    protocolProbeTimer = setTimeout(() => {
+      protocolProbeTimer = null;
+      subscribeProtocol3();
+    }, PROTOCOL_PROBE_MS);
+  }
+
   function wsSubscribe(ids) {
-    if (!protocolVersion || !ids.length || !ws || ws.readyState !== 1) return;
+    if (protocolVersion === 3) {
+      subscribeProtocol3();
+      return;
+    }
+    if (!protocolVersion) {
+      scheduleProtocol3Probe();
+      return;
+    }
+    if (!ids.length || !ws || ws.readyState !== 1) return;
     awaitingAck = true;
     const id = `s${Date.now()}`;
     if (protocolVersion >= 2) {
@@ -289,6 +333,10 @@ export function startDirectMode() {
       return;
     }
     const url = `${base.replace(/^http/, 'ws')}/api/v1/ws?client_id=kcm-injected`;
+    clearProtocolTimers();
+    protocol3Pending.clear();
+    protocolVersion = 0;
+    awaitingAck = false;
     try {
       ws = new WebSocket(url);
     } catch (error) {
@@ -296,13 +344,30 @@ export function startDirectMode() {
       return;
     }
     debug({ wsState: 'connecting', wsUrl: base });
-    ws.onopen = () => debug({ wsState: 'open' });
+    ws.onopen = () => {
+      debug({ wsState: 'open' });
+      protocolWatchdog = setTimeout(() => {
+        if (protocolVersion === 0) {
+          debug({ wsState: 'handshake-timeout' });
+          try { ws?.close(); } catch (error) { /* 忽略 */ }
+        }
+      }, PROTOCOL_WATCHDOG_MS);
+      scheduleProtocol3Probe();
+    };
     ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch (error) { return; }
       handleServer(m);
     };
-    ws.onclose = () => { ws = null; debug({ wsState: `closed(r${retry})` }); scheduleReconnect(); };
+    ws.onclose = () => {
+      clearProtocolTimers();
+      protocol3Pending.clear();
+      protocolVersion = 0;
+      awaitingAck = false;
+      ws = null;
+      debug({ wsState: `closed(r${retry})` });
+      scheduleReconnect();
+    };
     ws.onerror = () => { try { ws?.close(); } catch (error) { /* 忽略 */ } };
   }
 
@@ -313,7 +378,7 @@ export function startDirectMode() {
   }
 
   function forwardEvent(m, replayingHistory = false) {
-    if (!awaitingAck && !replayingHistory
+    if ((protocolVersion === 3 || !awaitingAck) && !replayingHistory
       && (EVIDENCE_TYPES.has(m.type)
         || (m.type === 'agent.status.updated' && m.payload?.phase))) {
       noteActivity();
@@ -322,7 +387,7 @@ export function startDirectMode() {
     if (!m.kcmTranscript && Number.isFinite(seq) && m.volatile !== true) {
       focusedSeq = Math.max(focusedSeq, seq);
     }
-    const replay = replayingHistory || awaitingAck;
+    const replay = replayingHistory || (protocolVersion !== 3 && awaitingAck);
     push({
       v: 1,
       type: 'event',
@@ -336,6 +401,8 @@ export function startDirectMode() {
     const eventSid = m.session_id || m.payload?.session_id;
     if (eventSid && eventSid !== focusedSid) return;
     if (m.type === 'server_hello') {
+      clearProtocolTimers();
+      protocol3Pending.clear();
       retry = 0;
       protocolVersion = serverProtocolVersion(m);
       debug({ wsProtocol: protocolVersion });
@@ -361,8 +428,24 @@ export function startDirectMode() {
       }));
       return;
     }
+    if (m.type === 'response' && protocol3Pending.has(m.request_id)) {
+      const subscribedSid = protocol3Pending.get(m.request_id);
+      clearProtocolTimers();
+      protocol3Pending.delete(m.request_id);
+      protocolVersion = 3;
+      retry = 0;
+      awaitingAck = false;
+      debug({
+        wsProtocol: 3,
+        wsSubscription: m.code === 0 ? 'ok' : `error(${m.code})`
+      });
+      if (subscribedSid !== focusedSid) subscribeProtocol3();
+      return;
+    }
     if (m.type === 'ping') {
-      ws?.send(JSON.stringify({ type: 'pong', payload: { nonce: m.payload?.nonce } }));
+      ws?.send(JSON.stringify(protocolVersion === 3
+        ? { type: 'pong' }
+        : { type: 'pong', payload: { nonce: m.payload?.nonce } }));
       return;
     }
     if (protocolVersion >= 2 && m.type === 'ack' && m.id === 'h1') return;
@@ -375,6 +458,16 @@ export function startDirectMode() {
       cursorBySid.set(focusedSid, focusedSeq);
       const resync = m.payload?.resync_required || m.payload?.session_ids || [];
       if (resync.length) wsSubscribe(resync);
+      return;
+    }
+    if (protocolVersion === 3) {
+      const previousAgentCount = protocol3Transcript.subscribedAgentIds().length;
+      const events = protocol3Transcript.events(m);
+      if (protocol3Transcript.subscribedAgentIds().length !== previousAgentCount) {
+        subscribeProtocol3();
+      }
+      if (events.length) debug({ lastEventType: m.type, lastEventCount: events.length });
+      for (const event of events) forwardEvent(event, m.type === 'turns');
       return;
     }
     if (protocolVersion >= 2) {

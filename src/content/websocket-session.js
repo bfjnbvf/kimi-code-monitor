@@ -8,7 +8,7 @@
  */
 
 import { normalizeUsage } from '../metrics.js';
-import { serverProtocolVersion, transcriptEvents, stepEventKey } from '../transcript.js';
+import { createProtocol3Transcript, serverProtocolVersion, transcriptEvents, stepEventKey } from '../transcript.js';
 import { setAgentStatus, renderAll } from './render.js';
 import { petBeginTurn, petCompleteTurn } from './pet-panel.js';
 import { toNumber, rcApiPrefix, isRemoteControl } from './utils.js';
@@ -27,6 +27,7 @@ const WS_CONNECTING_TIMEOUT_MS = 10_000;
 const WS_MAX_RECONNECT_ATTEMPTS = 10;
 const WS_RECONNECT_PROBE_MS = 60_000;
 const WS_RECONNECT_DELAY_MS = 3_000;
+const PROTOCOL_PROBE_MS = 500;
 const TOOL_STATUS_MIN_MS = 1_500;
 
 export function createWebSocketSession(deps) {
@@ -39,6 +40,10 @@ export function createWebSocketSession(deps) {
   let protocolVersion = 0;
   let clientHelloId = '';
   let subscriptionFrameId = '';
+  let protocol3Transcript = createProtocol3Transcript();
+  const protocol3Pending = new Map();
+  let protocol3RequestSeq = 0;
+  let protocolProbeTimer = null;
 
   // 订阅重放闸门
   let awaitingAck = false;
@@ -117,6 +122,33 @@ export function createWebSocketSession(deps) {
     helloWatchdog = null;
   }
 
+  function clearProtocol3Probe() {
+    if (protocolProbeTimer) clearTimeout(protocolProbeTimer);
+    protocolProbeTimer = null;
+  }
+
+  function subscribeProtocol3() {
+    if ((protocolVersion !== 0 && protocolVersion !== 3) || ws?.readyState !== WebSocket.OPEN) return;
+    const sessionId = getSessionId();
+    if (!sessionId) return;
+    const requestId = `ksb-v3-${Date.now()}-${++protocol3RequestSeq}`;
+    protocol3Pending.set(requestId, sessionId);
+    sendFrame({
+      type: 'subscribe',
+      request_id: requestId,
+      session_id: sessionId,
+      agent_ids: protocol3Transcript.subscribedAgentIds()
+    });
+  }
+
+  function scheduleProtocol3Probe() {
+    if (protocolVersion !== 0 || protocolProbeTimer || !getSessionId()) return;
+    protocolProbeTimer = setTimeout(() => {
+      protocolProbeTimer = null;
+      subscribeProtocol3();
+    }, PROTOCOL_PROBE_MS);
+  }
+
   function connectWebSocket() {
     if (isDisposed()) return;
     const token = getToken();
@@ -139,6 +171,9 @@ export function createWebSocketSession(deps) {
     }
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${location.host}${rcApiPrefix()}/api/v1/ws?client_id=kimi-statusbar`;
+    clearProtocol3Probe();
+    protocol3Pending.clear();
+    protocolVersion = 0;
 
     try {
       // 空凭据（RC）不带子协议，由中继在回源时注入本机 token
@@ -165,6 +200,7 @@ export function createWebSocketSession(deps) {
       }
     }, 10_000);
 
+    ws.onopen = () => scheduleProtocol3Probe();
     ws.onmessage = (event) => {
       try {
         handleWsMessage(JSON.parse(event.data));
@@ -175,6 +211,10 @@ export function createWebSocketSession(deps) {
 
     ws.onclose = (event) => {
       clearHelloWatchdog();
+      clearProtocol3Probe();
+      protocol3Pending.clear();
+      protocolVersion = 0;
+      awaitingAck = false;
       ws = null;
       // 断线统一显示「未连接」，后台退避重连；重连成功后由 server_hello 恢复
       setAgentStatus('offline');
@@ -326,6 +366,8 @@ export function createWebSocketSession(deps) {
 
     if (message.type === 'server_hello') {
       clearHelloWatchdog();
+      clearProtocol3Probe();
+      protocol3Pending.clear();
       reconnectAttempts = 0;
       setConnectionHint(t('Kimi Status 已连接'));
       // 重连成功后先回到空闲，后续事件（含游标补发的）会把状态修正过来
@@ -337,8 +379,42 @@ export function createWebSocketSession(deps) {
       return;
     }
 
+    if (message.type === 'response' && protocol3Pending.has(message.request_id)) {
+      const subscribedSid = protocol3Pending.get(message.request_id);
+      clearHelloWatchdog();
+      clearProtocol3Probe();
+      protocol3Pending.delete(message.request_id);
+      protocolVersion = 3;
+      awaitingAck = false;
+      reconnectAttempts = 0;
+      if (message.code === 0) {
+        if (metrics.agentStatus === 'offline') setAgentStatus('idle');
+        setConnectionHint(t('Kimi Status 已连接'));
+      } else {
+        setConnectionHint(t('WebSocket 连接失败'));
+      }
+      if (subscribedSid !== sessionId) subscribeProtocol3();
+      return;
+    }
+
     if (message.type === 'ping') {
-      sendFrame({ type: 'pong', payload: { nonce: message.payload?.nonce } });
+      sendFrame(protocolVersion === 3
+        ? { type: 'pong' }
+        : { type: 'pong', payload: { nonce: message.payload?.nonce } });
+      return;
+    }
+
+    if (protocolVersion === 3 && !message.kcmTranscript) {
+      const previousAgentCount = protocol3Transcript.subscribedAgentIds().length;
+      const events = protocol3Transcript.events(message);
+      if (protocol3Transcript.subscribedAgentIds().length !== previousAgentCount) {
+        subscribeProtocol3();
+      }
+      for (const event of events) {
+        handleWsMessage(message.type === 'turns'
+          ? { ...event, kcmForceReplay: true, kcmReplayHistory: true }
+          : event);
+      }
       return;
     }
 
@@ -535,6 +611,9 @@ export function createWebSocketSession(deps) {
   function disconnectWebSocket() {
     clearHelloWatchdog();
     clearAckWatchdog();
+    clearProtocol3Probe();
+    protocol3Pending.clear();
+    protocolVersion = 0;
     awaitingAck = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -569,6 +648,9 @@ export function createWebSocketSession(deps) {
       subscriptionCursor = 0;
       completedStepIds.clear();
       completedTurnIds.clear();
+      clearProtocol3Probe();
+      protocol3Pending.clear();
+      protocol3Transcript = createProtocol3Transcript();
       protocolVersion = 0;
       clientHelloId = '';
       subscriptionFrameId = '';

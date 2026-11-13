@@ -32,9 +32,9 @@ The project ships three independently installable builds, published as separate 
 | Build | Form | Install | Release asset |
 |---|---|---|---|
 | **Web extension** | Chrome / Edge sidebar panel | Load the zip at `chrome://extensions` | `kimi-code-monitor-web-v*.zip` |
-| **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.1.zip` |
+| **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.2.zip` |
 | **Terminal CLI HUD** (experimental) | Native `kimi` status line | Unzip, then `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
-| Ops skill (optional) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.1.zip` |
+| Ops skill (optional) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.2.zip` |
 
 > The CLI HUD is a separate implementation: it does not modify Kimi itself and does not depend on the Web/desktop code. The author has only verified it on Windows with Kimi 2.2/2.3; macOS/Linux and real subscription quota are still untested.
 
@@ -135,7 +135,7 @@ Paste the prompt below into Kimi inside the desktop client; it will install the 
 
 **Option 2: manual install**
 
-1. Download `kimi-code-monitor-desktop-v3.7.1.zip` from [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) and extract it
+1. Download `kimi-code-monitor-desktop-v3.7.2.zip` from [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) and extract it
 2. On macOS run `bash install.sh` in a terminal; on Windows just double-click `install.cmd` (or run it in cmd). If the client is not in its default location, append `--app "<client directory>"`
 3. Reload the client (macOS `Cmd+R`, Windows `Ctrl+R`) — the panel appears at the bottom of the session sidebar
 

@@ -4,10 +4,10 @@
 
 | 资产 | 版本 | 构建命令 | 内容 |
 |---|---|---|---|
-| **Web 扩展** `kimi-code-monitor-web-v3.7.1.zip` | 3.7.1 | `npm run pack:web` | `manifest.json`、`dist/`（content/background/popup）、`content.css`、`popup.*`、`rive/`、`rules/`、`icons/` |
-| **桌面客户端补丁** `kimi-code-monitor-desktop-v3.7.1.zip` | 3.7.1 | `npm run pack:desktop`（等价 `pack:patch`） | `install.sh` / `install.cmd` / `install.mjs`、`scan.mjs`、`fetch-wallet.mjs`、`kcm/`（loader、panel-app、样式、Rive、VERSION） |
-| **CLI HUD** `kimi-code-monitor-cli-v3.7.1.zip` | 3.7.1 | `npm run pack:cli` | `dist/hud.cjs`、`dist/quota-worker.cjs`、`scripts/install-cli-hud.mjs`、`scripts/verify-cli-hud.mjs`、`docs/CLI-HUD.md`、`LICENSE` |
-| 运维技能 `kimi-code-monitor-skill-v3.7.1.zip` | 技能版本见包内 `MAINTENANCE.md` | `npm run pack` | `skill/` 打成 `kimi-code-monitor/` 目录，解压到 `~/.kimi-code/skills/` |
+| **Web 扩展** `kimi-code-monitor-web-v3.7.2.zip` | 3.7.2 | `npm run pack:web` | `manifest.json`、`dist/`（content/background/popup）、`content.css`、`popup.*`、`rive/`、`rules/`、`icons/` |
+| **桌面客户端补丁** `kimi-code-monitor-desktop-v3.7.2.zip` | 3.7.2 | `npm run pack:desktop`（等价 `pack:patch`） | `install.sh` / `install.cmd` / `install.mjs`、`scan.mjs`、`fetch-wallet.mjs`、`kcm/`（loader、panel-app、样式、Rive、VERSION） |
+| **CLI HUD** `kimi-code-monitor-cli-v3.7.2.zip` | 3.7.2 | `npm run pack:cli` | `dist/hud.cjs`、`dist/quota-worker.cjs`、`scripts/install-cli-hud.mjs`、`scripts/verify-cli-hud.mjs`、`docs/CLI-HUD.md`、`LICENSE` |
+| 运维技能 `kimi-code-monitor-skill-v3.7.2.zip` | 技能版本见包内 `MAINTENANCE.md` | `npm run pack` | `skill/` 打成 `kimi-code-monitor/` 目录，解压到 `~/.kimi-code/skills/` |
 
 过渡期间同时生成旧别名 `kcm-desktop-patch.zip` 与 `kimi-code-monitor-skill.zip`，内容分别与对应新名称资产一致，仅供旧技能和固定链接升级。
 

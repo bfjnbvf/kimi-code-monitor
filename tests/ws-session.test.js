@@ -33,6 +33,7 @@ class FakeWebSocket {
 
   open() {
     this.readyState = FakeWebSocket.OPEN;
+    this.onopen?.();
   }
 
   send(data) {
@@ -395,6 +396,89 @@ test('协议 2：网页与桌面共用转录适配，握手应答不提前放行
     });
     assert.equal(inputText(window), '3.6k', '订阅后的重置快照仍不重复计数');
     assert.equal(text('ksb-output-tokens'), '1.4k');
+  } finally {
+    dom.window.close();
+  }
+});
+
+
+test('协议 3：无旧握手时订阅，历史不双算，实时速度与子代理正常', async () => {
+  const { dom, window, timers, ws } = await createSessionPage();
+  const usage = { input_other: 120, output: 200, input_cache_read: 80, input_cache_creation: 0 };
+  const text = (id) => window.document.getElementById(id).textContent;
+  try {
+    ws.open();
+    let subscription;
+    for (let i = 0; i < 20 && !subscription; i += 1) {
+      timers.runNext();
+      subscription = ws.sent.find((frame) => frame.type === 'subscribe' && frame.request_id);
+    }
+    assert.ok(subscription, '旧握手缺席后应发送新版订阅');
+    assert.equal(subscription.session_id, SESSION_ID);
+    assert.deepEqual(subscription.agent_ids, ['main']);
+    assert.equal(ws.sent.some((frame) => frame.type === 'client_hello'), false);
+
+    ws.message({ type: 'response', request_id: subscription.request_id, code: 0 });
+    ws.message({ type: 'agent', session_id: SESSION_ID, agent_id: 'main', status: 'idle', model: 'k3' });
+    ws.message({
+      type: 'turns', session_id: SESSION_ID, agent_id: 'main',
+      turns: [{
+        turn_id: 't1', status: 'ended', outcome: 'completed', duration_ms: 8_000,
+        steps: [{ index: 1, outcome: 'completed', usage }],
+        items: [{
+          item_id: 'assistant-1', type: 'assistant_message', step_index: 1, status: 'ended',
+          debug: { timing: { stream_ms: 2_000 } }
+        }]
+      }]
+    });
+    assert.equal(text('ksb-input-tokens'), '2k', '历史快照不覆盖快照汇总');
+    assert.equal(text('ksb-output-tokens'), '1k');
+    assert.equal(text('ksb-speed-val'), '100tok/s');
+
+    ws.message({
+      type: 'item.ended', session_id: SESSION_ID, agent_id: 'main', turn_id: 't1',
+      item: {
+        item_id: 'assistant-2', type: 'assistant_message', step_index: 2, status: 'ended',
+        created_at: '2026-01-01T00:00:00.000Z'
+      }
+    });
+    const liveStep = {
+      index: 2, outcome: 'completed', ended_at: '2026-01-01T00:00:03.000Z',
+      usage: { input_other: 500, output: 300, input_cache_read: 100, input_cache_creation: 0 }
+    };
+    ws.message({ type: 'turn.updated', session_id: SESSION_ID, agent_id: 'main', turn_id: 't1', step: liveStep });
+    ws.message({ type: 'turn.updated', session_id: SESSION_ID, agent_id: 'main', turn_id: 't1', step: liveStep });
+    assert.equal(text('ksb-input-tokens'), '2.6k');
+    assert.equal(text('ksb-output-tokens'), '1.3k', '同一步骤只累计一次');
+
+    ws.message({
+      type: 'task', session_id: SESSION_ID, agent_id: 'main', task_id: 'task-1',
+      child_agent_id: 'agent-1', status: 'running'
+    });
+    const childSubscription = ws.sent.filter((frame) => frame.type === 'subscribe' && frame.request_id).at(-1);
+    assert.deepEqual(childSubscription.agent_ids, ['main', 'agent-1']);
+    ws.message({ type: 'response', request_id: childSubscription.request_id, code: 0 });
+    ws.message({ type: 'agent', session_id: SESSION_ID, agent_id: 'agent-1', status: 'running', model: 'small' });
+    ws.message({
+      type: 'item.ended', session_id: SESSION_ID, agent_id: 'agent-1', turn_id: 't1',
+      item: {
+        item_id: 'assistant-3', type: 'assistant_message', step_index: 2, status: 'ended',
+        debug: { timing: { server_decode_ms: 1_000 } }
+      }
+    });
+    ws.message({
+      type: 'turn.updated', session_id: SESSION_ID, agent_id: 'agent-1', turn_id: 't1',
+      step: {
+        index: 2, outcome: 'completed',
+        usage: { input_other: 10, output: 50, input_cache_read: 0, input_cache_creation: 0 }
+      }
+    });
+    assert.equal(text('ksb-input-tokens'), '2.6k', '不同代理的同序号步骤独立计数');
+    assert.equal(text('ksb-output-tokens'), '1.4k');
+    assert.equal(text('ksb-speed-val'), '92tok/s');
+
+    ws.message({ type: 'ping' });
+    assert.deepEqual(ws.sent.at(-1), { type: 'pong' });
   } finally {
     dom.window.close();
   }

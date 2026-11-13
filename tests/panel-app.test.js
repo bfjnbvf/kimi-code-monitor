@@ -1096,6 +1096,129 @@ test('panel-app：协议 2 转录帧恢复速度与历史样本，实时步骤�
 });
 
 
+test('panel-app：无旧握手时接入新协议，历史不双算且实时步骤、速度与子代理正常', async () => {
+  const dom = new JSDOM(PAGE_HTML, {
+    url: 'http://localhost:3000/sessions/session_v3-live',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  setVisibleConfig(window);
+  window.sessionStorage.setItem('kimi-desktop-server-origin', 'http://127.0.0.1:56189');
+  const sockets = [];
+  window.WebSocket = class {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      this.sent = [];
+      sockets.push(this);
+    }
+    open() {
+      this.readyState = 1;
+      this.onopen?.();
+    }
+    send(data) { this.sent.push(JSON.parse(data)); }
+    message(frame) { this.onmessage?.({ data: JSON.stringify(frame) }); }
+    close() {
+      this.readyState = 3;
+      this.onclose?.({});
+    }
+  };
+  const usage = { input_other: 120, output: 200, input_cache_read: 80, input_cache_creation: 0 };
+  const step = (index, extra = {}) => ({ index, outcome: 'completed', usage, ...extra });
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 100);
+    const ws = sockets[0];
+    assert.ok(ws);
+    ws.open();
+    await tick(window, 600);
+
+    const subscription = ws.sent.find((frame) => frame.type === 'subscribe');
+    assert.ok(subscription, '旧握手缺席后应主动发送新版订阅');
+    assert.equal(subscription.session_id, 'session_v3-live');
+    assert.ok(subscription.request_id);
+    assert.deepEqual(subscription.agent_ids, ['main']);
+    assert.equal(ws.sent.some((frame) => frame.type === 'client_hello'), false);
+    ws.message({ type: 'response', request_id: subscription.request_id, code: 0 });
+    ws.message({ type: 'agent', session_id: 'session_v3-live', agent_id: 'main', status: 'idle', model: 'k3' });
+
+    ws.message({
+      type: 'turns', session_id: 'session_v3-live', agent_id: 'main',
+      turns: [{
+        turn_id: 't1', status: 'ended', outcome: 'completed', duration_ms: 8_000,
+        steps: [step(1)],
+        items: [{
+          item_id: 'assistant-1', type: 'assistant_message', step_index: 1, status: 'ended',
+          text: '历史正文不进入面板事件', debug: { timing: { stream_ms: 2_000 } }
+        }]
+      }]
+    });
+    const text = (id) => window.document.getElementById(id).textContent;
+    assert.equal(text('ksb-input-tokens'), '0', '历史快照不重复累计输入');
+    assert.equal(text('ksb-output-tokens'), '0', '历史快照不重复累计输出');
+    assert.equal(text('ksb-speed-val'), '100tok/s', '历史计时恢复速度');
+    assert.equal(text('ksb-duration-value'), '8.0s', '历史轮次恢复耗时');
+
+    ws.message({
+      type: 'item.ended', session_id: 'session_v3-live', agent_id: 'main', turn_id: 't1',
+      item: {
+        item_id: 'assistant-2', type: 'assistant_message', step_index: 2, status: 'ended',
+        created_at: '2026-01-01T00:00:00.000Z'
+      }
+    });
+    const liveStep = step(2, {
+      usage: { input_other: 500, output: 300, input_cache_read: 100, input_cache_creation: 0 },
+      ended_at: '2026-01-01T00:00:03.000Z'
+    });
+    ws.message({ type: 'turn.updated', session_id: 'session_v3-live', agent_id: 'main', turn_id: 't1', step: liveStep });
+    ws.message({ type: 'turn.updated', session_id: 'session_v3-live', agent_id: 'main', turn_id: 't1', step: liveStep });
+    assert.equal(text('ksb-input-tokens'), '600');
+    assert.equal(text('ksb-output-tokens'), '300', '同一步骤只累计一次');
+    assert.equal(text('ksb-speed-val'), '100tok/s');
+
+    ws.message({
+      type: 'task', session_id: 'session_v3-live', agent_id: 'main', task_id: 'task-1',
+      child_agent_id: 'agent-1', status: 'running'
+    });
+    const childSubscription = ws.sent.filter((frame) => frame.type === 'subscribe').at(-1);
+    assert.deepEqual(childSubscription.agent_ids, ['main', 'agent-1'], '发现子代理后应追加订阅');
+    ws.message({ type: 'response', request_id: childSubscription.request_id, code: 0 });
+    ws.message({ type: 'agent', session_id: 'session_v3-live', agent_id: 'agent-1', status: 'running', model: 'small' });
+    ws.message({
+      type: 'item.ended', session_id: 'session_v3-live', agent_id: 'agent-1', turn_id: 't1',
+      item: {
+        item_id: 'assistant-3', type: 'assistant_message', step_index: 2, status: 'ended',
+        debug: { timing: { server_decode_ms: 1_000 } }
+      }
+    });
+    ws.message({
+      type: 'turn.updated', session_id: 'session_v3-live', agent_id: 'agent-1', turn_id: 't1',
+      step: step(2, { usage: { input_other: 10, output: 50, input_cache_read: 0, input_cache_creation: 0 } })
+    });
+    assert.equal(text('ksb-input-tokens'), '610', '不同代理的同序号步骤独立计数');
+    assert.equal(text('ksb-output-tokens'), '350');
+    assert.equal(text('ksb-speed-val'), '92tok/s');
+
+    ws.message({
+      type: 'turn.ended', session_id: 'session_v3-live', agent_id: 'main',
+      turn: { turn_id: 't1', status: 'ended', outcome: 'completed', duration_ms: 9_000, steps: [liveStep], items: [] }
+    });
+    assert.equal(text('ksb-output-tokens'), '350', '轮次结束携带的重复步骤不双算');
+    assert.equal(text('ksb-duration-value'), '9.0s');
+    ws.message({ type: 'ping' });
+    assert.deepEqual(ws.sent.at(-1), { type: 'pong' });
+    assert.equal(window.__kcmDebug.wsProtocol, 3);
+    assert.equal(window.__kcmDebug.wsSubscription, 'ok');
+  } finally {
+    window.close();
+  }
+});
+
+
 test('panel-app：新套餐把本周模块替换为本月，旧套餐响应恢复本周', async () => {
   const { window } = createPage();
   try {

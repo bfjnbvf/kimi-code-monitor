@@ -16,21 +16,21 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 1. 下载技能包（GitHub Release 版本化资产；版本号见包内 `MAINTENANCE`）：
 
    ```text
-   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.1.zip
+   https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.2.zip
    ```
 
 2. 解压到 Kimi Code 技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
 
    ```bash
    # macOS / Linux
-   curl -fsSL -o /tmp/kcm-skill.zip "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.1.zip" \
+   curl -fsSL -o /tmp/kcm-skill.zip "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.2.zip" \
      && mkdir -p ~/.kimi-code/skills \
      && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/
    ```
 
    ```powershell
    # Windows（PowerShell）
-   Invoke-WebRequest -Uri "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.1.zip" -OutFile "$env:TEMP\kcm-skill.zip"
+   Invoke-WebRequest -Uri "https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.2.zip" -OutFile "$env:TEMP\kcm-skill.zip"
    Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force
    ```
 

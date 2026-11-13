@@ -20,16 +20,16 @@ function normalizeUsage(raw) {
   const usage = raw && typeof raw === 'object' ? raw : {};
   return {
     inputTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputOther', 'input_tokens', 'prompt_tokens', 'inputTokens'
+      'inputOther', 'input_other', 'input_tokens', 'prompt_tokens', 'inputTokens'
     ])),
     outputTokens: toNonNegativeInteger(firstDefined(usage, [
       'output', 'output_tokens', 'completion_tokens', 'outputTokens'
     ])),
     cacheReadTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputCacheRead', 'cache_read_input_tokens', 'cache_read_tokens', 'cacheReadTokens'
+      'inputCacheRead', 'input_cache_read', 'cache_read_input_tokens', 'cache_read_tokens', 'cacheReadTokens'
     ])),
     cacheCreationTokens: toNonNegativeInteger(firstDefined(usage, [
-      'inputCacheCreation', 'cache_creation_input_tokens', 'cache_creation_tokens', 'cacheCreationTokens'
+      'inputCacheCreation', 'input_cache_creation', 'cache_creation_input_tokens', 'cache_creation_tokens', 'cacheCreationTokens'
     ]))
   };
 }
