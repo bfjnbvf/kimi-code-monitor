@@ -483,3 +483,34 @@ test('协议 3：无旧握手时订阅，历史不双算，实时速度与子代
     dom.window.close();
   }
 });
+
+
+test('协议 2 / 3 订阅失败会通过 onclose 建立新连接', async () => {
+  async function check(protocol) {
+    const { dom, timers, ws } = await createSessionPage();
+    try {
+      ws.open();
+      if (protocol === 2) {
+        ws.message({ type: 'server_hello', payload: { protocol_version: 2 } });
+        const subscription = ws.sent.find((frame) => frame.type === 'subscribe_v2');
+        assert.ok(subscription);
+        ws.message({ type: 'ack', id: subscription.id, code: 503 });
+      } else {
+        let subscription;
+        for (let i = 0; i < 20 && !subscription; i += 1) {
+          timers.runNext();
+          subscription = ws.sent.find((frame) => frame.type === 'subscribe' && frame.request_id);
+        }
+        assert.ok(subscription);
+        ws.message({ type: 'response', request_id: subscription.request_id, code: 503 });
+      }
+      assert.equal(ws.readyState, FakeWebSocket.CLOSED);
+      for (let i = 0; i < 100 && FakeWebSocket.instances.length < 2; i += 1) timers.runNext();
+      assert.equal(FakeWebSocket.instances.length, 2, `协议 ${protocol} 订阅失败应触发重连`);
+    } finally {
+      dom.window.close();
+    }
+  }
+  await check(2);
+  await check(3);
+});

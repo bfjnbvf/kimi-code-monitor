@@ -10,7 +10,7 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 ## 铁律（先读这个）
 
 1. **安装前先做环境预检**（install.md §0）：确认本机有 Kimi Code 桌面客户端、说清你当前运行在哪里，再征求用户同意安装。**不要自动开始。**
-2. **每次被调用先做更新检查，但只告知、不自动更新**——发现新版本要告诉用户，用户同意才动（见 references/update.md）。
+2. **每次被调用先经 run 壳运行 `check-update.mjs`，但只告知、不自动更新**——发现新版本要告诉用户，用户同意才动（见 references/update.md）。
 3. **不向用户索取 API key**：面板直接从客户端自己的配置读（用完即弃、不落盘）；你的任何输出里都不出现完整 key，也不要把 key 写进任何文件。
 4. **反馈 GitHub issue 永远先征求用户同意，且绝不代提交**——最多帮用户打开预填好的 issue 页面，由用户自己提交。
 5. 任何一步失败：**停止、原样上报报错**，不要自由发挥尝试其他修改。
@@ -42,4 +42,4 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 | 外部账户余额 | references/external-accounts.md |
 | 对用户的话术模板 | references/guide-scripts.md |
 
-脚本都在 `skill 的 scripts/` 目录：`doctor.mjs`（外部自检）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）。**一律经 run 壳启动**：`bash run.sh <脚本名>`（macOS/Linux）/ `run.cmd <脚本名>`（Windows）——壳优先借客户端自带的 Node，无系统 Node 的用户也能跑全部脚本。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。
+脚本都在 `skill 的 scripts/` 目录：`check-update.mjs`（只读版本检查，面板版本只认客户端 `kcm/VERSION`）、`doctor.mjs`（外部自检）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）。**一律经 run 壳启动**：`bash run.sh <脚本名>`（macOS/Linux）/ `run.cmd <脚本名>`（Windows）——壳优先借客户端自带的 Node，无系统 Node 的用户也能跑全部脚本。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。

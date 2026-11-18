@@ -1,5 +1,5 @@
 // 跨平台组装「发布形态」的补丁 stage：install.mjs / install.sh / install.cmd
-// + kcm/ 载荷。壳的测试（tests/patch-shell.test.js）与 Windows CI
+// + client-app.mjs + kcm/ 载荷。壳的测试（tests/patch-shell.test.js）与 Windows CI
 // （tests/windows-install.js）共用，保证测的就是打进 zip 的那几个文件。
 'use strict';
 
@@ -20,6 +20,7 @@ function makeInstallStage() {
   for (const name of ['install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'html.js', 'payload.js']) {
     fs.copyFileSync(path.join(PATCH, name), path.join(stage, name));
   }
+  fs.copyFileSync(path.join(ROOT, 'src', 'client-app.mjs'), path.join(stage, 'client-app.mjs'));
   fs.chmodSync(path.join(stage, 'install.sh'), 0o755);
   fs.mkdirSync(path.join(stage, 'kcm', 'rive'), { recursive: true });
   fs.copyFileSync(path.join(PATCH, 'loader.js'), path.join(stage, 'kcm', 'loader.js'));

@@ -27,6 +27,10 @@ export function syncPayload(dist, renameSync = fs.renameSync, sourceDir) {
       if (fs.existsSync(source)) fs.copyFileSync(source, path.join(staged, tool));
     }
     if (fs.existsSync(payload)) {
+      for (const file of ['usage-daily.js', 'usage-daily-version.js', 'wallet.js']) {
+        const snapshot = path.join(payload, file);
+        if (fs.existsSync(snapshot)) fs.copyFileSync(snapshot, path.join(staged, file));
+      }
       renameSync(payload, previous);
       hadPrevious = true;
     }

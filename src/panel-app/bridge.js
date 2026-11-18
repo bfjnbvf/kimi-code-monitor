@@ -26,10 +26,10 @@
  * push 早于面板装配完成时先入队，markBridgeReady 后按序补发。
  */
 
-import { normalizeUsage, toNonNegativeInteger, totalInputTokens } from '../metrics.js';
+import { normalizeUsage, toNonNegativeInteger, totalInputTokens, usageHourKey } from '../metrics.js';
 import { stepEventKey } from '../transcript.js';
 import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
-import { noteStepUsage, mergeDaily, hasAccumulated } from './accumulate.js';
+import { noteStepUsage, mergeDaily, hasAccumulated, accumulatedRevision } from './accumulate.js';
 import { summarizeStatus, STATUS_LONG } from './status-copy.js';
 import { t } from '../i18n.js';
 import { cacheHintSeed, cacheHintTouch } from '../content/cache-hint.js';
@@ -435,14 +435,26 @@ function applySessionSeed(sid, { agentsOnly = false } = {}) {
   return true;
 }
 
-/** 合并「文件 + 页内积累」重绘长期统计；补丁模式无文件时纯靠页内积累 */
+let lastChartFileDaily = null;
+let lastChartAccumulatedRevision = -1;
+let lastChartHour = '';
+
+/** 文件、页内积累或当前小时变化时才合并重绘；整点变化用于滚动 24h 窗口。 */
 export function refreshDailyChart() {
+  const revision = accumulatedRevision();
+  const hour = usageHourKey(new Date());
+  if (lastChartFileDaily === lastFileDaily
+    && lastChartAccumulatedRevision === revision
+    && lastChartHour === hour) return;
   const merged = mergeDaily(lastFileDaily);
   panel.usageDailyCache = merged;
   if (Object.keys(merged).length > 0) panel.cliUsageConnected = true;
   renderChart();
   renderAgents();
   renderStatSlots();
+  lastChartFileDaily = lastFileDaily;
+  lastChartAccumulatedRevision = revision;
+  lastChartHour = hour;
 }
 
 function handleStatus(msg) {
@@ -530,16 +542,39 @@ function cacheTouchAt(message) {
   return Number.isFinite(time) && time > 0 ? time : Date.now();
 }
 
+function applySnapshotUsage(sid, usage) {
+  panel.metrics.inputTokens = usage.inputTokens;
+  panel.metrics.outputTokens = usage.outputTokens;
+  panel.metrics.cacheReadTokens = usage.cacheReadTokens;
+  panel.metrics.cacheCreationTokens = usage.cacheCreationTokens;
+  if (!applySessionSeed(sid, { agentsOnly: true })) {
+    registerSessionAgent('main');
+    const mainTotals = panel.agentTotals.main;
+    mainTotals.inputTokens = usage.inputTokens;
+    mainTotals.outputTokens = usage.outputTokens;
+    mainTotals.cacheReadTokens = usage.cacheReadTokens;
+    mainTotals.cacheCreationTokens = usage.cacheCreationTokens;
+  }
+}
+
 // 当前会话切换（direct.js 按 SPA 路由焦点推送）：切走先存档、切回瞬时恢复，
 // 服务器快照只当「非零才可信」的底数——三条来源的优先级写在 handleSessionSwitch 里。
 function handleSessionSwitch(msg) {
   const sid = typeof msg.sid === 'string' ? msg.sid : '';
   if (!sid) return;
   if (sid === currentSessionId) {
-    // 同一会话的重复焦点（离开会话页又回来 / 路由抖动）：数字不动——这个会话从没
-    // 被切走，实时事件一直在往里累计，重拉到的快照只会更旧。只取「收工」信号
-    // 对齐状态灯（busy 为真可能是滞留状态，与 work_changed 同策略）。
+    // 路由切换时先同步归属，快照随后到达：只有还没有任何数字时才采用快照，
+    // 避免快照覆盖本地底数或这段等待期间已经到达的实时增量。
+    const usage = usableSnapshotUsage(msg.snapshot);
+    const empty = totalInputTokens(metrics) + metrics.outputTokens + metrics.cacheCreationTokens === 0;
+    if (usage && empty) {
+      applySnapshotUsage(sid, usage);
+      renderAll();
+    }
+    const updatedAt = Date.parse(msg.snapshot?.updatedAt || '') || 0;
+    if (updatedAt) cacheHintSeed(updatedAt);
     if (msg.snapshot?.busy === false) setAgentStatus('idle');
+    else if (msg.snapshot?.busy === true && !panel.petTurnActive) setAgentStatus('thinking');
     return;
   }
 
@@ -559,19 +594,7 @@ function handleSessionSwitch(msg) {
   //    快照只有总量、没有代理维度，所以按代理 × 模型的拆分仍由本地汇总补
   const usage = usableSnapshotUsage(msg.snapshot);
   if (usage) {
-    panel.metrics.inputTokens = usage.inputTokens;
-    panel.metrics.outputTokens = usage.outputTokens;
-    panel.metrics.cacheReadTokens = usage.cacheReadTokens;
-    panel.metrics.cacheCreationTokens = usage.cacheCreationTokens;
-    if (!applySessionSeed(sid, { agentsOnly: true })) {
-      // 没有本地汇总时，代理维度只能给主代理一行（合计取快照）
-      registerSessionAgent('main');
-      const mainTotals = panel.agentTotals.main;
-      mainTotals.inputTokens = usage.inputTokens;
-      mainTotals.outputTokens = usage.outputTokens;
-      mainTotals.cacheReadTokens = usage.cacheReadTokens;
-      mainTotals.cacheCreationTokens = usage.cacheCreationTokens;
-    }
+    applySnapshotUsage(sid, usage);
   } else if (!restored) {
     // ③ 本地汇总做底（wire.jsonl 扫描，装补丁时预填、技能刷新时更新）：
     //    没有同页缓存、快照又不可用时，这是空闲会话唯一的数字来源
@@ -682,8 +705,10 @@ export function markBridgeReady() {
 /* ---------- 状态文案 ticker：归并各环节状态 → 锁位句子与短词 ---------- */
 
 let disconnectedSince = 0;
+let lastStatusElement = null;
+let lastStatusText = '';
 
-// 数据未就绪期间每秒刷新：更新锁位状态句（人话）并把等级挂到 panel 上
+// 数据未就绪期间每秒检查，只有节点或文案变化时才写 DOM：更新锁位状态句（人话）并把等级挂到 panel 上
 // 供渲染层窄位（吉祥物旁 / 图表汇总位）取短词。诊断技术串由 loader 写。
 function tickStatusSentence() {
   const d = globalThis.__kcmDebug || {};
@@ -705,7 +730,14 @@ function tickStatusSentence() {
   });
   panel.statusLevel = level;
   const sentence = document.getElementById('ksb-status-sentence');
-  if (sentence && level !== 'ok') sentence.textContent = t(STATUS_LONG[level]);
+  if (sentence && level !== 'ok') {
+    const text = t(STATUS_LONG[level]);
+    if (sentence !== lastStatusElement || text !== lastStatusText) {
+      sentence.textContent = text;
+      lastStatusElement = sentence;
+      lastStatusText = text;
+    }
+  }
 }
 
 export function installStatusTicker() {

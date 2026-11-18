@@ -7,8 +7,8 @@
  *   node install.mjs --uninstall   完整卸载（还原 index.html、删除补丁目录）
  *   node install.mjs --app <路径>  指定客户端位置（也接受裸路径参数）
  *
- * 平台关系：同一个脚本，平台差异只收敛在「平台差异区」的三个纯函数
- * （appRootCandidates / distDirOf / readClientVersion），公共流程零分支。
+ * 平台关系：应用发现与目录推导复用共享 client-app 模块；客户端版本读取
+ * 留在本文件的平台差异区，公共安装流程零分支。
  * 旧版 bash 安装器（install.sh）过渡期内随包保留，行为与本文件一致。
  *
  * 行为：
@@ -35,45 +35,28 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { stripLoaderTagLines, injectLoaderTag, replaceIndex } from './html.js';
 import { syncPayload } from './payload.js';
+import { appRootCandidates as sharedAppRootCandidates, distDirOf as sharedDistDirOf } from './client-app.mjs';
 
 export { stripLoaderTagLines, injectLoaderTag } from './html.js';
 export { syncPayload } from './payload.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const APP_NAME = 'Kimi Code';
 const LOADER_SRC = '/kcm/loader.js';
 const PAYLOAD_DIR = 'kcm';
 const BACKUP_SUFFIX = '.bak-kcm';
 // 机器数据 / 工具文件不进载荷哈希（与 install.sh 的排除项保持一致）：
-// usage-daily 是扫描产物，wallet 是余额快照，fetch-wallet 是工具本体
-const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']);
+// usage-daily 及版本文件是扫描产物，wallet 是余额快照，fetch-wallet 是工具本体
+const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'usage-daily-version.js', 'wallet.js', 'fetch-wallet.mjs']);
 
 /* ---------- 平台差异区（仅此区读 process.platform / env） ---------- */
 
-/** 客户端安装根目录候选（按序）。env/home/platform 可注入，便于测试。
- *  路径拼接用 path.win32/posix 显式对应平台——纯函数不随宿主平台漂移。 */
+// 保留安装器既有参数顺序，平台规则只在共享模块维护。
 export function appRootCandidates(env = process.env, home = os.homedir(), platform = process.platform) {
-  const out = [];
-  if (env.KIMI_CODE_APP_DIR) out.push(env.KIMI_CODE_APP_DIR);
-  if (platform === 'win32') {
-    // electron-builder NSIS 默认按用户安装；另照顾自定义位置（参考项目的 D 盘装法）
-    if (env.LOCALAPPDATA) out.push(path.win32.join(env.LOCALAPPDATA, 'Programs', APP_NAME));
-    out.push(path.win32.join('C:\\Program Files', APP_NAME));
-    out.push(path.win32.join('D:\\kimi_code', APP_NAME));
-  } else {
-    out.push(path.posix.join('/Applications', `${APP_NAME}.app`));
-    out.push(path.posix.join(home, 'Applications', `${APP_NAME}.app`));
-  }
-  return out;
+  return sharedAppRootCandidates({ env, home, platform });
 }
 
-/** 应用根 → desktop-dist 目录。传入路径本身就是 desktop-dist 时直接用。 */
 export function distDirOf(appRoot, platform = process.platform) {
-  const p = platform === 'win32' ? path.win32 : path.posix;
-  if (p.basename(appRoot) === 'desktop-dist') return appRoot;
-  return platform === 'win32'
-    ? p.join(appRoot, 'resources', 'desktop-dist')
-    : p.join(appRoot, 'Contents', 'Resources', 'desktop-dist');
+  return sharedDistDirOf(appRoot, platform);
 }
 
 /** 客户端版本（仅信息展示，取不到返回 '?'，不阻断安装）。 */
@@ -109,7 +92,7 @@ function reloadKey(platform = process.platform) {
 /* ---------- 公共流程（零平台分支） ---------- */
 
 /** 载荷内容哈希：与旧 bash 管线（find|shasum|sort|shasum）逐字节兼容，
- *  排除机器数据文件（usage-daily.js）。 */
+ *  排除机器数据文件（usage-daily 及其版本文件、wallet）。 */
 export function payloadHash(root) {
   const files = [];
   const walk = (dir, rel) => {
@@ -148,13 +131,16 @@ function prescanHistory(dist) {
     return;
   }
   const out = path.join(dist, PAYLOAD_DIR, 'usage-daily.js');
+  const hadSnapshot = fs.existsSync(out);
   try {
     execFileSync(process.execPath, [scanMjs, '--sessions', sessions, '--out', out], { stdio: 'inherit' });
     if (!fs.existsSync(out) || fs.statSync(out).size === 0) throw new Error('输出为空');
     console.error('[install] 历史统计已预填');
   } catch (error) {
-    fs.rmSync(out, { force: true });
-    console.error('[install] 历史预填未生效（不影响安装，面板从安装时刻开始积累）');
+    if (!hadSnapshot) fs.rmSync(out, { force: true });
+    console.error(hadSnapshot
+      ? '[install] 历史预填未生效，沿用已有统计快照'
+      : '[install] 历史预填未生效（不影响安装，面板从安装时刻开始积累）');
   }
 }
 
@@ -164,13 +150,16 @@ function fetchWalletSnapshot(dist) {
   const credentials = path.join(kimiHome(), 'credentials', 'kimi-code.json');
   if (!fs.existsSync(tool) || !fs.existsSync(credentials)) return;
   const out = path.join(dist, PAYLOAD_DIR, 'wallet.js');
+  const hadSnapshot = fs.existsSync(out);
   try {
     execFileSync(process.execPath, [tool, '--out', out], { stdio: 'inherit' });
     if (!fs.existsSync(out) || fs.statSync(out).size === 0) throw new Error('输出为空');
     console.error('[install] 余额快照已获取');
   } catch (error) {
-    fs.rmSync(out, { force: true });
-    console.error('[install] 余额快照未生效（不影响安装，可稍后用技能刷新）');
+    if (!hadSnapshot) fs.rmSync(out, { force: true });
+    console.error(hadSnapshot
+      ? '[install] 余额快照未生效，沿用已有快照'
+      : '[install] 余额快照未生效（不影响安装，可稍后用技能刷新）');
   }
 }
 

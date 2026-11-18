@@ -71,9 +71,8 @@ initWidgetStructure({
     panel.turnDurations.length = 0;
     renderAll();
   },
-  // 余额口径的刷新小图标：让 loader 立刻重读一次 wallet.js 快照
-  // （桌面端余额是快照制，页面跑不了 node、拉不到活数据；技能刷过快照后
-  // 点这个图标即可立刻生效）
+  // 余额口径的刷新小图标：让 loader 立刻重读一次 wallet.js 快照；
+  // direct.js 提供的活余额未到位或快照更新时由它兜底
   refreshBalance: () => globalThis.__kcmRefreshWallet?.(),
   // 授权 / 额度 / 外部账户的数据都由 direct.js 直连提供，这里只留空桩
   // （widget-structure 与扩展共用，注入模式无对应动作）
@@ -94,9 +93,8 @@ initRender({
   petUpdateStatus,
   // 桌面宠物（roam pet）不启用
   roamPetSetStatus: () => {},
-  // 余额口径的刷新小图标：让 loader 立刻重读一次 wallet.js 快照
-  // （桌面端余额是快照制，页面跑不了 node、拉不到活数据；技能刷过快照
-  // 之后点这个图标即可立刻生效）
+  // 余额口径的刷新小图标：让 loader 立刻重读一次 wallet.js 快照；
+  // direct.js 提供的活余额未到位或快照更新时由它兜底
   refreshBalance: () => globalThis.__kcmRefreshWallet?.()
 });
 

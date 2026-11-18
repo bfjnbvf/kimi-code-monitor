@@ -181,6 +181,7 @@ export function startDirectMode() {
   // （数字已由本地汇总/同页缓存做底）。与扩展侧 websocket-session.js 同策略。
   let focusedSeq = 0;
   let awaitingAck = false;
+  let initialHistoryReplay = false;
   const cursorBySid = new Map();
 
   // WS 连接状态：声明必须先于 pollFocus 的首次调用——曾经因 TDZ（pollFocus
@@ -204,6 +205,7 @@ export function startDirectMode() {
     focusedSid = sid;
     protocol3Transcript = createProtocol3Transcript();
     debug({ focusedSid: sid, kapOrigin: kapOrigin() || '未知' });
+    push({ v: 1, type: 'session', sid });
     let snapshot;
     try {
       const body = await fetchJson(`/api/v1/sessions/${sid}`);
@@ -246,10 +248,14 @@ export function startDirectMode() {
   pollFocus();
   setInterval(pollFocus, FOCUS_POLL_MS);
 
-  // 长期统计：看门狗的 usage-daily.json 走桥接推送；它缺席时图表靠
-  // 页内按天积累（accumulate.js），定时合并重绘（有文件时按天取大）
-  setTimeout(refreshDailyChart, 3_000);
-  setInterval(refreshDailyChart, DAILY_TICK_MS);
+  // 长期统计：仅在页面可见时检查变化；数据版本与当前小时都没变时桥层直接跳过。
+  // 隐藏期间的页内积累会推进版本，重新可见时补一次合并重绘。
+  const refreshVisibleDailyChart = () => { if (!document.hidden) refreshDailyChart(); };
+  setTimeout(refreshVisibleDailyChart, 3_000);
+  setInterval(refreshVisibleDailyChart, DAILY_TICK_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshDailyChart();
+  });
 
   /* ---------- 整体状态：活跃度模型（详见 KapClient 同口径注释） ---------- */
 
@@ -261,7 +267,7 @@ export function startDirectMode() {
   function setStatus(status) {
     if (status === lastStatus) return;
     lastStatus = status;
-    push({ v: 1, type: 'status', status, sessionId: focusedSid });
+    push({ v: 1, type: 'status', status });
   }
 
   setInterval(() => {
@@ -311,6 +317,7 @@ export function startDirectMode() {
     }
     if (!ids.length || !ws || ws.readyState !== 1) return;
     awaitingAck = true;
+    initialHistoryReplay = false;
     const id = `s${Date.now()}`;
     if (protocolVersion >= 2) {
       ws.send(JSON.stringify({
@@ -320,6 +327,7 @@ export function startDirectMode() {
       }));
       return;
     }
+    initialHistoryReplay = focusedSeq === 0;
     ws.send(JSON.stringify({ type: 'subscribe', id, payload: { session_ids: ids } }));
   }
 
@@ -337,6 +345,7 @@ export function startDirectMode() {
     protocol3Pending.clear();
     protocolVersion = 0;
     awaitingAck = false;
+    initialHistoryReplay = false;
     try {
       ws = new WebSocket(url);
     } catch (error) {
@@ -383,6 +392,7 @@ export function startDirectMode() {
         || (m.type === 'agent.status.updated' && m.payload?.phase))) {
       noteActivity();
     }
+    const replayHistory = replayingHistory || (protocolVersion !== 3 && initialHistoryReplay);
     const seq = Number(m.seq);
     if (!m.kcmTranscript && Number.isFinite(seq) && m.volatile !== true) {
       focusedSeq = Math.max(focusedSeq, seq);
@@ -392,7 +402,7 @@ export function startDirectMode() {
       v: 1,
       type: 'event',
       event: replay
-        ? { ...m, kcmReplay: true, kcmReplayHistory: replayingHistory || focusedSeq === 0 }
+        ? { ...m, kcmReplay: true, kcmReplayHistory: replayHistory }
         : m
     });
   }
@@ -417,6 +427,7 @@ export function startDirectMode() {
         return;
       }
       awaitingAck = true;
+      initialHistoryReplay = focusedSeq === 0;
       ws?.send(JSON.stringify({
         type: 'client_hello',
         id: 'h1',
@@ -432,13 +443,17 @@ export function startDirectMode() {
       const subscribedSid = protocol3Pending.get(m.request_id);
       clearProtocolTimers();
       protocol3Pending.delete(m.request_id);
+      if (m.code !== 0) {
+        awaitingAck = false;
+        initialHistoryReplay = false;
+        debug({ wsSubscription: `error(${m.code})` });
+        try { ws?.close(); } catch (error) { /* onclose 负责重连 */ }
+        return;
+      }
       protocolVersion = 3;
       retry = 0;
       awaitingAck = false;
-      debug({
-        wsProtocol: 3,
-        wsSubscription: m.code === 0 ? 'ok' : `error(${m.code})`
-      });
+      debug({ wsProtocol: 3, wsSubscription: 'ok' });
       if (subscribedSid !== focusedSid) subscribeProtocol3();
       return;
     }
@@ -451,8 +466,12 @@ export function startDirectMode() {
     if (protocolVersion >= 2 && m.type === 'ack' && m.id === 'h1') return;
     if (m.type === 'ack' || m.type === 'resync_required') {
       awaitingAck = false;
+      initialHistoryReplay = false;
       if (protocolVersion >= 2) {
         debug({ wsSubscription: m.code === 0 ? 'ok' : `error(${m.code})` });
+        if (m.code !== 0) {
+          try { ws?.close(); } catch (error) { /* onclose 负责重连 */ }
+        }
         return;
       }
       cursorBySid.set(focusedSid, focusedSeq);

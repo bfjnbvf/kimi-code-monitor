@@ -384,15 +384,17 @@ export function createWebSocketSession(deps) {
       clearHelloWatchdog();
       clearProtocol3Probe();
       protocol3Pending.delete(message.request_id);
+      if (message.code !== 0) {
+        awaitingAck = false;
+        setConnectionHint(t('WebSocket 连接失败'));
+        try { ws?.close(); } catch {}
+        return;
+      }
       protocolVersion = 3;
       awaitingAck = false;
       reconnectAttempts = 0;
-      if (message.code === 0) {
-        if (metrics.agentStatus === 'offline') setAgentStatus('idle');
-        setConnectionHint(t('Kimi Status 已连接'));
-      } else {
-        setConnectionHint(t('WebSocket 连接失败'));
-      }
+      if (metrics.agentStatus === 'offline') setAgentStatus('idle');
+      setConnectionHint(t('Kimi Status 已连接'));
       if (subscribedSid !== sessionId) subscribeProtocol3();
       return;
     }
@@ -425,6 +427,11 @@ export function createWebSocketSession(deps) {
     if (message.type === 'ack' || message.type === 'resync_required') {
       clearAckWatchdog();
       awaitingAck = false;
+      if (protocolVersion >= 2 && message.type === 'ack' && message.code !== 0) {
+        setConnectionHint(t('WebSocket 连接失败'));
+        try { ws?.close(); } catch {}
+        return;
+      }
       subscriptionCursor = lastSeq;
       renderAll();
       return;

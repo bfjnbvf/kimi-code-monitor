@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { scanSessions, listWireFiles, renderUsageDailyJs } from '../src/panel-app/patch/scan.mjs';
+import { scanSessions, listWireFiles, renderUsageDailyJs, renderUsageDailyVersionJs } from '../src/panel-app/patch/scan.mjs';
 import { usageDayKey, usageHourKey } from '../src/metrics.js';
 
 function ts(daysAgo, hour, minute = 30) {
@@ -99,6 +99,12 @@ test('scan：renderUsageDailyJs 产出可直接执行的赋值脚本', () => {
     assert.ok(payload && typeof payload === 'object');
     assert.equal(payload.secondaryModel, 'TestSecondary');
     assert.ok(payload.daily && payload.hourly, 'daily/hourly 应透传');
+    const versionWindow = {};
+    new Function('window', renderUsageDailyVersionJs(js))(versionWindow);
+    assert.match(versionWindow.__kcmUsageDailyVersion, /^[a-f0-9]{64}$/);
+    const changedWindow = {};
+    new Function('window', renderUsageDailyVersionJs(`${js}\n`))(changedWindow);
+    assert.notEqual(changedWindow.__kcmUsageDailyVersion, versionWindow.__kcmUsageDailyVersion);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

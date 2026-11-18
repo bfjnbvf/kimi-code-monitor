@@ -7,7 +7,8 @@ import {
   noteStepUsage,
   mergeDaily,
   hasAccumulated,
-  resetAccumulatedCache
+  resetAccumulatedCache,
+  accumulatedRevision
 } from '../src/panel-app/accumulate.js';
 
 function freshStorage(initial = {}) {
@@ -43,6 +44,15 @@ test('noteStepUsage：全零记录不留空桶', () => {
   noteStepUsage(null);
   assert.equal(hasAccumulated(), false);
   assert.deepEqual(mergeDaily({}), {});
+});
+
+test('积累版本只在有效增量到达时推进', () => {
+  freshStorage();
+  const initial = accumulatedRevision();
+  noteStepUsage({ inputTokens: 0, outputTokens: 0 });
+  assert.equal(accumulatedRevision(), initial);
+  noteStepUsage({ inputTokens: 100, outputTokens: 10 });
+  assert.equal(accumulatedRevision(), initial + 1);
 });
 
 test('回归：积累桶与文件桶同口径，缓存命中率不会超过 100%', () => {

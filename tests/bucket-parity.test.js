@@ -1,5 +1,5 @@
-// 口径一致性护栏：同一条 usage 记录，网页版扫描路径（cli-usage.parseUsageLines）
-// 与客户端页内积累路径（accumulate.noteStepUsage）必须产出同一个桶。
+// 口径一致性护栏：同一条 usage 记录，网页版扫描路径（cli-usage.parseUsageLines）、
+// 客户端页内积累路径（accumulate.noteStepUsage）与 CLI HUD 必须产出同一个桶。
 //
 // 背景：两边各写一份「按天桶怎么算」曾经真的漂移过——积累侧只把非缓存输入
 // 记进 input（缓存读/缓存创建另算），文件扫描侧记全部输入，于是「按天取大」
@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { parseUsageLines } from '../src/cli-usage.js';
 import { normalizeUsage } from '../src/metrics.js';
 import { noteStepUsage, mergeDaily, resetAccumulatedCache } from '../src/panel-app/accumulate.js';
+import { usageBucket } from '../src/cli-hud/hud.mjs';
 
 // noteStepUsage 会挂一个 2s 写盘防抖，收尾清掉免得拖慢整轮测试
 after(() => resetAccumulatedCache());
@@ -68,4 +69,21 @@ test('两天各一条：两条路径的按天分桶同样一致', () => {
   const clientToday = mergeDaily({});
   const todayKey = Object.keys(clientToday)[0];
   assert.deepEqual(clientToday[todayKey], webDaily[todayKey]);
+});
+
+
+test('CLI 与 Web 扫描对 camelCase / snake_case 同量输入产出同一个桶', () => {
+  const camel = RECORDS[0];
+  const snake = {
+    input_other: camel.inputOther,
+    input_cache_read: camel.inputCacheRead,
+    input_cache_creation: camel.inputCacheCreation,
+    output: camel.output
+  };
+  for (const usage of [camel, snake]) {
+    const webDaily = {};
+    parseUsageLines(wireLine(usage, Date.now()), webDaily);
+    assert.deepEqual(usageBucket(usage), Object.values(webDaily)[0]);
+  }
+  assert.deepEqual(usageBucket(camel), usageBucket(snake));
 });

@@ -50,7 +50,7 @@
 
   // 落盘快照：usage-daily.js（安装器 wire.jsonl 全量扫描）/ wallet.js 两个
   // 文件由安装器与技能写入，都用 script 标签加载——与 loader 自身同一通路，
-  // 不受页面 CSP 对 fetch 的限制；内容变化才推。
+  // 不受页面 CSP 对 fetch 的限制。统计先探测小版本文件，版本变化才加载完整数据。
   // 文件缺席（全新环境未预填）属正常：面板从安装时刻开始积累。
   //
   // 诊断状态写全局：面板的状态文案 ticker（status-copy.js）从这里取
@@ -70,16 +70,18 @@
   // 轮询：连续失败按指数退避（上限 5 分钟）。文件长期缺席时不必每 30s
   // 往控制台刷一条 404；一旦加载成功立即回到基础节奏。
   const POLL_BACKOFF_MAX_MS = 5 * 60_000;
-  const startPolling = ({ src, baseMs, read, onState = () => {}, onPayload }) => {
+  const startPolling = ({ src, versionSrc = '', read, readVersion = () => '', baseMs, onState = () => {}, onPayload }) => {
     let lastText = '';
+    let lastVersion = '';
+    let versioned = Boolean(versionSrc);
     let delay = baseMs;
     let timer = null;
 
     const arm = (ms) => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => load(), ms);
+      timer = setTimeout(() => check(), ms);
     };
-    function load(force = false) {
+    function load(force = false, version = '') {
       if (timer) { clearTimeout(timer); timer = null; }
       const s = document.createElement('script');
       s.src = src + '?t=' + Date.now();
@@ -93,32 +95,56 @@
           return;
         }
         onState('loaded');
-        // 桥未就绪时不消费内容：去重标记只在推送真正送达后才更新，
-        // 否则首轮（bridge 未装好）的加载会把内容记成已推送，之后每轮
-        // 轮询都跳过，面板装配完成也等不来数据（panel-ready 补推除外）
+        // 桥未就绪时不消费内容：去重标记只在推送真正送达后才更新。
         if (!window.__kcm) { arm(baseMs); return; }
-        const text = JSON.stringify(j);
-        if (!force && text === lastText) { arm(baseMs); return; }
-        lastText = text;
+        if (versioned) {
+          if (!force && version && version === lastVersion) { arm(baseMs); return; }
+          if (version) lastVersion = version;
+        } else {
+          const text = JSON.stringify(j);
+          if (!force && text === lastText) { arm(baseMs); return; }
+          lastText = text;
+        }
         onPayload(j);
         arm(baseMs);
       };
       s.onerror = () => {
         s.remove();
         onState('error');
-        arm(delay); // 先按当前节奏重试一次
-        delay = Math.min(POLL_BACKOFF_MAX_MS, delay * 2); // 连续失败才逐级退避
+        arm(delay);
+        delay = Math.min(POLL_BACKOFF_MAX_MS, delay * 2);
       };
       document.head.appendChild(s);
     }
-    load();
-    return { push: () => load(true) };
+    function check() {
+      if (!versioned) { load(); return; }
+      const probe = document.createElement('script');
+      probe.src = versionSrc + '?t=' + Date.now();
+      probe.onload = () => {
+        probe.remove();
+        const version = String(readVersion() || '');
+        if (!version) { versioned = false; load(); return; }
+        onState('loaded');
+        if (version === lastVersion) { arm(baseMs); return; }
+        load(false, version);
+      };
+      probe.onerror = () => {
+        probe.remove();
+        versioned = false;
+        load();
+      };
+      document.head.appendChild(probe);
+    }
+    check();
+    return { push: () => load(true, versioned ? String(readVersion() || '') : '') };
   };
 
   const usagePoller = startPolling({
     src: '/kcm/usage-daily.js',
+    versionSrc: '/kcm/usage-daily-version.js',
     baseMs: 30_000,
     read: () => window.__kcmUsageDaily,
+    readVersion: () => window.__kcmUsageDailyVersion,
     onState: (state) => {
       if (state === 'loaded') {
         usageLoadedOnce = true;
@@ -185,6 +211,8 @@
   const startWatchdog = () => {
     if (watchdogStarted) return;
     watchdogStarted = true;
+    let lastStatusElement = null;
+    let lastStatusText = '';
     setInterval(() => {
       const host = panelHost || document.getElementById('ksb-panel-host');
       if (host && !host.isConnected) window.__kcmMountInto(host);
@@ -195,7 +223,7 @@
         const path = location.pathname && location.pathname !== '/'
           ? (location.pathname.length > 22 ? location.pathname.slice(0, 22) + '…' : location.pathname)
           : '/';
-        status.textContent = [
+        const text = [
           '路径 ' + path,
           'kap ' + (window.__kcmKapOrigin ? '已知' : '未知'),
           '数据 ' + usageFileState,
@@ -203,6 +231,11 @@
           '焦点 ' + (d.focusedSid ? String(d.focusedSid).slice(0, 8) : '无'),
           '桥 ' + (d.dispatchError ? '异常' : (d.usageDailyOk ? 'OK' : '?'))
         ].join(' · ');
+        if (status !== lastStatusElement || text !== lastStatusText) {
+          status.textContent = text;
+          lastStatusElement = status;
+          lastStatusText = text;
+        }
       }
     }, 1000);
   };

@@ -4,6 +4,7 @@ import path from 'node:path';
 import tty from 'node:tty';
 import { spawn } from 'node:child_process';
 import { STATUS_TEXT } from '../content/utils.js';
+import { normalizeUsage, totalInputTokens } from '../metrics.js';
 
 const MAX_TAIL_BYTES = 512 * 1024;
 const MAX_TASK_FILES = 512;
@@ -197,21 +198,12 @@ export function render(payload, activity = null, width = 120, color = true, modu
 }
 
 export function usageBucket(raw) {
-  raw = isRecord(raw) ? raw : {};
-  const number = keys => {
-    for (const key of keys) {
-      if (get(raw, key) !== null && get(raw, key) !== undefined) {
-        const n = Number(raw[key]);
-        return finite(n) ? Math.floor(n) : 0;
-      }
-    }
-    return 0;
+  const usage = normalizeUsage(raw);
+  return {
+    input: totalInputTokens(usage),
+    output: usage.outputTokens,
+    cacheRead: usage.cacheReadTokens
   };
-  const other = number(['inputOther', 'input_tokens', 'prompt_tokens', 'inputTokens']);
-  const output = number(['output', 'output_tokens', 'completion_tokens', 'outputTokens']);
-  const cache = number(['inputCacheRead', 'cache_read_input_tokens', 'cache_read_tokens', 'cacheReadTokens']);
-  const creation = number(['inputCacheCreation', 'cache_creation_input_tokens', 'cache_creation_tokens', 'cacheCreationTokens']);
-  return { input: other + cache + creation, output, cacheRead: cache };
 }
 
 const ACTIVITY_RECORD = /"(?:turn\.(?:prompt|started|ended|completed)|assistant\.delta|usage\.record|profile\.bind|config\.update|llm\.request|context\.append_loop_event|interaction\.(?:request|resolved)|subagent\.(?:spawned|started|suspended|completed|failed)|task\.(?:started|terminated)|error|event\.session\.work_changed|agent\.status\.updated)"/;

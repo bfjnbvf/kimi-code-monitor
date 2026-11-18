@@ -28,6 +28,7 @@ const WRITE_DEBOUNCE_MS = 2_000;
 
 let mem = null; // 懒加载的内存缓存
 let writeTimer = null;
+let revision = 0;
 
 function todayKey(now = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -101,8 +102,13 @@ function scheduleWrite() {
 /** 丢弃内存缓存，下次访问重新读存储（外部清空存储后同步 / 测试隔离用） */
 export function resetAccumulatedCache() {
   mem = null;
+  revision += 1;
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = null;
+}
+
+export function accumulatedRevision() {
+  return revision;
 }
 
 /** turn.step.completed 的增量用量入今日桶（口径见文件头：input 记全部输入） */
@@ -117,6 +123,7 @@ export function noteStepUsage(usage, isSubagent = false) {
   // 裁剪过旧天数
   const keys = Object.keys(map).sort();
   while (keys.length > MAX_DAYS) delete map[keys.shift()];
+  revision += 1;
   scheduleWrite();
 }
 

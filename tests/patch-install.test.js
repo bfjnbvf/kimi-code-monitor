@@ -105,7 +105,7 @@ test('payloadHash：机器数据与工具文件不参与哈希', () => {
   const vib = makeHashFixture();
   try {
     const before = payloadHash(vib);
-    for (const f of ['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']) {
+    for (const f of ['usage-daily.js', 'usage-daily-version.js', 'wallet.js', 'fetch-wallet.mjs']) {
       fs.writeFileSync(path.join(vib, f), `// ${f} fixture`);
     }
     assert.equal(payloadHash(vib), before);
@@ -134,6 +134,7 @@ async function makeFakePatchDir() {
   for (const module of ['html.js', 'payload.js']) {
     fs.copyFileSync(path.join(ROOT, 'src', 'panel-app', 'patch', module), path.join(dir, module));
   }
+  fs.copyFileSync(path.join(ROOT, 'src', 'client-app.mjs'), path.join(dir, 'client-app.mjs'));
   await build({
     entryPoints: [SCAN_MJS],
     bundle: true,
@@ -209,6 +210,7 @@ test('集成：安装 → 幂等重装 → 卸载全流程（本机平台）', a
     const daily = path.join(dist, 'kcm', 'usage-daily.js');
     assert.ok(fs.existsSync(daily), '应预填 usage-daily.js');
     assert.ok(fs.readFileSync(daily, 'utf8').includes('__kcmUsageDaily'));
+    assert.ok(fs.existsSync(path.join(dist, 'kcm', 'usage-daily-version.js')), '应生成轻量统计版本文件');
 
     // 幂等：重装后 index.html 逐字节不变
     runInstaller(patchDir, ['--app', appRoot], env);
@@ -235,6 +237,32 @@ test('集成：无 sessions 目录时跳过预填但安装成功', async () => {
     runInstaller(patchDir, ['--app', appRoot], env);
     assert.ok(fs.existsSync(path.join(dist, 'kcm', 'loader.js')));
     assert.ok(!fs.existsSync(path.join(dist, 'kcm', 'usage-daily.js')), '无 sessions 时不应生成 usage-daily.js');
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('集成：重装扫描失败时保留旧统计与余额快照', async () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-preserve-snapshots-'));
+  try {
+    const patchDir = await makeFakePatchDir();
+    const appRoot = path.join(work, 'app');
+    const { dist } = makeFakeApp(appRoot);
+    makeFakeSessions(work);
+    const env = { KIMI_CODE_HOME: work };
+    runInstaller(patchDir, ['--app', appRoot], env);
+
+    const daily = path.join(dist, 'kcm', 'usage-daily.js');
+    const wallet = path.join(dist, 'kcm', 'wallet.js');
+    const dailyBefore = fs.readFileSync(daily, 'utf8');
+    const walletBefore = 'window.__kcmWallet = {"wallet":{"balance":1},"fetchedAt":"before"};\n';
+    fs.writeFileSync(wallet, walletBefore);
+
+    const badWire = path.join(work, 'sessions', 'ws_test', 'session_test', 'agents', 'bad', 'wire.jsonl');
+    fs.mkdirSync(badWire, { recursive: true });
+    runInstaller(patchDir, ['--app', appRoot], env);
+    assert.equal(fs.readFileSync(daily, 'utf8'), dailyBefore);
+    assert.equal(fs.readFileSync(wallet, 'utf8'), walletBefore);
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

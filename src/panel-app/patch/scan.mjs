@@ -3,7 +3,8 @@
  * usage-daily 生成器（安装器调用，Node ≥16）
  *
  * 全量扫描 ~/.kimi-code/sessions 下各会话 agents 目录里的 wire.jsonl，
- * 把每条 usage.record 按天/按小时聚合成补丁面板直接加载的 usage-daily.js。
+ * 把每条 usage.record 按天/按小时聚合成补丁面板直接加载的 usage-daily.js，
+ * 并生成小版本文件供 loader 探测，避免每轮重读完整统计。
  *
  * 行解析与按天/按小时聚合复用扩展的 cli-usage.js 纯函数——浏览器侧
  * （扩展统计）与本脚本（安装器预填）永远同口径，不会各算各的。
@@ -19,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -172,6 +174,23 @@ export function renderUsageDailyJs(data) {
   return `window.__kcmUsageDaily = ${JSON.stringify(payload)};\n`;
 }
 
+export function renderUsageDailyVersionJs(js) {
+  const version = crypto.createHash('sha256').update(js).digest('hex');
+  return `window.__kcmUsageDailyVersion = ${JSON.stringify(version)};\n`;
+}
+
+function writeAtomic(out, content) {
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  const staged = `${out}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(staged, content, { mode: 0o600 });
+    fs.renameSync(staged, out);
+  } catch (error) {
+    fs.rmSync(staged, { force: true });
+    throw error;
+  }
+}
+
 /* ---------- CLI ---------- */
 
 function parseArgs(argv) {
@@ -207,13 +226,12 @@ function main() {
   if (args.stdout) {
     process.stdout.write(js);
   } else {
-    fs.mkdirSync(path.dirname(args.out), { recursive: true });
-    const staged = `${args.out}.tmp-${process.pid}`;
+    writeAtomic(args.out, js);
+    const versionOut = path.join(path.dirname(args.out), 'usage-daily-version.js');
     try {
-      fs.writeFileSync(staged, js, { mode: 0o600 });
-      fs.renameSync(staged, args.out);
+      writeAtomic(versionOut, renderUsageDailyVersionJs(js));
     } catch (error) {
-      fs.rmSync(staged, { force: true });
+      fs.rmSync(versionOut, { force: true });
       throw error;
     }
   }

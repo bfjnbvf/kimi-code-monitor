@@ -2,7 +2,7 @@
 /**
  * KCM 面板外部级自检（跨平台：macOS / Windows，Node ≥16）。
  * 只读检查，不改任何文件。输出 PASS/FAIL/WARN 逐项结论 + 建议动作，
- * 供 Agent（技能 doctor.md）解读。平台差异只集中在应用发现与版本读取两个函数。
+ * 供 Agent（技能 doctor.md）解读。应用发现由共享模块负责，其余平台差异集中在客户端版本读取。
  *
  * 用法：node doctor.mjs [--app <客户端目录>]
  */
@@ -14,35 +14,13 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { kapAuthHeaders } from '../../src/kap-auth.mjs';
+import { appRootCandidates, distDirOf } from './lib/client-app.mjs';
 
-const APP_NAME = 'Kimi Code';
 const BACKUP_SUFFIX = '.bak-kcm';
 const LOADER_SRC = '/kcm/loader.js';
-const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'wallet.js', 'fetch-wallet.mjs']);
+const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'usage-daily-version.js', 'wallet.js', 'fetch-wallet.mjs']);
 
 /* ---------- 平台差异 ---------- */
-
-function appRootCandidates() {
-  const out = [];
-  if (process.env.KIMI_CODE_APP_DIR) out.push(process.env.KIMI_CODE_APP_DIR);
-  if (process.platform === 'win32') {
-    if (process.env.LOCALAPPDATA) out.push(path.win32.join(process.env.LOCALAPPDATA, 'Programs', APP_NAME));
-    out.push(path.win32.join('C:\\Program Files', APP_NAME));
-    out.push(path.win32.join('D:\\kimi_code', APP_NAME));
-  } else {
-    out.push(path.posix.join('/Applications', `${APP_NAME}.app`));
-    out.push(path.posix.join(os.homedir(), 'Applications', `${APP_NAME}.app`));
-  }
-  return out;
-}
-
-function distDirOf(appRoot) {
-  const p = process.platform === 'win32' ? path.win32 : path.posix;
-  if (p.basename(appRoot) === 'desktop-dist') return appRoot;
-  return process.platform === 'win32'
-    ? p.join(appRoot, 'resources', 'desktop-dist')
-    : p.join(appRoot, 'Contents', 'Resources', 'desktop-dist');
-}
 
 function readClientVersion(appRoot) {
   try {

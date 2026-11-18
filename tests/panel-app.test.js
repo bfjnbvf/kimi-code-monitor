@@ -461,6 +461,8 @@ test('panel-app：重启后的历史重放不把空闲会话抬成「思考中�
     ];
     for (const m of replay) ws.onmessage({ data: JSON.stringify(m) });
     ws.onmessage({ data: JSON.stringify({ type: 'ack', payload: {} }) });
+    assert.equal(window.document.getElementById('ksb-input-tokens').textContent, '0', '首次历史重放不重复累计输入');
+    assert.equal(window.document.getElementById('ksb-output-tokens').textContent, '0', '首次历史重放不重复累计输出');
     // 状态灯有 1.5s 最短显示：等节流窗口过去再断言
     await tick(window, 1_700);
     assert.equal(
@@ -477,6 +479,147 @@ test('panel-app：重启后的历史重放不把空闲会话抬成「思考中�
       '思考中',
       '实时 turn.started 应点亮状态灯'
     );
+  } finally {
+    window.close();
+  }
+});
+
+test('panel-app：新会话快照延迟时不丢失先到实时事件', async () => {
+  const dom = new JSDOM(PAGE_HTML, {
+    url: 'http://localhost:3000/sessions/old-session',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+  const { window } = dom;
+  window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  setVisibleConfig(window);
+  window.sessionStorage.setItem('kimi-desktop-server-origin', 'http://127.0.0.1:56189');
+  let releaseSnapshot;
+  const response = () => ({
+    ok: true,
+    json: async () => ({ data: { busy: false, usage: { input_tokens: 0, output_tokens: 0 } } })
+  });
+  window.fetch = (url) => {
+    const value = String(url);
+    if (value.includes('/api/v1/sessions/new-session')) {
+      return new Promise((resolve) => { releaseSnapshot = resolve; });
+    }
+    if (value.includes('/api/v1/sessions/old-session')) return Promise.resolve(response());
+    return Promise.reject(new Error('offline-test'));
+  };
+  const sockets = [];
+  window.WebSocket = class {
+    constructor() {
+      this.readyState = 1;
+      this.sent = [];
+      sockets.push(this);
+    }
+    send(data) { this.sent.push(JSON.parse(data)); }
+    close() {}
+  };
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window, 100);
+    const ws = sockets[0];
+    ws.onopen();
+    ws.onmessage({ data: JSON.stringify({ type: 'server_hello' }) });
+    ws.onmessage({ data: JSON.stringify({ type: 'ack', payload: {} }) });
+    ws.onmessage({ data: JSON.stringify({
+      type: 'turn.step.completed', seq: 1, session_id: 'old-session',
+      payload: { usage: { inputOther: 100, output: 100, inputCacheRead: 0, inputCacheCreation: 0 } }
+    }) });
+    assert.equal(window.document.getElementById('ksb-input-tokens').textContent, '100');
+
+    window.history.pushState({}, '', '/sessions/new-session');
+    await tick(window, 1_100);
+    assert.equal(typeof releaseSnapshot, 'function');
+    ws.onmessage({ data: JSON.stringify({ type: 'ack', payload: {} }) });
+    ws.onmessage({ data: JSON.stringify({
+      type: 'turn.step.completed', seq: 2, session_id: 'new-session',
+      payload: { usage: { inputOther: 5000, output: 500, inputCacheRead: 0, inputCacheCreation: 0 } }
+    }) });
+    releaseSnapshot(response());
+    await tick(window, 20);
+    assert.equal(window.document.getElementById('ksb-input-tokens').textContent, '5k');
+    assert.equal(window.document.getElementById('ksb-output-tokens').textContent, '500');
+  } finally {
+    window.close();
+  }
+});
+
+test('panel-app：图表按变化重绘，隐藏时暂停并在恢复可见时补齐', async () => {
+  const { window } = createPage();
+  let dailyTick;
+  let hidden = false;
+  window.setInterval = (callback, delay) => {
+    if (delay === 20_000) dailyTick = callback;
+    return 1;
+  };
+  Object.defineProperty(window.document, 'hidden', { configurable: true, get: () => hidden });
+  try {
+    setVisibleConfig(window);
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window);
+    assert.equal(typeof dailyTick, 'function');
+    const bars = window.document.getElementById('ksb-chart-bars');
+    let renders = 0;
+    const replaceChildren = bars.replaceChildren.bind(bars);
+    bars.replaceChildren = (...args) => { renders += 1; return replaceChildren(...args); };
+    const daily = {};
+    const today = usageDayKey(new Date());
+    daily[today] = { input: 100, output: 20, cacheRead: 0 };
+    window.__kcm.push({ v: 1, type: 'usageDaily', daily, hourly: {}, sessions: {}, connected: true });
+    const afterFile = renders;
+    assert.ok(afterFile > 0);
+    dailyTick();
+    assert.equal(renders, afterFile, '文件、积累和小时均未变化时不重绘');
+
+    hidden = true;
+    window.__kcm.push({
+      v: 1, type: 'event',
+      event: { type: 'turn.step.completed', payload: { usage: { inputOther: 200, output: 30 } } }
+    });
+    const afterEvent = renders;
+    dailyTick();
+    assert.equal(renders, afterEvent, '隐藏页面不执行周期合并重绘');
+    hidden = false;
+    window.document.dispatchEvent(new window.Event('visibilitychange'));
+    assert.ok(renders > afterEvent, '恢复可见时补齐隐藏期间的积累');
+  } finally {
+    window.close();
+  }
+});
+
+test('panel-app：相同状态文案不重复写 DOM', async () => {
+  const { window } = createPage();
+  const ticks = [];
+  window.setInterval = (callback, delay) => {
+    if (delay === 1_000) ticks.push(callback);
+    return 1;
+  };
+  try {
+    setVisibleConfig(window);
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    await tick(window);
+    const sentence = window.document.getElementById('ksb-status-sentence');
+    let value = sentence.textContent;
+    let writes = 0;
+    Object.defineProperty(sentence, 'textContent', {
+      get: () => value,
+      set: (next) => { value = String(next); writes += 1; }
+    });
+    window.__kcmDebug = { ...window.__kcmDebug, fileState: '加载失败' };
+    for (const callback of ticks) callback();
+    assert.ok(writes > 0);
+    const afterFirst = writes;
+    for (const callback of ticks) callback();
+    assert.equal(writes, afterFirst, '相同状态文案不重复写入');
   } finally {
     window.close();
   }
@@ -1218,6 +1361,54 @@ test('panel-app：无旧握手时接入新协议，历史不双算且实时步�
   }
 });
 
+
+test('panel-app：协议 2 / 3 订阅失败会关闭连接以触发重连', async () => {
+  async function check(protocol) {
+    const dom = new JSDOM(PAGE_HTML, {
+      url: `http://localhost:3000/sessions/subscription-error-${protocol}`,
+      runScripts: 'dangerously',
+      pretendToBeVisual: true
+    });
+    const { window } = dom;
+    window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+    window.sessionStorage.setItem('kimi-desktop-server-origin', 'http://127.0.0.1:56189');
+    const sockets = [];
+    window.WebSocket = class {
+      constructor() {
+        this.readyState = 1;
+        this.sent = [];
+        this.closed = false;
+        sockets.push(this);
+      }
+      send(data) { this.sent.push(JSON.parse(data)); }
+      close() { this.closed = true; this.readyState = 3; }
+    };
+    try {
+      const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+      injectScript(window, 'dist/panel-app.js');
+      await ready;
+      await tick(window, 100);
+      const ws = sockets[0];
+      ws.onopen();
+      if (protocol === 2) {
+        ws.onmessage({ data: JSON.stringify({ type: 'server_hello', payload: { protocol_version: 2 } }) });
+        await tick(window, 50);
+        const subscription = ws.sent.find((frame) => frame.type === 'subscribe_v2');
+        ws.onmessage({ data: JSON.stringify({ type: 'ack', id: subscription.id, code: 503 }) });
+      } else {
+        await tick(window, 600);
+        const subscription = ws.sent.find((frame) => frame.type === 'subscribe');
+        ws.onmessage({ data: JSON.stringify({ type: 'response', request_id: subscription.request_id, code: 503 }) });
+      }
+      assert.equal(ws.closed, true, `协议 ${protocol} 订阅失败应关闭连接`);
+      assert.equal(window.__kcmDebug.wsSubscription, 'error(503)');
+    } finally {
+      window.close();
+    }
+  }
+  await check(2);
+  await check(3);
+});
 
 test('panel-app：新套餐把本周模块替换为本月，旧套餐响应恢复本周', async () => {
   const { window } = createPage();

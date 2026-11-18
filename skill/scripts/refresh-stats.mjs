@@ -17,31 +17,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { appRootCandidates, distDirOf } from './lib/client-app.mjs';
 
-const APP_NAME = 'Kimi Code';
 const PAYLOAD_DIR = 'kcm';
-
-function appRootCandidates() {
-  const out = [];
-  if (process.env.KIMI_CODE_APP_DIR) out.push(process.env.KIMI_CODE_APP_DIR);
-  if (process.platform === 'win32') {
-    if (process.env.LOCALAPPDATA) out.push(path.win32.join(process.env.LOCALAPPDATA, 'Programs', APP_NAME));
-    out.push(path.win32.join('C:\\Program Files', APP_NAME));
-    out.push(path.win32.join('D:\\kimi_code', APP_NAME));
-  } else {
-    out.push(path.posix.join('/Applications', `${APP_NAME}.app`));
-    out.push(path.posix.join(os.homedir(), 'Applications', `${APP_NAME}.app`));
-  }
-  return out;
-}
-
-function distDirOf(appRoot) {
-  const p = process.platform === 'win32' ? path.win32 : path.posix;
-  if (p.basename(appRoot) === 'desktop-dist') return appRoot;
-  return process.platform === 'win32'
-    ? p.join(appRoot, 'resources', 'desktop-dist')
-    : p.join(appRoot, 'Contents', 'Resources', 'desktop-dist');
-}
 
 function parseArgs(argv) {
   let appArg = '';
