@@ -9,7 +9,7 @@
 | **CLI HUD** `kimi-code-monitor-cli-v3.7.3.zip` | 3.7.3 | `npm run pack:cli` | `dist/hud.cjs`、`dist/quota-worker.cjs`、`scripts/install-cli-hud.mjs`、`scripts/verify-cli-hud.mjs`、`docs/CLI-HUD.md`、`LICENSE` |
 | 运维技能 `kimi-code-monitor-skill-v3.7.3.zip` | 技能版本见包内 `MAINTENANCE.md` | `npm run pack` | `skill/` 打成 `kimi-code-monitor/` 目录，解压到 `~/.kimi-code/skills/` |
 
-过渡期间同时生成旧别名 `kcm-desktop-patch.zip` 与 `kimi-code-monitor-skill.zip`，内容分别与对应新名称资产一致，仅供旧技能和固定链接升级。
+从 3.7.3 起只生成以上版本化资产，不再提供 `kcm-desktop-patch.zip` 与 `kimi-code-monitor-skill.zip` 旧固定别名；下载与升级地址由当前说明书中的版本化链接驱动。
 
 ## 一条命令全部构建
 

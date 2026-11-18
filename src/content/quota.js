@@ -8,7 +8,7 @@
  */
 
 import { quotaPercentage } from '../metrics.js';
-import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
+import { selectQuotaPeriod } from '../quota-plans.js';
 import { panel, quotaPollingWanted } from './panel-state.js';
 import { toNumber, parseResetTime } from './utils.js';
 import {
@@ -57,16 +57,11 @@ export async function fetchQuota(force = false, { allowStale = false } = {}) {
 
     const usages = response.data?.data?.quota?.usages || response.data?.quota?.usages
       || response.data?.usages || response.data;
-    if (isMonthlyPlan(usages)) {
-      const month = monthlyQuota(usages);
-      panel.quotaPeriod = 'month';
-      updateProgress('week', month.usedRatio * 100);
-      updateResetText('week', parseResetTime(month.resetAt));
-    } else {
-      if (response.data?.usage) panel.quotaPeriod = 'week';
-      const weeklyPercentage = quotaPercentage(response.data?.usage);
-      if (weeklyPercentage != null) updateProgress('week', weeklyPercentage);
-      updateResetText('week', parseResetTime(response.data?.usage?.resetTime));
+    const period = selectQuotaPeriod(usages);
+    if (period) {
+      panel.quotaPeriod = period.period;
+      updateProgress('week', period.usedRatio * 100);
+      updateResetText('week', parseResetTime(period.resetAt));
     }
 
     const fiveHour = response.data?.limits?.find(

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { monthlyQuota, isMonthlyPlan } from '../src/quota-plans.js';
+import { monthlyQuota, isMonthlyPlan, selectQuotaPeriod } from '../src/quota-plans.js';
 
 const monthTotal = { usedRatio: 0.4988, resetAt: '2026-11-26T00:00:00Z' };
 const monthCode = { usedRatio: 0.4046, resetAt: '2026-11-26T00:00:00Z' };
@@ -29,4 +29,19 @@ test('旧套餐、月周并存、缺月字段和无效月比例都不会误判�
   for (const usedRatio of [undefined, '', 'invalid', -1]) {
     assert.equal(isMonthlyPlan({ monthTotal: { usedRatio } }), false);
   }
+});
+
+
+test('共享选择器覆盖现代周额度、旧式周额度和月周并存', () => {
+  const resetAt = '2026-11-26T00:00:00Z';
+  assert.deepEqual(selectQuotaPeriod({ limit7d: { usedRatio: 0.392, resetAt } }), {
+    period: 'week', usedRatio: 0.392, resetAt
+  });
+  assert.deepEqual(selectQuotaPeriod({ usage: { used: 39.2, limit: 100, resetTime: resetAt } }), {
+    period: 'week', usedRatio: 0.392, resetAt
+  });
+  assert.deepEqual(selectQuotaPeriod({ monthTotal, limitWeek: { usedRatio: 0.25, resetAt } }), {
+    period: 'week', usedRatio: 0.25, resetAt
+  });
+  assert.equal(selectQuotaPeriod({ monthTotal: { usedRatio: 'invalid' } }), null);
 });

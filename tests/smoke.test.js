@@ -103,6 +103,36 @@ test('smoke：脚本装配后面板出现在侧边栏，包含模块与关键区
   }
 });
 
+test('smoke：Web 月套餐与现代周套餐可在同一额度条双向切换', async () => {
+  const { dom, window } = createPage();
+  const listeners = [];
+  const resetAt = new Date(Date.now() + 4 * 86400e3).toISOString();
+  const monthResponse = {
+    ok: true,
+    data: { data: { quota: { usages: { monthTotal: { usedRatio: 0.4988, resetAt } } } } }
+  };
+  const weekResponse = {
+    ok: true,
+    data: { data: { quota: { usages: { limit7d: { usedRatio: 0.392, resetAt } } } } }
+  };
+  let currentResponse = monthResponse;
+  window.chrome.runtime.sendMessage = async (msg) => msg.type === 'quota.fetch' ? currentResponse : { ok: false };
+  window.chrome.runtime.onMessage.addListener = (listener) => listeners.push(listener);
+  try {
+    injectScript(window, 'dist/content.js');
+    await tick(window, 30);
+    assert.equal(window.document.getElementById('ksb-week-label').textContent, '本月');
+    assert.equal(window.document.getElementById('ksb-week-pct').textContent, '49%');
+    currentResponse = weekResponse;
+    for (const listener of listeners) listener({ type: 'auth.completed' }, {}, () => {});
+    await tick(window, 30);
+    assert.equal(window.document.getElementById('ksb-week-label').textContent, '本周');
+    assert.equal(window.document.getElementById('ksb-week-pct').textContent, '39%');
+  } finally {
+    window.close();
+  }
+});
+
 test('smoke：RC 页面不暴露本地收藏内容', async () => {
   const { dom, window } = createPage('https://code-rc.kimi.com/devices/device-1/sessions/smoke-session');
   try {

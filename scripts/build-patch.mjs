@@ -1,4 +1,4 @@
-// 补丁包构建：产出 kimi-code-monitor-desktop-vX.Y.Z.zip（版本见包内 kcm/VERSION），旧别名同步保留
+// 补丁包构建：产出 kimi-code-monitor-desktop-vX.Y.Z.zip（版本见包内 kcm/VERSION）
 // 内容：install.mjs + install.sh + client-app.mjs + scan.mjs / fetch-wallet.mjs（零依赖单文件）+ kcm/（loader、panel-app、样式、Rive 资产）
 // 与扩展共用 src/ 与 content.css/rive，一次源码改动两侧同时生效。
 import { build } from 'esbuild';
@@ -74,9 +74,7 @@ const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'ut
 // 补丁版本标记：doctor.mjs 与技能自更新比对用
 fs.writeFileSync(path.join(STAGE, 'kcm', 'VERSION'), `${version}\n`);
 const out = path.join(ROOT, `kimi-code-monitor-desktop-v${version}.zip`);
-const legacyOut = path.join(ROOT, 'kcm-desktop-patch.zip');
 fs.rmSync(out, { force: true });
 execFileSync('zip', ['-r', '-X', out, 'install.mjs', 'install.sh', 'install.cmd', 'scan.mjs', 'fetch-wallet.mjs', 'html.js', 'payload.js', 'client-app.mjs', 'kcm', '-x', '*.DS_Store'], { cwd: STAGE });
-fs.copyFileSync(out, legacyOut);
-execFileSync(process.execPath, [path.join(ROOT, 'scripts/update-sha256sums.mjs'), out, legacyOut], { cwd: ROOT });
-console.log(`已生成 ${path.basename(out)}（旧别名 ${path.basename(legacyOut)} 同步保留）`);
+execFileSync(process.execPath, [path.join(ROOT, 'scripts/update-sha256sums.mjs'), out], { cwd: ROOT });
+console.log(`已生成 ${path.basename(out)}`);

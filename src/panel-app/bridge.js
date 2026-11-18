@@ -28,7 +28,7 @@
 
 import { normalizeUsage, toNonNegativeInteger, totalInputTokens, usageHourKey } from '../metrics.js';
 import { stepEventKey } from '../transcript.js';
-import { isMonthlyPlan, monthlyQuota } from '../quota-plans.js';
+import { selectQuotaPeriod } from '../quota-plans.js';
 import { noteStepUsage, mergeDaily, hasAccumulated, accumulatedRevision } from './accumulate.js';
 import { summarizeStatus, STATUS_LONG } from './status-copy.js';
 import { t } from '../i18n.js';
@@ -339,22 +339,16 @@ let liveBalanceAt = 0;
 function handleQuota(msg) {
   const quota = msg.quota || {};
   const fiveHour = quota.limit5h || quota['5h'];
-  const week = quota.limit7d || quota.limitWeek || quota.week;
   if (fiveHour) {
     const ratio = Number(fiveHour.usedRatio);
     if (Number.isFinite(ratio)) updateProgress('5h', ratio * 100);
     updateResetText('5h', parseResetTime(fiveHour.resetAt));
   }
-  if (isMonthlyPlan(quota)) {
-    const month = monthlyQuota(quota);
-    panel.quotaPeriod = 'month';
-    updateProgress('week', month.usedRatio * 100);
-    updateResetText('week', parseResetTime(month.resetAt));
-  } else if (week) {
-    panel.quotaPeriod = 'week';
-    const ratio = Number(week.usedRatio);
-    if (Number.isFinite(ratio)) updateProgress('week', ratio * 100);
-    updateResetText('week', parseResetTime(week.resetAt));
+  const period = selectQuotaPeriod(quota);
+  if (period) {
+    panel.quotaPeriod = period.period;
+    updateProgress('week', period.usedRatio * 100);
+    updateResetText('week', parseResetTime(period.resetAt));
   }
   /* 余额双源（两边形状不同，boosterBalanceYuan 都认）：
    * - msg.extraUsage **为真值对象** = kap 给了活余额（balanceCents，单位分）；

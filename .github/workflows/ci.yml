@@ -40,12 +40,12 @@ jobs:
         run: |
           npm run pack
           npm run pack:patch
-          test -s kimi-code-monitor-skill.zip
-          test -s kcm-desktop-patch.zip
+          test -s kimi-code-monitor-skill-v*.zip
+          test -s kimi-code-monitor-desktop-v*.zip
           test -s kimi-code-monitor-cli-v*.zip
           unzip -t kimi-code-monitor-web-v*.zip >/dev/null
-          unzip -t kcm-desktop-patch.zip >/dev/null
-          unzip -t kimi-code-monitor-skill.zip >/dev/null
+          unzip -t kimi-code-monitor-desktop-v*.zip >/dev/null
+          unzip -t kimi-code-monitor-skill-v*.zip >/dev/null
           unzip -t kimi-code-monitor-cli-v*.zip >/dev/null
           test -s SHA256SUMS
           shasum -a 256 -c SHA256SUMS
