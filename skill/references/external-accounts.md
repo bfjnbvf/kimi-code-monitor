@@ -1,6 +1,6 @@
 # 外部账户与余额（自动跟随客户端里的供应商）
 
-面板的「外部账户」模块显示第三方平台的 API 余额/额度：DeepSeek、Kimi API（Moonshot）、智谱（BigModel）、MiniMax、阶跃星辰 StepFun。
+面板的「外部账户」模块显示第三方平台的 API 余额/额度：DeepSeek、Kimi API（Moonshot）、智谱（BigModel）、MiniMax、阶跃星辰 StepFun、阶跃星辰 Step Plan（控制台 Token，未实测）。
 
 **账户来源就是客户端自己的供应商配置**——用户在客户端「模型设置」里加的那个（落在 `~/.kimi-code/config.toml`）。所以：
 
@@ -15,6 +15,33 @@
 | **已接入** | 常规列表里显示余额/额度，表头带「外部账户 · N 分钟前」 |
 | **暂不支持余额查询** | 不进常规列表，只在模块的 ≡ 设置里列出来并标注原因（厂商未开放接口 / 还没适配 / 没配 key） |
 | **客户端托管账号**（`managed:kimi-code`） | 不列——它的额度显示在面板顶部的 5h/本周 |
+
+
+## 未实测 / 暂时接不上的订阅额度
+
+下面三家都有 Coding Plan / Token Plan 类额度，但**凭证模型和现有适配层不同**，不能靠
+客户端里的模型 API Key 自动查询。请把这里当成「已知边界」，不要向用户承诺已经支持：
+
+| 产品 | 状态 | 原因 |
+|---|---|---|
+| **阶跃星辰 Step Plan** | 手动添加可用（Web 扩展；**未实测**） | 额度走 `platform.stepfun.com` 控制台 RPC，需要登录态里的 `Oasis-Token`，不是 `api.stepfun.com` 的模型 API Key。桌面客户端自动发现的 Step Plan 会显示「需要控制台 Token」，不会误试 API Key |
+| **火山方舟 Coding Plan / Agent Plan** | 未适配 | 官方 OpenAPI `GetCodingPlanUsage` / `GetAFPUsage` 需要火山账号 **AK/SK + V4 签名**；推理 API Key 调用会 `InvalidAuthorization`。当前外部账户只有一把 key，没有 AK/SK 输入位 |
+| **阿里云百炼 Coding Plan / Token Plan** | 未适配 | 用量目前只能在百炼控制台页面查看，官方没有公开的额度查询 API |
+
+约定：
+
+- 这三条**没有在真实账号上验证过**。使用者实测后如果发现字段/端点变化，请提 issue，
+  或直接提 PR 改 `src/providers.js` 与对应测试。
+- 不要把「未实测」说成「已支持」；也不要把用户的模型 API Key 拿去试控制台接口。
+- StepFun 的 `Oasis-Token` 是网页登录态，敏感程度高于普通 API Key：只允许发给
+  `platform.stepfun.com`，不要写日志、不要放进任何快照文件。
+
+### 社区参考实现（抓包来源）
+
+- StepFun：`https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit`
+  （`Oasis-Token` / `Oasis-AppID: 10300` / `Oasis-Platform: web`，响应 `plan_credit_rate_limit.credit_buckets[]`）
+- 火山：`POST https://open.volcengineapi.com/?Action=GetCodingPlanUsage&Version=2024-01-01`
+  （Coding Plan）与 `Action=GetAFPUsage`（Agent Plan），均为 AK/SK 签名
 
 ## 探测（安装后跑一次，也可随时跑）
 
