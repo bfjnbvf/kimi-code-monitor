@@ -13,7 +13,6 @@ const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'u
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
 const maintenance = fs.readFileSync(path.join(ROOT, 'skill', 'MAINTENANCE.md'), 'utf8');
-const legacyMaintenance = fs.readFileSync(path.join(ROOT, 'skill', 'MAINTENANCE'), 'utf8');
 const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
 
 const maintenanceField = (name) => {
@@ -87,8 +86,4 @@ test('发版守卫：下载地址拒绝路径穿越、编码路径与非官方�
     'https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/a%2fb.zip',
     'https://example.com/bfjnbvf/kimi-code-monitor/releases/download/v3.6.0/skill.zip',
   ]) assert.equal(isOfficialReleaseDownload(value), false, value);
-});
-
-test('发版守卫：过渡期旧说明书与主说明书一致', () => {
-  assert.equal(legacyMaintenance, maintenance);
 });

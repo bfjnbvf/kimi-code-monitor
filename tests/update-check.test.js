@@ -15,7 +15,7 @@ import {
   distDirOf,
   findClientApp,
   readPanelVersion,
-} from '../skill/scripts/lib/client-app.mjs';
+} from '../src/client-app.mjs';
 
 const installed = (version) => ({ status: 'installed', version });
 

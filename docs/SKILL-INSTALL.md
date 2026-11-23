@@ -13,7 +13,7 @@ kimi-code-monitor 是 Kimi Code 桌面客户端监控面板的运维技能：安
 
 ## 一、安装技能
 
-1. 下载技能包（GitHub Release 版本化资产；版本号见包内 `MAINTENANCE`）：
+1. 下载技能包（GitHub Release 版本化资产；版本号见包内 `MAINTENANCE.md`）：
 
    ```text
    https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.3.zip

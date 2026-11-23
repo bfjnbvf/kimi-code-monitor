@@ -1,5 +1,5 @@
 # CI：push / PR 上跑 eslint 与全部测试。
-# 测试本身包含发版纪律守卫（manifest / package.json / skill MAINTENANCE /
+# 测试本身包含发版纪律守卫（manifest / package.json / skill/MAINTENANCE.md /
 # CHANGELOG 顶部条目四处版本一致，见 tests/release-sync.test.js），
 # 所以这里不需要额外的版本检查步骤。
 name: CI

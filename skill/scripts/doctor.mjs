@@ -14,7 +14,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { kapAuthHeaders } from '../../src/kap-auth.mjs';
-import { appRootCandidates, distDirOf } from './lib/client-app.mjs';
+import { appRootCandidates, distDirOf } from '../../src/client-app.mjs';
 
 const BACKUP_SUFFIX = '.bak-kcm';
 const LOADER_SRC = '/kcm/loader.js';

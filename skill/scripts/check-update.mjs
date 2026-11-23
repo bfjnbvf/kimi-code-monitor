@@ -3,10 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { findClientApp, readPanelVersion } from './lib/client-app.mjs';
+import { findClientApp, readPanelVersion } from '../../src/client-app.mjs';
 
-const PRIMARY_REMOTE = 'https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE.md';
-const FALLBACK_REMOTE = 'https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE';
+const REMOTE_MAINTENANCE = 'https://raw.githubusercontent.com/bfjnbvf/kimi-code-monitor/main/skill/MAINTENANCE.md';
 const RELEASE_PATH = /^\/bfjnbvf\/kimi-code-monitor\/releases\/download\/[^/]+\/[^/]+$/;
 
 export function compareVersions(left, right) {
@@ -119,15 +118,6 @@ function fetchText(url, redirectsLeft = 3) {
   });
 }
 
-async function loadRemoteMaintenance() {
-  try {
-    return await fetchText(PRIMARY_REMOTE);
-  } catch (error) {
-    if (error.statusCode !== 404) throw error;
-    return fetchText(FALLBACK_REMOTE);
-  }
-}
-
 function localSkillVersion() {
   const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const primary = path.join(skillRoot, 'MAINTENANCE.md');
@@ -173,7 +163,7 @@ async function main() {
   if (!app) throw new Error('未找到 Kimi Code 桌面客户端；可用 --app 指定客户端目录');
   const panel = readPanelVersion(app);
   const local = localSkillVersion();
-  const remote = parseMaintenance(await loadRemoteMaintenance());
+  const remote = parseMaintenance(await fetchText(REMOTE_MAINTENANCE));
   const plan = decideUpdate({
     localSkillVersion: local,
     remoteSkillVersion: remote.skillVersion,

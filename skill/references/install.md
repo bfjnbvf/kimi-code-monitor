@@ -69,7 +69,7 @@
 
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
 
-1. **确定补丁包**：读取远端 `skill/MAINTENANCE.md`；若返回 404，再读旧地址 `skill/MAINTENANCE`。取出 `patch-version` 与 `patch-download`。用 URL 解析器校验下载地址：原始地址及解码后的路径不得包含点段、反斜杠或编码斜杠，不得带用户信息；归一化后必须是 `https://github.com`，路径严格匹配 `/bfjnbvf/kimi-code-monitor/releases/download/<单段标签>/<单段文件名>`。字段缺失或地址不符时停止并说明，不要猜附件名或改用其他来源。
+1. **确定补丁包**：读取远端 `skill/MAINTENANCE.md`，取出 `patch-version` 与 `patch-download`。用 URL 解析器校验下载地址：原始地址及解码后的路径不得包含点段、反斜杠或编码斜杠，不得带用户信息；归一化后必须是 `https://github.com`，路径严格匹配 `/bfjnbvf/kimi-code-monitor/releases/download/<单段标签>/<单段文件名>`。字段缺失或地址不符时停止并说明，不要猜附件名或改用其他来源。
 2. **从 `patch-download` 下载并解压**到临时目录，先核对包内 `kcm/VERSION` 等于本次远端 patch-version；不一致则停止，不得执行安装器。下载失败 → 同上面的网络回退说明。
 3. **不需要确认 Node**：安装器自带运行时兜底——`install.sh` / `install.cmd` 会优先借 Kimi Code 客户端自带的 Node（Electron 内置，版本恒定），系统装了 Node 就用系统的。唯一前提是客户端已安装。
 4. **执行**（在补丁解压目录）：

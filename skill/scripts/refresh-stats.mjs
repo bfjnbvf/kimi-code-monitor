@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { appRootCandidates, distDirOf } from './lib/client-app.mjs';
+import { appRootCandidates, distDirOf } from '../../src/client-app.mjs';
 
 const PAYLOAD_DIR = 'kcm';
 

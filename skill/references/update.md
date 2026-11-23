@@ -7,7 +7,7 @@
 1. 统一经 run 壳运行只读检查脚本：
    - macOS / Linux：`bash <技能目录>/scripts/run.sh check-update.mjs`
    - Windows：`<技能目录>\scripts\run.cmd check-update.mjs`
-2. 脚本负责拉取远端说明书，优先读 `skill/MAINTENANCE.md`，404 时读旧地址 `skill/MAINTENANCE`；读取版本、校验两个官方 Release 下载地址、比较版本并输出 `SUMMARY`。
+2. 脚本负责拉取远端 `skill/MAINTENANCE.md`，读取版本、校验两个官方 Release 下载地址、比较版本并输出 `SUMMARY`。
 3. 需要给其他程序读取时加 `--json`。客户端不在默认位置时追加 `--app "<客户端目录>"`，也认环境变量 `KIMI_CODE_APP_DIR`。
 4. 网络拉取失败：跳过检查，告知「本次未做更新检查（连不上 GitHub）」，不要重试轰炸。其他报错原样上报，不要猜版本、猜附件名或改用其他来源。
 
@@ -43,7 +43,7 @@
 
 ### 技能需要更新时
 
-1. 备份当前技能目录，再从远端说明书的 `skill-download` 下载技能包，先在临时目录解压。核对包内 `MAINTENANCE.md`（旧包为 `MAINTENANCE`）的 `skill-version` 等于远端目标版本；不一致则停止，不能覆盖现有技能。
+1. 备份当前技能目录，再从远端说明书的 `skill-download` 下载技能包，先在临时目录解压。核对包内 `MAINTENANCE.md` 的 `skill-version` 等于远端目标版本；不一致则停止，不能覆盖现有技能。
 2. 核对无误后覆盖本地技能目录。macOS/Linux 普通目录可 `unzip -o <包> -d ~/.kimi-code/skills/`；若技能目录是符号链接，先解析真实目录，再把临时目录中的包内容写入真实目录，不要直接对链接所在父目录解压。Windows 用 `Expand-Archive <包> -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`。若本地还是旧路径 `kcm-panel/`，装到新目录后删掉旧目录。
 3. 再次读取安装后的本机说明书，确认 `skill-version` 已等于目标版本；不一致则明确报告更新失败，不得宣称成功。
 

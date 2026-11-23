@@ -12,6 +12,7 @@ content 2.js
 .popup-preview.png
 
 # 打包产物
+SHA256SUMS
 kimi-web-status-bar-v*.zip
 .preview-*.html
 
