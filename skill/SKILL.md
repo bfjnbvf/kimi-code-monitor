@@ -1,6 +1,6 @@
 ---
 name: kimi-code-monitor
-description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装、更新、自检与配置答疑。当用户明确提到这个监控面板、面板用量统计、面板安装/重装/卸载、面板显示异常或面板消失不见（如客户端更新后），想给面板配置外部账户（DeepSeek/Kimi API/智谱/MiniMax/阶跃星辰 StepFun 余额），或想开启/关闭缓存提醒时使用。不用于其他监控或统计需求。
+description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装、更新、自检与配置答疑。当用户明确提到这个监控面板、面板用量统计、面板安装/重装/卸载、面板显示异常或面板消失不见（如客户端更新后），想给面板配置外部账户（DeepSeek/Kimi API/智谱/MiniMax/阶跃星辰 StepFun 余额），想开启/关闭缓存提醒，或想通过对话开启、下载、切换、缩放、隐藏、删除客户端桌面宠物时使用。不用于其他监控或统计需求。
 ---
 
 # KCM 面板运维技能
@@ -9,25 +9,22 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 
 ## 铁律（先读这个）
 
-1. **安装前先做环境预检**（install.md §0）：确认本机有 Kimi Code 桌面客户端、说清你当前运行在哪里，再征求用户同意安装。**不要自动开始。**
-2. **每次被调用先经 run 壳运行 `check-update.mjs`，但只告知、不自动更新**——发现新版本要告诉用户，用户同意才动（见 references/update.md）。
+1. **安装前先做环境预检**（install.md §0）：确认本机有 Kimi Code 桌面客户端、说清你当前运行在哪里；安装前提醒用户「客户端大版本更新可能清除面板文件，但数据不会丢失，重装即可恢复」，再征求同意。**不要自动开始。**
+2. **仅在用户主动要求检查更新或升级时运行 `check-update.mjs`**——先告知，用户同意才更新（见 references/update.md）。宠物安装、切换、缩放、启停和一般答疑不做版本检查。两者同时更新时必须先技能后面板；技能更新后重新读取新文档再继续。
 3. **不向用户索取 API key**：面板直接从客户端自己的配置读（用完即弃、不落盘）；你的任何输出里都不出现完整 key，也不要把 key 写进任何文件。
 4. **反馈 GitHub issue 永远先征求用户同意，且绝不代提交**——最多帮用户打开预填好的 issue 页面，由用户自己提交。
 5. 任何一步失败：**停止、原样上报报错**，不要自由发挥尝试其他修改。
 6. **对用户说话不用专业名词**：说「本地服务」不说 kap-server，说「数据通道」不说桥，说「客户端」不说 Electron。准确术语只在你自己分析时用。功能介绍渐进式，一次讲一两个点，可以问「需要我介绍得更详细吗？」
 
-## 组件速览（给你自己分析的底账）
+## 能力清单（用户问「你能干什么」时完整回答）
 
-| 组件 | 位置 | 客户端大版本更新后 |
-|---|---|---|
-| 面板补丁 | `客户端.app/Contents/Resources/desktop-dist/kcm/`（Windows 为 `<安装目录>\resources\desktop-dist\kcm\`） | **可能被清除**（正常，重装即可，数据不丢） |
-| 历史统计数据 | 同上目录的 `usage-daily.js`（安装时从 `~/.kimi-code/sessions` 全量扫描生成；之后可用技能「刷新本地统计」重建） | 同上 |
-| 外部账户 | 不用文件：面板每 60 秒直连客户端自己配的供应商（key 由客户端配置提供，不落盘） | 不受影响（配置在客户端侧） |
-| 页面内积累 | 客户端自己的用户数据（页面存储），不进应用包 | 不受影响 |
-| 会话日志（真值来源） | `~/.kimi-code/sessions/`（Kimi Code 自己写的） | 不受影响 |
-| 本技能 | `~/.kimi-code/skills/kimi-code-monitor/` | 不受影响 |
+- **面板管理**：安装、重装、卸载、更新、自检，以及客户端更新后的恢复。
+- **用量与额度**：5 小时/本周额度、token 消耗、缓存命中、按天图表和历史统计刷新。
+- **外部账户**：自动识别客户端供应商，显示支持查询的余额；不向用户索取 key。
+- **缓存提醒**：解释、开启和关闭默认关闭的缓存过期提醒。
+- **桌面宠物**：通过对话开启、从网页安装、切换、缩放、隐藏、删除和更新后恢复；默认关闭。
 
-安装零前提：`install.sh`（macOS）/ `install.cmd`（Windows）只是点火器——优先借客户端自带的 Node（Electron 内置，`ELECTRON_RUN_AS_NODE`），系统 Node 兜底；真正的安装逻辑唯一一份在 `install.mjs`（跨平台）。幂等：备份原始 index.html（保留最早的原始版本）、同步补丁、重扫历史、注入带内容哈希的加载标签；`--uninstall` 完整还原。
+首装引导仍只讲一两个重点；用户明确询问能力时再列全。具体存储位置与恢复方法见对应参考文档，不在本入口重复展开。
 
 ## 流程索引
 
@@ -40,6 +37,7 @@ description: Kimi Code 桌面客户端侧栏用量监控面板（KCM）的安装
 | 缓存提醒（侧栏标黄、宠物一分钟黄色提示、开启/关闭） | references/faq.md |
 | 面板数字没跟上 / 要立刻刷新本地统计 | references/refresh-stats.md |
 | 外部账户余额 | references/external-accounts.md |
+| 客户端桌面宠物：开启、网页下载、切换、缩放、隐藏、删除、恢复 | references/pets.md |
 | 对用户的话术模板 | references/guide-scripts.md |
 
-脚本都在 `skill 的 scripts/` 目录：`check-update.mjs`（只读版本检查，面板版本只认客户端 `kcm/VERSION`）、`doctor.mjs`（外部自检）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）。**一律经 run 壳启动**：`bash run.sh <脚本名>`（macOS/Linux）/ `run.cmd <脚本名>`（Windows）——壳优先借客户端自带的 Node，无系统 Node 的用户也能跑全部脚本。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。
+脚本都在本技能的 `scripts/` 目录：`check-update.mjs`（只读版本检查，面板版本只认客户端 `kcm/VERSION`）、`doctor.mjs`（外部自检）、`client-providers.mjs`（探测客户端里的供应商、按三类给出报告）、`refresh-stats.mjs`（重扫本地会话日志、刷新面板统计）、`pet-manager.mjs`（客户端宠物开关、素材下载与长期库管理，详见 references/pets.md）。**一律经 run 壳启动**：`bash <技能目录>/scripts/run.sh <脚本名>`（macOS/Linux）/ `<技能目录>\scripts\run.cmd <脚本名>`（Windows）——壳优先借客户端自带的 Node，无系统 Node 的用户也能跑全部脚本。根目录的 `run.sh` / `run.cmd` 是旧写法兼容入口，新调用仍推荐完整路径。补丁安装包（含 install.mjs / install.sh / install.cmd）从 GitHub Releases 下载，地址见 install.md。

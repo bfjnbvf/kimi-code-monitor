@@ -31,6 +31,8 @@ export function syncPayload(dist, renameSync = fs.renameSync, sourceDir) {
         const snapshot = path.join(payload, file);
         if (fs.existsSync(snapshot)) fs.copyFileSync(snapshot, path.join(staged, file));
       }
+      const petRuntime = path.join(payload, 'pet');
+      if (fs.existsSync(petRuntime)) copyDirSync(petRuntime, path.join(staged, 'pet'));
       renameSync(payload, previous);
       hadPrevious = true;
     }

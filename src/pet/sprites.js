@@ -22,6 +22,7 @@
 const CELL_W = 192;
 const CELL_H = 208;
 const COLS = 8;
+const DISPLAY_BASE_SCALE = 0.72;
 
 // 官方动画表：行号 + 每帧时长 ms
 const STATES = {
@@ -82,10 +83,10 @@ async function create(opts) {
   if (!imageUrl) throw new Error('CodexRoamPet: imageUrl is required');
   const onPositionChange = typeof opts?.onPositionChange === 'function' ? opts.onPositionChange : null;
   const zIndex = Number.isFinite(opts?.zIndex) ? opts.zIndex : 9998;
-  // 显示缩放：默认 1（原始像素 192x208），背景图与取帧坐标同步缩放
-  const scale = Number.isFinite(opts?.scale) && opts.scale > 0 ? opts.scale : 1;
-  const viewW = CELL_W * scale;
-  const viewH = CELL_H * scale;
+  // 用户看到的 100% 是 138×150；背景图与取帧坐标同步缩放
+  const scale = DISPLAY_BASE_SCALE * (Number.isFinite(opts?.scale) && opts.scale > 0 ? opts.scale : 1);
+  const viewW = Math.round(CELL_W * scale);
+  const viewH = Math.round(CELL_H * scale);
 
   // 校验图集合规（CSS 背景按自然尺寸渲染，无需读取宽高参与绘制）
   const img = await loadImage(imageUrl);
@@ -333,11 +334,21 @@ async function create(opts) {
     playChain(['jumping']); // 落地跳一下，之后按最新状态回基底
   }
 
+  let viewportW = window.innerWidth;
+  let viewportH = window.innerHeight;
   function onResize() {
+    const nextW = window.innerWidth;
+    const nextH = window.innerHeight;
     if (posX !== null) {
+      const anchorLeft = posX + viewW / 2 <= viewportW / 2;
+      const anchorTop = posY + viewH / 2 <= viewportH / 2;
+      if (!anchorLeft) posX = nextW - viewW - (viewportW - posX - viewW);
+      if (!anchorTop) posY = nextH - viewH - (viewportH - posY - viewH);
       [posX, posY] = clampPos(posX, posY);
       applyPosition();
     }
+    viewportW = nextW;
+    viewportH = nextH;
   }
 
   /* ---------- 环视（仅 v2 图集）：指针接近时转头注视 ---------- */

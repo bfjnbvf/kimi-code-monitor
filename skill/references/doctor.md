@@ -21,6 +21,7 @@ bash <技能目录>/scripts/run.sh doctor.mjs
 | 缓存参数过期 | 重跑安装入口（macOS `bash install.sh` / Windows `install.cmd`）刷新标签，用户重载客户端 |
 | 本地服务不可达 | 客户端没在运行 → 请用户打开客户端再看 |
 | 无历史数据文件 | 全新机器正常；否则重装补填 |
+| 宠物长期库已开启但运行素材缺失 | 经 run 壳执行 `pet-manager.mjs repair`；不要重新下载素材 |
 | 全部 PASS 但用户仍说显示不对 | 进入第二层 |
 
 ## 第二层：页面内状态（三层保险，逐层回退）

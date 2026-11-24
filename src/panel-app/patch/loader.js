@@ -187,6 +187,16 @@
   });
   window.__kcmRefreshWallet = () => walletPoller.push();
 
+  // 桌面宠物由 Skill 管理：长期素材库在用户目录，这里只轮询 Skill 发布到
+  // 载荷目录的当前配置；只有 enabled 后宠物播放器才会加载 active.webp。
+  const petPoller = startPolling({
+    src: '/kcm/pet/config.js',
+    baseMs: 1_000,
+    read: () => window.__kcmPetConfig,
+    onPayload: (config) => window.__kcm.push({ v: 1, type: 'petConfig', config })
+  });
+  window.addEventListener('kcm:panel-ready', () => petPoller.push(), { once: true });
+
   // 面板资源同目录直链（shims.resolveResourcePath 优先命中这个映射）
   window.__kcmAssets = {
     'rive/rive.wasm': '/kcm/rive/rive.wasm?v=' + V,

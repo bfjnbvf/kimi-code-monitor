@@ -59,7 +59,8 @@ import {
   petCompleteTurn,
   petClockTick,
   getPetStatusSince,
-  setPetStatusSince
+  setPetStatusSince,
+  roamPetApplyDesktopConfig
 } from '../content/pet-panel.js';
 import { parseResetTime, PET_ANSWER_STATUSES } from '../content/utils.js';
 
@@ -647,6 +648,9 @@ function dispatch(msg) {
       break;
     case 'external':
       handleExternal(msg);
+      break;
+    case 'petConfig':
+      roamPetApplyDesktopConfig(msg.config);
       break;
     case 'session':
       handleSessionSwitch(msg);

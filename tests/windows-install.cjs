@@ -1,8 +1,10 @@
-// Windows 专用 E2E：install.cmd 点火器的两条分支 + 卸载。
+// Windows 专用 E2E：install.cmd 点火器的两条分支 + 卸载，以及技能 run.cmd 的路径解析。
 //   ① 系统 node 分支（windows-latest 自带 node）
 //   ② 借客户端 Node 的分支——CI 里 npm install electron 后用它的 exe 作为
 //      KCM_RUNTIME_EXE，真实验证 ELECTRON_RUN_AS_NODE 在 Windows 上可用
 //      （这是「零依赖安装」方案唯一无法在 macOS 上验证的前提）
+//   ③ run.cmd 从其他工作目录接收裸脚本名时，按壳所在目录解析
+//   ④ 根目录兼容入口把旧调用转发到 scripts/run.cmd
 // 在 macOS / Linux 上直接退出 0（对应路径由 tests/patch-shell.test.js 覆盖）。
 //
 // 用法：node tests/windows-install.cjs   （CI 的 windows job 里运行）
@@ -78,6 +80,26 @@ try {
     runCmd(stage, ['--app', root1, '--uninstall'], { KIMI_CODE_HOME: work });
     assert.equal(fs.readFileSync(path.join(dist1, 'index.html'), 'utf8'), original);
     assert.ok(!fs.existsSync(path.join(dist1, 'kcm')), '载荷目录应已删除');
+  });
+
+  const skillStage = path.join(work, 'skill-scripts');
+  fs.mkdirSync(path.join(skillStage, 'scripts'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'skill', 'scripts', 'run.cmd'), path.join(skillStage, 'scripts', 'run.cmd'));
+  fs.copyFileSync(path.join(__dirname, '..', 'skill', 'run.cmd'), path.join(skillStage, 'run.cmd'));
+  fs.writeFileSync(path.join(skillStage, 'scripts', 'probe.mjs'), 'console.log("RUN_CMD_OK");\n');
+  step('③ 技能 run.cmd：从其他工作目录解析并执行裸脚本名', () => {
+    const out = execFileSync('cmd.exe', ['/c', path.join(skillStage, 'scripts', 'run.cmd'), 'probe.mjs'], {
+      cwd: work,
+      encoding: 'utf8'
+    });
+    assert.match(out, /RUN_CMD_OK/);
+  });
+  step('④ 根目录兼容入口：旧调用方式也能执行裸脚本名', () => {
+    const out = execFileSync('cmd.exe', ['/c', path.join(skillStage, 'run.cmd'), 'probe.mjs'], {
+      cwd: work,
+      encoding: 'utf8'
+    });
+    assert.match(out, /RUN_CMD_OK/);
   });
 
   const exe = electronExe();

@@ -101,14 +101,18 @@ test('payloadHash：黄金值对齐旧 bash 管线', () => {
   }
 });
 
-test('payloadHash：机器数据与工具文件不参与哈希', () => {
+test('payloadHash：机器数据、工具与宠物运行文件不参与哈希', () => {
   const vib = makeHashFixture();
   try {
     const before = payloadHash(vib);
     for (const f of ['usage-daily.js', 'usage-daily-version.js', 'wallet.js', 'fetch-wallet.mjs']) {
       fs.writeFileSync(path.join(vib, f), `// ${f} fixture`);
     }
+    fs.mkdirSync(path.join(vib, 'pet'), { recursive: true });
+    fs.writeFileSync(path.join(vib, 'pet', 'config.js'), '// runtime config');
+    fs.writeFileSync(path.join(vib, 'pet', 'active.webp'), 'runtime asset');
     assert.equal(payloadHash(vib), before);
+    assert.equal(doctorPayloadHash(vib), before);
   } finally {
     fs.rmSync(path.dirname(vib), { recursive: true, force: true });
   }
@@ -212,9 +216,14 @@ test('集成：安装 → 幂等重装 → 卸载全流程（本机平台）', a
     assert.ok(fs.readFileSync(daily, 'utf8').includes('__kcmUsageDaily'));
     assert.ok(fs.existsSync(path.join(dist, 'kcm', 'usage-daily-version.js')), '应生成轻量统计版本文件');
 
-    // 幂等：重装后 index.html 逐字节不变
+    // 幂等：重装后 index.html 逐字节不变，Skill 发布的宠物运行文件保留
+    fs.mkdirSync(path.join(dist, 'kcm', 'pet'), { recursive: true });
+    fs.writeFileSync(path.join(dist, 'kcm', 'pet', 'config.js'), '// enabled pet\n');
+    fs.writeFileSync(path.join(dist, 'kcm', 'pet', 'active.webp'), 'pet asset');
     runInstaller(patchDir, ['--app', appRoot], env);
     assert.equal(fs.readFileSync(index, 'utf8'), installed, '重装不应改动 index.html');
+    assert.equal(fs.readFileSync(path.join(dist, 'kcm', 'pet', 'config.js'), 'utf8'), '// enabled pet\n');
+    assert.equal(fs.readFileSync(path.join(dist, 'kcm', 'pet', 'active.webp'), 'utf8'), 'pet asset');
 
     // 卸载：index.html 还原为原始内容，补丁目录与备份清除
     runInstaller(patchDir, ['--uninstall', '--app', appRoot], env);

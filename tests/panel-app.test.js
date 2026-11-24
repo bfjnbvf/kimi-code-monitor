@@ -1439,3 +1439,43 @@ test('panel-app：新套餐把本周模块替换为本月，旧套餐响应恢�
     window.close();
   }
 });
+
+test('panel-app：桌面宠物默认关闭，petConfig 控制启停与缩放', async () => {
+  const { window } = createPage();
+  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  window.Image = class {
+    set src(_value) {
+      this.width = 1536;
+      this.height = 1872;
+      window.setTimeout(() => this.onload?.(), 0);
+    }
+  };
+  try {
+    const ready = new Promise((resolve) => window.addEventListener('kcm:panel-ready', resolve));
+    injectScript(window, 'dist/panel-app.js');
+    await ready;
+    assert.ok(!window.document.querySelector('.codex-roam-pet'), '默认不启动桌面宠物');
+
+    window.__kcm.push({ v: 1, type: 'petConfig', config: { enabled: true, activeId: 'pet-demo', scale: 100, revision: 1 } });
+    await tick(window, 20);
+    const pet = window.document.querySelector('.codex-roam-pet');
+    assert.ok(pet, '开启后应创建宠物');
+    assert.equal(pet.style.width, '138px');
+    assert.equal(pet.style.height, '150px');
+    assert.match(pet.style.backgroundImage, /active\.webp\?v=1/);
+
+    window.__kcm.push({ v: 1, type: 'petConfig', config: { enabled: true, activeId: 'pet-demo', scale: 100, revision: 2, assetExt: 'png' } });
+    await tick(window, 20);
+    assert.match(window.document.querySelector('.codex-roam-pet').style.backgroundImage, /active\.png\?v=2/, 'PNG 配置应加载 PNG 运行素材');
+
+    window.__kcm.push({ v: 1, type: 'petConfig', config: { enabled: true, activeId: 'pet-demo', scale: 150, revision: 1 } });
+    await tick(window, 20);
+    assert.equal(window.document.querySelectorAll('.codex-roam-pet').length, 1, '缩放应重建而非叠加宠物');
+    assert.equal(window.document.querySelector('.codex-roam-pet').style.width, '207px');
+
+    window.__kcm.push({ v: 1, type: 'petConfig', config: { enabled: false, activeId: 'pet-demo', scale: 150, revision: 2 } });
+    assert.ok(!window.document.querySelector('.codex-roam-pet'), '关闭应立即移除宠物并保留素材');
+  } finally {
+    window.close();
+  }
+});

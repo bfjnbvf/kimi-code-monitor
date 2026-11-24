@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   compareVersions,
@@ -66,6 +67,21 @@ test('两者都旧时分别更新，顺序稳定', () => {
     panel: installed('3.7.0'),
   });
   assert.deepEqual(result.actions, ['skill', 'patch']);
+});
+
+test('升级文档：双组件先技能后面板，并重新读取新说明', () => {
+  const doc = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skill', 'references', 'update.md'), 'utf8');
+  assert.match(doc, /先更新技能并重新读取新技能文档，再更新面板/);
+  assert.match(doc, /不得只凭当前会话里已加载的旧说明/);
+  assert.match(doc, /本次更新的所有组件都应变为 `up-to-date`/);
+});
+
+test('版本检查只在用户主动要求时触发', () => {
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const skillDoc = fs.readFileSync(path.join(root, 'skill', 'SKILL.md'), 'utf8');
+  const updateDoc = fs.readFileSync(path.join(root, 'skill', 'references', 'update.md'), 'utf8');
+  assert.match(skillDoc, /仅在用户主动要求检查更新或升级时/);
+  assert.match(updateDoc, /其他技能调用不检查版本/);
 });
 
 test('本地版本高于远端时不更新、不降级', () => {

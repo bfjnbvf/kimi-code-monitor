@@ -1,10 +1,20 @@
-skill-version: 13.3
-patch-version: 3.7.3
+skill-version: 14
+patch-version: 3.8.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
-skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.3/kimi-code-monitor-skill-v3.7.3.zip
-patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.7.3/kimi-code-monitor-desktop-v3.7.3.zip
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-skill-v3.8.0.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-desktop-v3.8.0.zip
 
 # 更新记录
+
+## 14（2026-11-24）
+
+配套补丁 3.8.0：
+
+- **配套面板 3.8.0：客户端桌面宠物**：默认关闭，可通过对话开启、从画廊网页安装、切换、缩放、隐藏和删除；支持状态联动、拖拽与环视
+- **宠物安装、持久化与恢复**：长期素材与配置保存在 `$KIMI_CODE_HOME/kcm/pets/`；重装保留运行副本，客户端更新后可从长期库恢复，无需重新下载
+- **宠物显示与窗口适配**：默认大小调整为 138×150，窗口缩放时按所在象限保留边距，避免宠物被挤出可视区域
+- **技能跨电脑运行修复**：入口命令统一使用完整脚本路径，根目录保留旧写法兼容入口；Windows 裸脚本名按运行壳所在目录解析，不再依赖调用时的当前目录
+- **运维技能 14**：新增宠物管理脚本与完整对话入口，自检排除动态宠物运行文件，安装和更新文档同步恢复流程；版本检查仅在用户主动要求时执行，宠物操作不再强制检查
 
 ## 13.3（2026-11-18）
 

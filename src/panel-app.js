@@ -25,7 +25,7 @@ import {
   CONFIG_STORAGE_KEY
 } from './content/widget-structure.js';
 import { initRender, renderAll } from './content/render.js';
-import { initPet, petUpdateStatus } from './content/pet-panel.js';
+import { initPet, petUpdateStatus, roamPetSetStatus } from './content/pet-panel.js';
 import { panel, resetMetrics } from './content/panel-state.js';
 import { initCacheHint, disposeCacheHint } from './content/cache-hint.js';
 import { syncLocaleFromPage } from './i18n.js';
@@ -91,8 +91,7 @@ initPet({
 initRender({
   isDisposed: () => false,
   petUpdateStatus,
-  // 桌面宠物（roam pet）不启用
-  roamPetSetStatus: () => {},
+  roamPetSetStatus,
   // 余额口径的刷新小图标：让 loader 立刻重读一次 wallet.js 快照；
   // direct.js 提供的活余额未到位或快照更新时由它兜底
   refreshBalance: () => globalThis.__kcmRefreshWallet?.()

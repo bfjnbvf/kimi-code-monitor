@@ -45,7 +45,8 @@ const LOADER_SRC = '/kcm/loader.js';
 const PAYLOAD_DIR = 'kcm';
 const BACKUP_SUFFIX = '.bak-kcm';
 // 机器数据 / 工具文件不进载荷哈希（与 install.sh 的排除项保持一致）：
-// usage-daily 及版本文件是扫描产物，wallet 是余额快照，fetch-wallet 是工具本体
+// usage-daily 及版本文件是扫描产物，wallet 是余额快照，fetch-wallet 是工具本体；
+// pet/ 由 Skill 发布后持续变化，也不属于只读补丁载荷
 const EXCLUDED_FROM_HASH = new Set(['usage-daily.js', 'usage-daily-version.js', 'wallet.js', 'fetch-wallet.mjs']);
 
 /* ---------- 平台差异区（仅此区读 process.platform / env） ---------- */
@@ -99,7 +100,7 @@ export function payloadHash(root) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(path.join(dir, entry.name), relPath);
-      else if (!EXCLUDED_FROM_HASH.has(entry.name)) files.push(relPath);
+      else if (!EXCLUDED_FROM_HASH.has(entry.name) && relPath !== 'pet' && !relPath.startsWith('pet/')) files.push(relPath);
     }
   };
   walk(root, '');

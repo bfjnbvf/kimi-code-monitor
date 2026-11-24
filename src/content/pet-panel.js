@@ -65,7 +65,7 @@ const PET_ACTIVE_ID_STORAGE_KEY = 'kimi-statusbar.petActiveId';
 const PET_POS_STORAGE_KEY = 'kimi-statusbar.petPos';
 // 环视常开（仅 v2 图集生效）：popup 已隐藏该开关，不再读 petLook 存储键
 const PET_SCALE_STORAGE_KEY = 'kimi-statusbar.petScale'; // 宠物大小（百分比 50–150）
-const PET_LOOK_RADIUS = 400;
+const PET_LOOK_RADIUS = 200;
 let roamPet = null;
 let roamPetStarting = false;
 let roamPetEnabledFlag = false;
@@ -73,7 +73,7 @@ let roamPetAssetUrl = '';
 let roamPetPos = null;
 let roamPetScale = 1;
 
-// 装配时注入的生命周期依赖（content.js）
+// 装配时注入的生命周期依赖（Web content.js / 客户端 panel-app.js）
 let deps = {
   isDisposed: () => false,
   getSessionId: () => ''
@@ -461,6 +461,25 @@ export async function roamPetLoadConfig() {
   }
   if (deps.isDisposed()) return;
   roamPetApplyEnabled(roamPetEnabledFlag);
+}
+
+export function roamPetApplyDesktopConfig(config) {
+  if (deps.isDisposed()) return;
+  const enabled = config?.enabled === true;
+  const activeId = typeof config?.activeId === 'string' ? config.activeId : '';
+  const scale = roamPetClampScale(config?.scale);
+  const revision = typeof config?.revision === 'number' ? config.revision : 0;
+  const assetExt = config?.assetExt === 'png' ? 'png' : 'webp';
+  const assetUrl = enabled && activeId
+    ? `/kcm/pet/active.${assetExt}?v=${encodeURIComponent(revision)}`
+    : '';
+  const rebuild = assetUrl !== roamPetAssetUrl || scale !== roamPetScale;
+  roamPetEnabledFlag = enabled;
+  roamPetAssetUrl = assetUrl;
+  roamPetScale = scale;
+  if (rebuild) roamPetStop();
+  if (enabled && assetUrl) roamPetStart();
+  else if (!enabled) roamPetStop();
 }
 
 // 经 background 从素材库取当前宠物的 data URL（未安装/未选择时为空串）

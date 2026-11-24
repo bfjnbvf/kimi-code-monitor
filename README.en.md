@@ -13,7 +13,7 @@
 
 > **Desktop client support (macOS / Windows)**: the same panel can be patched into the Kimi Code desktop client's session sidebar.
 >
-> Compared with the browser extension, the client edition does **not** yet support: the popup suite (custom-range usage charts / 140-day heatmap / data export / share cards), the desktop pet, AI reply bookmarks, auto-archiving, and quota-alert desktop notifications. External accounts, on the other hand, are easier: balances follow the providers configured in the client automatically — no manual key entry.
+> Compared with the browser extension, the client edition does **not** yet support: the popup suite (custom-range usage charts / 140-day heatmap / data export / share cards), AI reply bookmarks, auto-archiving, and quota-alert desktop notifications. The desktop pet is available through conversational skill management. External accounts, on the other hand, are easier: balances follow the providers configured in the client automatically — no manual key entry.
 >
 > The recommended path installs an ops skill first: paste the prompt below into Kimi inside the desktop client; it will install the skill, then follow the skill's guidance to set up the panel:
 >
@@ -32,9 +32,9 @@ The project ships three independently installable builds, published as separate 
 | Build | Form | Install | Release asset |
 |---|---|---|---|
 | **Web extension** | Chrome / Edge sidebar panel | Load the zip at `chrome://extensions` | `kimi-code-monitor-web-v*.zip` |
-| **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.3.zip` |
+| **Desktop client** | Kimi Code desktop patch (sidebar panel + cache reminder) | Unzip and run `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.8.0.zip` |
 | **Terminal CLI HUD** (experimental) | Native `kimi` status line | Unzip, then `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
-| Ops skill (optional) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.3.zip` |
+| Ops skill (optional) | Skill package for Kimi | Unzip into `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.8.0.zip` |
 
 > The CLI HUD is a separate implementation: it does not modify Kimi itself and does not depend on the Web/desktop code. The author has only verified it on Windows with Kimi 2.2/2.3; macOS/Linux and real subscription quota are still untested.
 
@@ -49,6 +49,7 @@ Adopt a pixel pet on the page. It follows your working rhythm: heads down while 
 ![Desktop pet: drag to park and interact](docs/screenshots/pet-demo.gif)
 
 - Fully compatible with the Codex official pet asset format: open the popup, copy an install command from a pet gallery ([codexpet.top](https://codexpet.top/zh), [petdex.dev](https://petdex.dev)), paste, install — done
+- In the desktop client, the feature is off by default and managed entirely through the ops skill: enable, install from a gallery page, switch, scale, hide, or remove pets by talking to Kimi
 - Keep multiple pets and switch with one click; hover to greet, drag to park it anywhere, and it turns to watch your cursor (v2 assets); scalable from 50% to 150%
 
 ### Usage Analytics
@@ -135,7 +136,7 @@ Paste the prompt below into Kimi inside the desktop client; it will install the 
 
 **Option 2: manual install**
 
-1. Download `kimi-code-monitor-desktop-v3.7.3.zip` from [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) and extract it
+1. Download `kimi-code-monitor-desktop-v3.8.0.zip` from [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) and extract it
 2. On macOS run `bash install.sh` in a terminal; on Windows just double-click `install.cmd` (or run it in cmd). If the client is not in its default location, append `--app "<client directory>"`
 3. Reload the client (macOS `Cmd+R`, Windows `Ctrl+R`) — the panel appears at the bottom of the session sidebar
 

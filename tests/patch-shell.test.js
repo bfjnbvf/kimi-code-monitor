@@ -114,6 +114,13 @@ test('壳：卸载走同一入口——index.html 逐字节还原', () => {
 
 /* ---------- run 壳（技能脚本的统一运行入口） ---------- */
 
+test('技能文档：运行命令带完整脚本目录，不依赖当前工作目录', () => {
+  const doc = fs.readFileSync(path.join(ROOT, 'skill', 'SKILL.md'), 'utf8');
+  assert.ok(doc.includes('bash <技能目录>/scripts/run.sh <脚本名>'));
+  assert.ok(doc.includes('<技能目录>\\scripts\\run.cmd <脚本名>'));
+  assert.doesNotMatch(doc, /`bash run\.sh/);
+});
+
 test('run 壳：默认环境跑通脚本（裸脚本名按壳所在目录解析）', () => {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-run-'));
   try {
@@ -128,6 +135,24 @@ test('run 壳：默认环境跑通脚本（裸脚本名按壳所在目录解析�
       assert.equal(error.status, 1);
     }
     assert.match(output, /FAIL|SUMMARY/, '脚本应经壳真实执行（无客户端时也应输出 FAIL 而非壳报错）');
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test('run 壳：根目录兼容入口也能执行裸脚本名', () => {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'kcm-run-root-'));
+  try {
+    let output = '';
+    try {
+      output = execFileSync('bash', [path.join(ROOT, 'skill/run.sh'), 'client-providers.mjs', '--port', '1'], {
+        cwd: work, encoding: 'utf8'
+      });
+    } catch (error) {
+      output = String(error.stdout || '') + String(error.stderr || '');
+      assert.equal(error.status, 1);
+    }
+    assert.match(output, /FAIL|SUMMARY/, '兼容入口应转发到 scripts/run.sh 并真实执行脚本');
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }

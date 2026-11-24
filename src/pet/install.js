@@ -1,6 +1,6 @@
-/* Codex Pet 在线安装器（popup 侧）。
+/* Codex Pet 在线安装器（Web popup 与 Skill 共用）。
  *
- * 支持三种输入（直接粘贴画廊的安装命令即可）：
+ * 支持画廊网页链接、安装命令、slug 与 zip：
  * 1. awesome-codex-pet（GitHub 画廊）：
  *    curl -fsSL .../install-pet.sh | bash -s -- --raw-base <url> <pet-slug--author-slug>
  *    或只写 slug：tanjiro-kamado--wangfan002
@@ -25,6 +25,8 @@ const RAW_BASE_RE = /--raw-base\s+(https:\/\/[^\s"'\\]+)/;
 const PETDEX_INSTALL_RE = /https:\/\/petdex\.dev\/install\/([a-z0-9][a-z0-9-]*)/;
 // petdex 安装脚本里的素材地址（petjson.json / sprite.webp 都在 assets.petdex.dev 上）
 const PETDEX_ASSET_RE = /https:\/\/assets\.petdex\.dev\/[^\s"'\\]+/g;
+const PAGE_LIMIT = 2 * 1024 * 1024;
+const HTTP_URL_RE = /https?:\/\/[^\s"'<>\\]+/g;
 
 // zip 解压安全限制
 const ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
@@ -52,6 +54,12 @@ function parseInput(text) {
     const baseMatch = input.match(RAW_BASE_RE);
     return { kind: 'slug', slug: slugMatch[0], rawBase: baseMatch ? baseMatch[1] : DEFAULT_RAW_BASE };
   }
+  try {
+    const url = new URL(input);
+    if (['http:', 'https:'].includes(url.protocol)) {
+      return { kind: url.pathname.toLowerCase().endsWith('.zip') ? 'zip' : 'page', url: url.href };
+    }
+  } catch {}
   throw new Error('格式错误');
 }
 
@@ -67,6 +75,34 @@ function parsePetdexScript(scriptText) {
   const spriteUrl = urls.find((u) => u.endsWith('/sprite.webp'));
   if (!petJsonUrl || !spriteUrl) throw new Error('petdex 安装脚本里没找到素材地址');
   return { petJsonUrl, spriteUrl };
+}
+
+function parsePage(html, pageUrl) {
+  const text = String(html || '');
+  const petdexInstall = text.match(PETDEX_INSTALL_RE);
+  if (petdexInstall) return { kind: 'petdex', url: petdexInstall[0] };
+  const rawBase = text.match(RAW_BASE_RE);
+  const slug = text.match(SLUG_RE);
+  if (rawBase && slug) return { kind: 'slug', slug: slug[0], rawBase: rawBase[1] };
+  const knownZip = text.match(ZIP_URL_RE);
+  if (knownZip) return { kind: 'zip', url: knownZip[0] };
+  try {
+    const pair = parsePetdexScript(text);
+    if (pair) return { kind: 'pair', ...pair };
+  } catch {}
+
+  const urls = [];
+  for (const match of text.matchAll(HTTP_URL_RE)) urls.push(match[0]);
+  for (const match of text.matchAll(/(?:href|src)=["']([^"']+)["']/gi)) urls.push(match[1]);
+  const absolute = [...new Set(urls.map((value) => {
+    try { return new URL(value.replace(/&amp;/g, '&'), pageUrl).href; } catch { return ''; }
+  }).filter(Boolean))];
+  const petJsonUrl = absolute.find((url) => /\/(?:petjson\.json|pet\.json)(?:[?#]|$)/i.test(url));
+  const spriteUrl = absolute.find((url) => /\/(?:sprite|spritesheet)\.(?:webp|png)(?:[?#]|$)/i.test(url));
+  if (petJsonUrl && spriteUrl) return { kind: 'pair', petJsonUrl, spriteUrl };
+  const zip = absolute.find((url) => new URL(url).pathname.toLowerCase().endsWith('.zip'));
+  if (zip) return { kind: 'zip', url: zip };
+  throw new Error('网页里未找到宠物素材或安装入口');
 }
 
 async function readStreamWithLimit(stream, maxBytes) {
@@ -263,53 +299,84 @@ function toDataUrl(bytes, mime) {
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
-/**
- * 按下载计划取回宠物素材。
- * @returns {Promise<{dataUrl:string, info:{id:string,name:string,author:string,source:string}}>}
- */
-async function fetchPet(plan) {
+function imageMime(bytes) {
+  const data = Uint8Array.from(bytes);
+  const text = (offset, length) => String.fromCharCode(...data.subarray(offset, offset + length));
+  if (data.length >= 12 && text(0, 4) === 'RIFF' && text(8, 4) === 'WEBP') return 'image/webp';
+  if (data.length >= 8 && data[0] === 0x89 && text(1, 3) === 'PNG' && data[4] === 0x0d && data[5] === 0x0a && data[6] === 0x1a && data[7] === 0x0a) {
+    return 'image/png';
+  }
+  throw new Error('宠物图集必须是 WebP 或 PNG');
+}
+
+async function fetchPetData(plan, sourceUrl = '') {
   let petJsonText = null;
-  let webpBytes = null;
+  let imageBytes = null;
   let source = '';
   let author = '';
 
+  if (plan.kind === 'page') {
+    const html = new TextDecoder().decode(await fetchBytes(plan.url, PAGE_LIMIT));
+    return fetchPetData(parsePage(html, plan.url), plan.url);
+  }
   if (plan.kind === 'slug') {
     source = 'awesome-codex-pet';
     author = plan.slug.split('--', 2)[1] || '';
     const base = `${plan.rawBase}/pets/${plan.slug}`;
     petJsonText = new TextDecoder().decode(await fetchBytes(`${base}/pet.json`, 64 * 1024));
-    webpBytes = new Uint8Array(await fetchBytes(`${base}/spritesheet.webp`));
+    imageBytes = new Uint8Array(await fetchBytes(`${base}/spritesheet.webp`));
   } else if (plan.kind === 'petdex') {
     source = 'petdex.dev';
-    const scriptResp = await fetch(plan.url);
-    if (!scriptResp.ok) throw new Error(`下载失败（${scriptResp.status}）：${plan.url}`);
-    const { petJsonUrl, spriteUrl } = parsePetdexScript(await scriptResp.text());
+    const scriptText = new TextDecoder().decode(await fetchBytes(plan.url, PAGE_LIMIT));
+    const { petJsonUrl, spriteUrl } = parsePetdexScript(scriptText);
     petJsonText = new TextDecoder().decode(await fetchBytes(petJsonUrl, 64 * 1024));
-    webpBytes = new Uint8Array(await fetchBytes(spriteUrl));
+    imageBytes = new Uint8Array(await fetchBytes(spriteUrl));
+  } else if (plan.kind === 'pair') {
+    source = new URL(plan.petJsonUrl).hostname;
+    petJsonText = new TextDecoder().decode(await fetchBytes(plan.petJsonUrl, 64 * 1024));
+    imageBytes = new Uint8Array(await fetchBytes(plan.spriteUrl));
   } else {
-    source = 'codex-pets.net';
+    source = new URL(plan.url).hostname;
     const files = await unzip(await fetchBytes(plan.url));
     const jsonName = [...files.keys()].find((n) => basename(n) === 'pet.json');
-    const webpName = [...files.keys()].find((n) => basename(n) === 'spritesheet.webp');
-    if (!jsonName || !webpName) throw new Error('zip 里缺少 pet.json 或 spritesheet.webp');
+    const imageName = [...files.keys()].find((n) => basename(n) === 'spritesheet.webp')
+      || [...files.keys()].find((n) => basename(n) === 'spritesheet.png');
+    if (!jsonName || !imageName) throw new Error('zip 里缺少 pet.json 或 spritesheet.webp/png');
     petJsonText = new TextDecoder().decode(files.get(jsonName));
-    webpBytes = files.get(webpName);
+    imageBytes = files.get(imageName);
   }
 
   let petJson = {};
   try {
     petJson = JSON.parse(petJsonText);
-  } catch (e) {
+  } catch {
     throw new Error('pet.json 解析失败');
   }
+  return {
+    imageBytes,
+    mime: imageMime(imageBytes),
+    info: {
+      id: petJson.id || petJson.pet_id || '',
+      name: petJson.displayName || petJson.display_name || petJson.id || petJson.pet_id || '未命名',
+      author,
+      source,
+      sourceUrl: sourceUrl || plan.url || source
+    }
+  };
+}
 
-  // 图集尺寸校验（官方契约：宽 CELL_W*COLS，高为 CELL_H 的倍数且至少 MIN_ROWS 行）
-  const blobUrl = URL.createObjectURL(new Blob([webpBytes], { type: 'image/webp' }));
+/**
+ * 按下载计划取回宠物素材。
+ * @returns {Promise<{dataUrl:string, info:{id:string,name:string,author:string,source:string}}>}
+ */
+async function fetchPet(plan) {
+  const { imageBytes, mime, info } = await fetchPetData(plan);
+  const blobUrl = URL.createObjectURL(new Blob([imageBytes], { type: mime }));
   try {
     const im = await new Promise((resolve, reject) => {
       const i = new Image();
       i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error('spritesheet.webp 不是有效图片'));
+      i.onerror = () => reject(new Error('宠物图集不是有效图片'));
       i.src = blobUrl;
     });
     if (im.width !== CELL_W * COLS || im.height % CELL_H !== 0 || im.height < CELL_H * MIN_ROWS) {
@@ -318,18 +385,9 @@ async function fetchPet(plan) {
   } finally {
     URL.revokeObjectURL(blobUrl);
   }
-
-  return {
-    dataUrl: toDataUrl(webpBytes, 'image/webp'),
-    info: {
-      id: petJson.id || '',
-      name: petJson.displayName || petJson.id || '未命名',
-      author: author || '',
-      source
-    }
-  };
+  return { dataUrl: toDataUrl(imageBytes, mime), info };
 }
 
-const CodexPetInstall = { parseInput, parsePetdexScript, fetchPet, unzip };
+const CodexPetInstall = { parseInput, parsePetdexScript, parsePage, fetchPetData, fetchPet, unzip };
 
-export { parseInput, parsePetdexScript, fetchPet, fetchBytes, unzip, CodexPetInstall };
+export { parseInput, parsePetdexScript, parsePage, fetchPetData, fetchPet, fetchBytes, unzip, CodexPetInstall };

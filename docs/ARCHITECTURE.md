@@ -18,7 +18,7 @@
 - `src/cli-usage.js`：本地 CLI 目录授权、增量读取和按天汇总
 - `src/session-files.js`：本地会话目录布局规则（wire.jsonl 的枚举与命名，扩展侧与安装器侧共用同一份）
 - `src/providers.js`：外部 provider 的端点与解析
-- `src/pet/`：桌面宠物——`sprites.js`（图集播放器 + 行为）、`install.js`（画廊命令解析与下载）、`store.js`（IndexedDB 素材库）
-- `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询 + 外部账户抓取）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器、`install.mjs` 安装器（跨 macOS/Windows 唯一逻辑，`install.sh`/`install.cmd` 为点火壳——借客户端自带的 Node，零安装前提）、`scan.mjs` 历史扫描、`fetch-wallet.mjs` 余额快照）
+- `src/pet/`：桌面宠物——`sprites.js`（图集播放器 + 行为）、`install.js`（画廊网页 / 安装命令解析与安全下载，浏览器与 Skill 共用）、`store.js`（Web 端 IndexedDB 素材库）；客户端长期素材库由 `skill/scripts/pet-manager.mjs` 管理
+- `src/panel-app.js` + `src/panel-app/`：桌面补丁的独立面板页（与侧栏面板共用 `content/` 的本体与渲染）——`panel-app.js`（入口：挂载/配置/直连启动）、`bridge.js`（push 总线与消息分发）、`direct.js`（kap-server 直连：WS 事件流 + REST 轮询 + 外部账户抓取）、`shims.js`（chrome.* 替代）、`accumulate.js`（页内按天积累）、`status-copy.js`（状态文案分级）、`patch/`（`loader.js` 注入器与宠物配置轮询、`install.mjs` 安装器（跨 macOS/Windows 唯一逻辑，`install.sh`/`install.cmd` 为点火壳——借客户端自带的 Node，零安装前提）、`scan.mjs` 历史扫描、`fetch-wallet.mjs` 余额快照、`pet-config.js` 默认关闭配置）
 - `src/cli-hud/` + `scripts/build-cli-hud.mjs` / `install-cli-hud.mjs` / `verify-cli-hud.mjs`：CLI HUD——Python 标准库渲染，Node worker 负责额度查询，安装走官方 `status_line.command`；独立于 Web/桌面 bundle，只在 `npm run hud:build` / `pack:cli` 时构建
 - `rive/`：吉祥物动画运行时与资产（本地打包，无远程依赖）

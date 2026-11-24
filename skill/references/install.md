@@ -58,7 +58,7 @@
 用户把仓库地址发给你、或被 README 提示词引到 `docs/SKILL-INSTALL.md` 时，先完成技能安装，再走面板安装流程。标准路径是 Release 技能包（版本化资产，版本见包内 `MAINTENANCE.md`）：
 
 1. 下载技能包：
-   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.7.3.zip`
+   `https://github.com/bfjnbvf/kimi-code-monitor/releases/latest/download/kimi-code-monitor-skill-v3.8.0.zip`
 2. 解压到用户级技能目录（包内顶层即 `kimi-code-monitor/` 目录，**勿再套一层**）：
    - macOS / Linux：`curl -fsSL -o /tmp/kcm-skill.zip "<URL>" && mkdir -p ~/.kimi-code/skills && unzip -o /tmp/kcm-skill.zip -d ~/.kimi-code/skills/`
    - Windows（PowerShell）：`Invoke-WebRequest -Uri "<URL>" -OutFile "$env:TEMP\kcm-skill.zip"; Expand-Archive -Path "$env:TEMP\kcm-skill.zip" -DestinationPath "$env:USERPROFILE\.kimi-code\skills\" -Force`
@@ -68,6 +68,8 @@
 下载失败（网络不通）时不要硬试、不要换其它来源：直接告诉用户「网络错误，请稍后重试」，稍后再按第 1 步重新下载即可。
 
 ## 2. 面板安装（先自我介绍、再征得同意；话术见 guide-scripts.md）
+
+安装前的说明必须包含：客户端大版本更新可能清除面板文件，导致面板暂时消失；历史统计、页面内偏好和宠物长期素材不会因此丢失，重新安装面板即可恢复。安装完成后的首装引导再简要重复一次。
 
 1. **确定补丁包**：读取远端 `skill/MAINTENANCE.md`，取出 `patch-version` 与 `patch-download`。用 URL 解析器校验下载地址：原始地址及解码后的路径不得包含点段、反斜杠或编码斜杠，不得带用户信息；归一化后必须是 `https://github.com`，路径严格匹配 `/bfjnbvf/kimi-code-monitor/releases/download/<单段标签>/<单段文件名>`。字段缺失或地址不符时停止并说明，不要猜附件名或改用其他来源。
 2. **从 `patch-download` 下载并解压**到临时目录，先核对包内 `kcm/VERSION` 等于本次远端 patch-version；不一致则停止，不得执行安装器。下载失败 → 同上面的网络回退说明。
@@ -80,9 +82,9 @@
 6. **跑一遍外部自检**（统一走 run 壳——客户端自带 Node 优先，无系统 Node 也能跑）：
    - macOS / Linux：`bash <技能目录>/scripts/run.sh doctor.mjs`
    - Windows：`<技能目录>\scripts\run.cmd doctor.mjs`
-   全部 PASS 才算装好。
+   全部 PASS 才算装好。若 `$KIMI_CODE_HOME/kcm/pets/config.json` 中宠物已开启，再运行 `pet-manager.mjs repair`，从长期库恢复当前宠物运行副本。
 7. **自动探测客户端里的供应商**（这一步就是首装探测，不需要用户做任何事）：
-   `bash <技能目录>/scripts/run.sh client-providers.mjs`（Windows：`run.cmd client-providers.mjs`）
+   `bash <技能目录>/scripts/run.sh client-providers.mjs`（Windows：`<技能目录>\scripts\run.cmd client-providers.mjs`）
    把输出里的 `SUMMARY` 一行按 guide-scripts.md 的模板报给用户——已接入几个、有几个暂不支持余额查询。退出码 1 说明客户端没开着，先让用户打开客户端再跑（不要当成安装失败）。
 8. **提醒用户重载客户端**（macOS Cmd+R，Windows Ctrl+R），然后按 guide-scripts.md 做首装引导。
 

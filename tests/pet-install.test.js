@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { unzip, parseInput, parsePetdexScript, fetchBytes } from '../src/pet/install.js';
+import { unzip, parseInput, parsePetdexScript, parsePage, fetchBytes } from '../src/pet/install.js';
 
 function u16(v) {
   const b = Buffer.alloc(2);
@@ -303,4 +303,31 @@ test('unzip：header 谎报小尺寸时，deflate 实际输出仍受流式上限
   const compressed = Buffer.from(await deflateRaw(raw));
   const zip = localFileHeader('bomb.txt', 8, compressed.length, 5, compressed);
   await assert.rejects(async () => unzip(toArrayBuffer(zip)), /文件过大/);
+});
+
+test('parseInput：普通网页链接进入页面解析，非 HTTP 输入仍拒绝', () => {
+  assert.deepEqual(parseInput('https://petdex.dev/pets/jokebear-codexpet'), {
+    kind: 'page', url: 'https://petdex.dev/pets/jokebear-codexpet'
+  });
+  assert.equal(parseInput('https://example.com/pet.zip').kind, 'zip');
+  assert.throws(() => parseInput('file:///tmp/pet.html'), /格式错误/);
+});
+
+test('parsePage：从网页提取安装入口、相对素材地址，不执行脚本', () => {
+  assert.equal(parsePage(PETDEX_SCRIPT, 'https://petdex.dev/pets/demo').kind, 'pair');
+  const pair = parsePage(
+    '<a href="../meta/pet.json">资料</a><img src="/images/spritesheet.webp">',
+    'https://example.com/gallery/demo'
+  );
+  assert.equal(pair.petJsonUrl, 'https://example.com/meta/pet.json');
+  assert.equal(pair.spriteUrl, 'https://example.com/images/spritesheet.webp');
+  assert.throws(() => parsePage('<script>throw new Error("不应执行")</script>', 'https://example.com'), /未找到/);
+});
+
+test('parsePage：curl 安装命令优先于页面同时提供的 zip', () => {
+  const html = `curl -fsSL https://example.com/install-pet.sh | bash -s -- --raw-base https://raw.githubusercontent.com/legeling/awesome-codex-pet/main tanjiro-kamado--wangfan002
+    <a href="https://example.com/pet.zip">zip 下载</a>`;
+  const plan = parsePage(html, 'https://codexpet.top/zh/pets/demo');
+  assert.equal(plan.kind, 'slug');
+  assert.equal(plan.slug, 'tanjiro-kamado--wangfan002');
 });

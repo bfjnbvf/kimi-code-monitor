@@ -23,6 +23,7 @@ if "%~1"=="" (
 )
 
 set "TARGET=%~f1"
+if "%~1"=="%~nx1" set "TARGET=%SCRIPT_DIR%%~1"
 if not exist "%TARGET%" (
   echo script not found: %TARGET%
   exit /b 1

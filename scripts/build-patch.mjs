@@ -1,5 +1,5 @@
 // 补丁包构建：产出 kimi-code-monitor-desktop-vX.Y.Z.zip（版本见包内 kcm/VERSION）
-// 内容：install.mjs + install.sh + client-app.mjs + scan.mjs / fetch-wallet.mjs（零依赖单文件）+ kcm/（loader、panel-app、样式、Rive 资产）
+// 内容：install.mjs + install.sh + client-app.mjs + scan.mjs / fetch-wallet.mjs（零依赖单文件）+ kcm/（loader、panel-app、样式、Rive、默认关闭的宠物配置）
 // 与扩展共用 src/ 与 content.css/rive，一次源码改动两侧同时生效。
 import { build } from 'esbuild';
 import fs from 'node:fs';
@@ -68,6 +68,8 @@ for (const module of ['html.js', 'payload.js']) {
 }
 fs.copyFileSync(path.join(ROOT, 'src/client-app.mjs'), path.join(STAGE, 'client-app.mjs'));
 fs.copyFileSync(path.join(ROOT, 'content.css'), path.join(STAGE, 'kcm/content.css'));
+fs.mkdirSync(path.join(STAGE, 'kcm/pet'), { recursive: true });
+fs.copyFileSync(path.join(PATCH, 'pet-config.js'), path.join(STAGE, 'kcm/pet/config.js'));
 fs.cpSync(path.join(ROOT, 'rive'), path.join(STAGE, 'kcm/rive'), { recursive: true });
 
 const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8')).version;

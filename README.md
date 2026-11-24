@@ -11,7 +11,7 @@
 > [四、技术实现](#四技术实现)
 
 
-> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。(web端宠物等功能在桌面端中暂不支持)
+> **桌面客户端支持（macOS / Windows）**：同一套面板可以补丁形式装进 Kimi Code 桌面客户端的会话侧边栏——不改客户端程序逻辑，自动备份、可随时完整卸载。桌面宠物默认关闭，可通过运维技能对话管理。
 >
 > 推荐经运维技能安装：把下面这段话发给桌面客户端里的 Kimi，它会先装好技能，再按技能指引完成面板安装：
 >
@@ -31,9 +31,9 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 | 版本 | 形态 | 安装 | Release 资产 |
 |---|---|---|---|
 | **Web 扩展** | Chrome / Edge 侧边栏面板 | 加载 zip 到 `chrome://extensions` | `kimi-code-monitor-web-v*.zip` |
-| **桌面客户端** | Kimi Code 桌面端补丁（侧边栏面板 + 缓存提醒） | 解压运行 `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.7.3.zip` |
+| **桌面客户端** | Kimi Code 桌面端补丁（侧边栏面板 + 缓存提醒） | 解压运行 `install.sh` / `install.cmd` | `kimi-code-monitor-desktop-v3.8.0.zip` |
 | **终端 CLI HUD**（实验） | 原生 `kimi` 的状态栏 | 解压后 `node scripts/install-cli-hud.mjs` | `kimi-code-monitor-cli-v*.zip` |
-| 桌面端运维技能（可选） | 给 Kimi 的技能包 | 解压到 `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.7.3.zip` |
+| 桌面端运维技能（可选） | 给 Kimi 的技能包 | 解压到 `~/.kimi-code/skills/` | `kimi-code-monitor-skill-v3.8.0.zip` |
 
 <img src="docs/screenshots/hero.png" alt="面板完整模式与 Mini 模式对比" width="476" height="353">
 
@@ -71,13 +71,14 @@ Kimi Code Web 的侧边栏监控扩展，同一套面板也支持 Kimi Code 桌�
 
 <img src="docs/screenshots/edit-mode.png" alt="编辑模式三区域示意" width="210" height="514">
 
-### 通用 Codex 桌面宠物（仅支持 web 端）
+### 通用 Codex 桌面宠物
 
 在页面上养一只像素宠物。它会跟着你的工作节奏变换动作：你提问时它埋头干活，干完了示意你来看结果，出错或掉线时沮丧地低下头，平时安安静静待着。
 
 ![桌面宠物：拖拽停放与互动](docs/screenshots/pet-demo.gif)
 
 - 完全兼容 Codex 官方宠物素材格式：打开弹窗，从宠物画廊（[codexpet.top](https://codexpet.top/zh)、[petdex.dev](https://petdex.dev)）复制一条安装命令、粘贴、点安装即可
+- 桌面客户端默认关闭，由运维技能通过对话完成开启、网页链接下载、切换、缩放、隐藏与删除，不提供额外的图形管理页面
 - 可以同时收藏多只，一键切换；鼠标悬停打招呼、按住拖拽停放、靠近时转过脸看你（v2 素材）；大小 50%–150% 可调
 
 ### AI 回复收藏（仅支持 web 端）
@@ -122,7 +123,7 @@ popup 消耗量板块点「生成分享图」，按当前选择的日期范围�
 
 **方式二：手动安装**
 
-1. 从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载 `kimi-code-monitor-desktop-v3.7.3.zip` 并解压
+1. 从 [Releases](https://github.com/bfjnbvf/kimi-code-monitor/releases) 下载 `kimi-code-monitor-desktop-v3.8.0.zip` 并解压
 2. macOS 在终端执行 `bash install.sh`；Windows 直接双击 `install.cmd`（或在 cmd 里运行）。客户端不在默认位置时追加 `--app "<客户端目录>"`
 3. 重载客户端（macOS `Cmd+R`，Windows `Ctrl+R`），面板出现在会话侧栏底部
 

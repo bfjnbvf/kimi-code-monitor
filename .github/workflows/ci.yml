@@ -50,7 +50,7 @@ jobs:
           test -s SHA256SUMS
           shasum -a 256 -c SHA256SUMS
 
-  # Windows 安装链路：install.cmd 的 node 分支 + 借客户端 Node 的分支
+  # Windows 链路：install.cmd 的 node 分支 + 借客户端 Node 的分支 + 技能 run.cmd 路径解析
   # （ELECTRON_RUN_AS_NODE 是「零依赖安装」唯一无法在 macOS 上验证的前提，
   # 用 electron 包的真二进制在这里验证）
   install-windows:
@@ -74,5 +74,5 @@ jobs:
       - name: 构建面板产物
         run: npm run build
 
-      - name: Windows 安装链路（install.cmd 双分支 + 卸载）
+      - name: Windows 链路（install.cmd 双分支 + 卸载 + 技能 run.cmd 路径）
         run: node tests/windows-install.cjs

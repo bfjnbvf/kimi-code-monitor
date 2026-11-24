@@ -19,7 +19,7 @@
 ## 探测（安装后跑一次，也可随时跑）
 
 ```bash
-# macOS / Linux（Windows 用 run.cmd，同参数）
+# macOS / Linux（Windows 用 <技能目录>\scripts\run.cmd，同参数）
 bash <技能目录>/scripts/run.sh client-providers.mjs
 ```
 

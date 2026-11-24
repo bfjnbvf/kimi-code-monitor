@@ -54,7 +54,7 @@ export function payloadHash(root) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const relPath = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(path.join(dir, entry.name), relPath);
-      else if (!EXCLUDED_FROM_HASH.has(entry.name)) files.push(relPath);
+      else if (!EXCLUDED_FROM_HASH.has(entry.name) && relPath !== 'pet' && !relPath.startsWith('pet/')) files.push(relPath);
     }
   };
   walk(root, '');
