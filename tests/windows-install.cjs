@@ -3,8 +3,8 @@
 //   ② 借客户端 Node 的分支——CI 里 npm install electron 后用它的 exe 作为
 //      KCM_RUNTIME_EXE，真实验证 ELECTRON_RUN_AS_NODE 在 Windows 上可用
 //      （这是「零依赖安装」方案唯一无法在 macOS 上验证的前提）
-//   ③ run.cmd 从其他工作目录接收裸脚本名时，按壳所在目录解析
-//   ④ 根目录兼容入口把旧调用转发到 scripts/run.cmd
+//   ③ run.cmd 从其他工作目录接收裸脚本名时，按壳所在目录解析且不重复转发脚本名
+//   ④ 根目录兼容入口把旧调用与带空格参数原样转发到 scripts/run.cmd
 // 在 macOS / Linux 上直接退出 0（对应路径由 tests/patch-shell.test.js 覆盖）。
 //
 // 用法：node tests/windows-install.cjs   （CI 的 windows job 里运行）
@@ -86,20 +86,28 @@ try {
   fs.mkdirSync(path.join(skillStage, 'scripts'), { recursive: true });
   fs.copyFileSync(path.join(__dirname, '..', 'skill', 'scripts', 'run.cmd'), path.join(skillStage, 'scripts', 'run.cmd'));
   fs.copyFileSync(path.join(__dirname, '..', 'skill', 'run.cmd'), path.join(skillStage, 'run.cmd'));
-  fs.writeFileSync(path.join(skillStage, 'scripts', 'probe.mjs'), 'console.log("RUN_CMD_OK");\n');
-  step('③ 技能 run.cmd：从其他工作目录解析并执行裸脚本名', () => {
-    const out = execFileSync('cmd.exe', ['/c', path.join(skillStage, 'scripts', 'run.cmd'), 'probe.mjs'], {
-      cwd: work,
-      encoding: 'utf8'
-    });
-    assert.match(out, /RUN_CMD_OK/);
+  fs.writeFileSync(
+    path.join(skillStage, 'scripts', 'probe.mjs'),
+    'console.log(`RUN_CMD_ARGS=${JSON.stringify(process.argv.slice(2))}`);\n'
+  );
+  const runSkill = (entrypoint, args, env = {}) => execFileSync(
+    'cmd.exe',
+    ['/c', path.join(skillStage, entrypoint), ...args],
+    { cwd: work, env: { ...process.env, ...env }, encoding: 'utf8' }
+  );
+  const assertSkillArgs = (out, expected) => {
+    const match = out.match(/^RUN_CMD_ARGS=(.*)$/m);
+    assert.ok(match, `probe 未输出参数：${out}`);
+    assert.deepEqual(JSON.parse(match[1]), expected);
+  };
+  step('③ 技能 run.cmd：从其他工作目录解析裸脚本名，无附加参数', () => {
+    const out = runSkill('scripts/run.cmd', ['probe.mjs']);
+    assertSkillArgs(out, []);
   });
-  step('④ 根目录兼容入口：旧调用方式也能执行裸脚本名', () => {
-    const out = execFileSync('cmd.exe', ['/c', path.join(skillStage, 'run.cmd'), 'probe.mjs'], {
-      cwd: work,
-      encoding: 'utf8'
-    });
-    assert.match(out, /RUN_CMD_OK/);
+  step('④ 根目录兼容入口：原样转发 --json 与带空格的 --app 路径', () => {
+    const appPath = path.join(work, 'Kimi Code');
+    const out = runSkill('run.cmd', ['probe.mjs', '--json', '--app', appPath]);
+    assertSkillArgs(out, ['--json', '--app', appPath]);
   });
 
   const exe = electronExe();
@@ -118,6 +126,11 @@ try {
         KIMI_CODE_HOME: work,
         KCM_RUNTIME_EXE: exe
       });
+      const appPath = path.join(work, 'Kimi Code Runtime');
+      const out = runSkill('scripts/run.cmd', ['probe.mjs', '--json', '--app', appPath], {
+        KCM_RUNTIME_EXE: exe
+      });
+      assertSkillArgs(out, ['--json', '--app', appPath]);
     });
   }
 } finally {

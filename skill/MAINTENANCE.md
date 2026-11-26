@@ -1,10 +1,17 @@
-skill-version: 14
+skill-version: 14.1
 patch-version: 3.8.0
 repo: https://github.com/bfjnbvf/kimi-code-monitor
 skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-skill-v3.8.0.zip
 patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-desktop-v3.8.0.zip
 
 # 更新记录
+
+## 14.1（2026-11-26）
+
+配套补丁 3.8.0：
+
+- **运维技能 14.1：Windows 参数转发修复**：`run.cmd` 不再把脚本名重复传给目标脚本，`check-update.mjs` 及其他技能脚本可正常接收 `--json`、`--app` 和带空格的路径
+- **配套面板 3.8.0**：面板、Web 与 CLI 均无变化，沿用 v3.8.0 发行资产
 
 ## 14（2026-11-24）
 

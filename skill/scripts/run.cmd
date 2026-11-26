@@ -30,6 +30,14 @@ if not exist "%TARGET%" (
 )
 shift
 
+set "ARGS="
+:collect_args
+if "%~1"=="" goto :run
+set "ARGS=%ARGS% %1"
+shift
+goto :collect_args
+
+:run
 set "RUNTIME=%KCM_RUNTIME_EXE%"
 if "%RUNTIME%"=="" for %%D in (
   "%LOCALAPPDATA%\Programs\Kimi Code"
@@ -41,13 +49,13 @@ if "%RUNTIME%"=="" for %%D in (
 
 if not "%RUNTIME%"=="" if exist "%RUNTIME%" (
   set "ELECTRON_RUN_AS_NODE=1"
-  "%RUNTIME%" "%TARGET%" %*
+  "%RUNTIME%" "%TARGET%" %ARGS%
   goto :done
 )
 
 where node >nul 2>nul
 if %errorlevel%==0 (
-  node "%TARGET%" %*
+  node "%TARGET%" %ARGS%
   goto :done
 )
 
