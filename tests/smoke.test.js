@@ -59,6 +59,15 @@ function tick(window, ms = 0) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+async function waitFor(window, predicate, timeout = 1_000) {
+  const deadline = Date.now() + timeout;
+  while (!predicate()) {
+    if (Date.now() >= deadline) return false;
+    await tick(window, 10);
+  }
+  return true;
+}
+
 function createPage(url = 'http://localhost:3000/sessions/smoke-session') {
   const dom = new JSDOM(PAGE_HTML, {
     url,
@@ -331,9 +340,8 @@ test('smoke：首次打开即启用桌面宠物（无需先关再开）', async 
   window.chrome.storage.local.get = async () => ({ 'kimi-statusbar.roamPet': true });
   try {
     injectScript(window, 'dist/content.js');
-    await tick(window, 30);
     assert.ok(
-      window.document.body.querySelector('.codex-roam-pet'),
+      await waitFor(window, () => window.document.body.querySelector('.codex-roam-pet')),
       '首开时应出现桌面宠物元素'
     );
   } finally {
