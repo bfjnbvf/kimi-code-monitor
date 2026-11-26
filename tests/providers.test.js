@@ -75,7 +75,7 @@ test('智谱窗口的 unit 是数字代号：3=小时、6=周、5=月（真实�
     },
     success: true
   });
-  assert.deepEqual(result.windows.map((w) => w.label), ['5h', '1w', 'MCP']);
+  assert.deepEqual(result.windows.map((w) => w.label), ['5h', '7d', 'MCP']);
   assert.deepEqual(result.windows.map((w) => w.pct), [19, 92, 1]);
   assert.equal(result.windows[2].resetAt, 1797874279984);
 });
@@ -106,7 +106,7 @@ test('MiniMax model_remains：取 general 条目，剩余百分比转已用，�
   assert.equal(result.kind, 'plan');
   assert.deepEqual(result.windows, [
     { label: '5h', pct: 20, resetAt: 1785772800000 },
-    { label: '1w', pct: 5, resetAt: 1786291200000 }
+    { label: '7d', pct: 5, resetAt: 1786291200000 }
   ]);
 });
 

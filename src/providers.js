@@ -61,7 +61,7 @@ function windowLabel(limit) {
           : unitText.startsWith('day') || unitText === 'd' ? 1440
           : 1));
     if (minutes <= 360) return '5h';
-    if (minutes <= 11000) return '1w';
+    if (minutes <= 11000) return '7d';
     return '1M';
   }
   return '额度';
@@ -145,7 +145,7 @@ function parseMiniMax(body) {
     const weeklyPct = Number(entry?.current_weekly_remaining_percent);
     if (Number.isFinite(weeklyPct)) {
       windows.push({
-        label: '1w',
+        label: '7d',
         pct: clampPct(100 - weeklyPct),
         resetAt: Number(entry?.weekly_end_time) || null
       });
