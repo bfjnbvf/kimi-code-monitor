@@ -43,15 +43,23 @@ function noInfoError(message, body) {
 // 套餐窗口的语义标签：智谱的 TIME_LIMIT 是 MCP 月度额度，必须优先于
 // number/unit 的通用时长映射——该类型即使带 number/unit（如 1 month），
 // 通用分支也会把 month 当成 1 分钟并误标成 5h（issue #13）。
+// unit 还可能是数字代号（2026-11-26 实测：3=小时、5=月、6=周，与官方控制台
+// 「5小时额度/周额度/MCP每月额度」三张卡及重置时间逐条吻合），字符串比较
+// 全部落空时会把周窗口误标成 5h——数字代号先查表，字符串单位兜底。
+const NUMERIC_UNIT_MINUTES = { 3: 60, 5: 43200, 6: 10080 };
+
 function windowLabel(limit) {
   if (limit?.type === 'TIME_LIMIT') return 'MCP';
   const number = Number(limit?.number ?? limit?.windowSize ?? limit?.window);
-  const unit = String(limit?.unit ?? limit?.windowUnit ?? '').toLowerCase();
+  const unit = limit?.unit ?? limit?.windowUnit;
   if (Number.isFinite(number) && number > 0) {
+    const unitMinutes = NUMERIC_UNIT_MINUTES[Number(unit)];
+    const unitText = String(unit ?? '').toLowerCase();
     const minutes =
-      number * (unit.startsWith('hour') || unit === 'h' ? 60
-        : unit.startsWith('day') || unit === 'd' ? 1440
-        : 1);
+      number * (unitMinutes ??
+        (unitText.startsWith('hour') || unitText === 'h' ? 60
+          : unitText.startsWith('day') || unitText === 'd' ? 1440
+          : 1));
     if (minutes <= 360) return '5h';
     if (minutes <= 11000) return '1w';
     return '1M';

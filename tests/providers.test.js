@@ -59,6 +59,27 @@ test('智谱 coding plan 窗口做宽容解析，无窗口无套餐时报错', (
   assert.throws(() => parseZhipu({ data: {} }));
 });
 
+test('智谱窗口的 unit 是数字代号：3=小时、6=周、5=月（真实响应回归）', () => {
+  // 2026-11-26 实测 open.bigmodel.cn/api/monitor/usage/quota/limit 返回：
+  // 官方控制台三张卡（5小时额度/周额度/MCP每月额度）与三条 limits 一一对应，
+  // 重置时间戳逐条吻合。周窗口（unit=6）不能被误标成 5h。
+  const result = parseZhipu({
+    code: 200,
+    data: {
+      limits: [
+        { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 19, nextResetTime: 1795711839086 },
+        { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 92, nextResetTime: 1795887079984 },
+        { type: 'TIME_LIMIT', unit: 5, number: 1, usage: 4000, currentValue: 4, remaining: 3996, percentage: 1, nextResetTime: 1797874279984 }
+      ],
+      level: 'max'
+    },
+    success: true
+  });
+  assert.deepEqual(result.windows.map((w) => w.label), ['5h', '1w', 'MCP']);
+  assert.deepEqual(result.windows.map((w) => w.pct), [19, 92, 1]);
+  assert.equal(result.windows[2].resetAt, 1797874279984);
+});
+
 test('MiniMax remains 支持 used/total 与 remains/total 两种口径', () => {
   const byUsed = parseMiniMax({ data: { used: 30, total: 100, plan: 'Starter' } });
   assert.equal(byUsed.windows[0].pct, 30);
