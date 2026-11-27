@@ -1,10 +1,18 @@
-skill-version: 14.1
-patch-version: 3.8.0
+skill-version: 14.2
+patch-version: 3.8.1
 repo: https://github.com/bfjnbvf/kimi-code-monitor
-skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-skill-v3.8.0.zip
-patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.0/kimi-code-monitor-desktop-v3.8.0.zip
+skill-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.1/kimi-code-monitor-skill-v3.8.1.zip
+patch-download: https://github.com/bfjnbvf/kimi-code-monitor/releases/download/v3.8.1/kimi-code-monitor-desktop-v3.8.1.zip
 
 # 更新记录
+
+## 14.2（2026-11-27）
+
+配套补丁 3.8.1：
+
+- **配套面板 3.8.1：智谱周额度标签**：识别智谱接口的数字单位代号，周额度正确显示 `1w`，不再误标为 `5h`；5 小时、MCP 与 MiniMax 标签口径不变
+- **配套面板 3.8.1：深色原生控件**：弹窗原生控件跟随系统明暗配色，深色下拉选项使用不透明底色，日历图标与日期选择器同步适配
+- **运维技能 14.2**：随 v3.8.1 发行，包含 14.1 的 Windows `run.cmd` 参数转发修复
 
 ## 14.1（2026-11-26）
 

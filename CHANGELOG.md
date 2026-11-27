@@ -1,5 +1,17 @@
 # 更新说明
 
+## v3.8.1（2026-11-27）
+
+### 修复
+
+- **智谱 Token Plan 周额度误标为 5h**（[#26](https://github.com/bfjnbvf/kimi-code-monitor/issues/26)、[PR #27](https://github.com/bfjnbvf/kimi-code-monitor/pull/27)）：兼容智谱接口返回的数字单位代号，正确识别小时、周和月窗口；`unit=6, number=1` 的周额度现在显示为 `1w`。5 小时额度、MCP 月度额度及 MiniMax 的既有标签口径保持不变。
+- **深色模式下弹窗原生控件看不清**（[#9](https://github.com/bfjnbvf/kimi-code-monitor/issues/9)）：原生控件现在跟随系统明暗配色；深色下拉选项使用不透明深色背景，文字清晰可读，日历图标和日期选择器同步切换。浅色模式外观、既有布局和间距不变。
+- **Windows 运维脚本参数重复转发**（[#25](https://github.com/bfjnbvf/kimi-code-monitor/issues/25)）：`run.cmd` 不再重复传递脚本名，`check-update.mjs` 及其他技能脚本可正常接收 `--json`、`--app` 和带空格的路径。
+
+### 感谢
+
+感谢 **@liuendong** 提供智谱数字单位修复与真实响应回归用例，感谢 **@Vte2** 提供深色模式问题的详尽分析和修复建议，感谢 **@CoolingRabbit** 报告并定位 Windows 参数重复转发问题。
+
 ## v3.8.0（2026-11-24）
 
 ### 新增
