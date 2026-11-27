@@ -61,6 +61,11 @@ test('默认日期范围：结束日期为当天，起始日期为一个月前�
   assert.match(usageSource, /if \(!usageEndEl\.value\) usageEndEl\.value = todayKey/);
 });
 
+test('深色模式原生控件跟随系统配色，下拉选项使用不透明底色（issue #9）', () => {
+  assert.match(css, /:root\s*\{[^}]*color-scheme: light dark;/);
+  assert.match(css, /@media \(prefers-color-scheme: dark\)[\s\S]*?option\s*\{\s*background-color: var\(--tooltip-bg\);\s*\}/);
+});
+
 test('消耗量指标下主/子代理堆叠渲染（蓝底绿顶）', () => {
   assert.match(css, /\.usage-bar\.sub \{/);
   assert.match(usageSource, /usageMetric === 'total' && subTokens > 0 && maxValue > 0/);

@@ -1,4 +1,5 @@
   :root {
+    color-scheme: light dark;
     --text: rgba(0, 0, 0, 0.9);
     --text-secondary: rgba(0, 0, 0, 0.6);
     --text-tertiary: rgba(0, 0, 0, 0.45);
@@ -30,6 +31,7 @@
       --switch-off: rgba(255, 255, 255, 0.28);
     }
     body { background: #1f1f1f; }
+    option { background-color: var(--tooltip-bg); }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
